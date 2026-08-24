@@ -43,6 +43,27 @@ func TestResolveDirRejectsEscapingRelative(t *testing.T) {
 	}
 }
 
+func TestResolveDirAbsoluteInsideRepoIsStillExternal(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	abs := filepath.Join(repo, "docs", "takt")
+	d, err := bundle.ResolveDir(repo, t.TempDir(), "", abs, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Base != abs || d.InRepo {
+		t.Fatalf(
+			"got %+v, want base=%q inRepo=false (absolute values are always external, spec §4.1, regardless of where they resolve)",
+			d,
+			abs,
+		)
+	}
+	want := filepath.Join(abs, filepath.Base(repo), "demo")
+	if got := d.Bundle("demo"); got != want {
+		t.Fatalf("Bundle(demo) = %q, want %q (repo-name namespacing applies because it is external)", got, want)
+	}
+}
+
 func TestBundlePathInRepoAndExternal(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join(t.TempDir(), "myrepo")

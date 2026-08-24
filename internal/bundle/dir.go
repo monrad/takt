@@ -37,7 +37,7 @@ func ResolveDir(repoRoot, home, flag, env, cfgDir string) (Dir, error) {
 	d := Dir{RepoRoot: repoRoot, RepoName: filepath.Base(repoRoot)}
 	if filepath.IsAbs(raw) {
 		d.Base = filepath.Clean(raw)
-		d.InRepo = strings.HasPrefix(d.Base, repoRoot+string(filepath.Separator))
+		d.InRepo = false
 		return d, nil
 	}
 	if err := CheckRelPath(repoRoot, raw); err != nil {
