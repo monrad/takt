@@ -1,0 +1,145 @@
+// Package gitx is a thin wrapper over the git CLI. Every call is
+// -C-qualified to the repository root, so callers never depend on the
+// process cwd (spec §4.5). No network operations live here (spec §13).
+package gitx
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+// ErrNotRepo is returned by Open when cwd is not inside a git work tree.
+var ErrNotRepo = errors.New("gitx: not inside a git repository")
+
+// Repo is a handle on one work tree (linked or primary).
+type Repo struct {
+	Root string
+}
+
+// Open resolves the work-tree root for cwd.
+func Open(ctx context.Context, cwd string) (*Repo, error) {
+	out, err := runGit(ctx, cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrNotRepo, cwd)
+	}
+	return &Repo{Root: out}, nil
+}
+
+// Run executes git with args in the repo root and returns trimmed stdout.
+func (r *Repo) Run(ctx context.Context, args ...string) (string, error) {
+	return runGit(ctx, r.Root, args...)
+}
+
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	//nolint:gosec // G204: gitx's whole purpose is to run "git" with caller-supplied args; the binary name is fixed
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// CurrentBranch returns the checked-out branch name ("HEAD" when detached).
+func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
+	return r.Run(ctx, "rev-parse", "--abbrev-ref", "HEAD")
+}
+
+// DefaultBranch returns override if non-empty, else origin/HEAD's branch,
+// else "main" if it exists, else "master".
+func (r *Repo) DefaultBranch(ctx context.Context, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if ref, err := r.Run(ctx, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimPrefix(ref, "origin/"), nil
+	}
+	for _, cand := range []string{"main", "master"} {
+		if ok, _ := r.BranchExists(ctx, cand); ok {
+			return cand, nil
+		}
+	}
+	return "", errors.New("gitx: cannot determine the default branch; set default_branch in .takt.json")
+}
+
+// HeadSHA returns the full sha of HEAD.
+func (r *Repo) HeadSHA(ctx context.Context) (string, error) {
+	return r.Run(ctx, "rev-parse", "HEAD")
+}
+
+// MergeBase returns the merge base of two refs.
+func (r *Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
+	return r.Run(ctx, "merge-base", a, b)
+}
+
+// BranchExists reports whether a local branch exists.
+func (r *Repo) BranchExists(ctx context.Context, name string) (bool, error) {
+	_, err := r.Run(ctx, "rev-parse", "--verify", "--quiet", "refs/heads/"+name)
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
+}
+
+// CreateAndCheckout creates a branch at HEAD and checks it out.
+func (r *Repo) CreateAndCheckout(ctx context.Context, name string) error {
+	_, err := r.Run(ctx, "checkout", "-q", "-b", name)
+	return err
+}
+
+// HasStaged reports whether the index differs from HEAD.
+func (r *Repo) HasStaged(ctx context.Context) (bool, error) {
+	_, err := r.Run(ctx, "diff", "--cached", "--quiet")
+	if err == nil {
+		return false, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return true, nil
+	}
+	return false, err
+}
+
+// Porcelain returns the parsed `git status --porcelain=v1 -z` entries.
+func (r *Repo) Porcelain(ctx context.Context) ([]Entry, error) {
+	//nolint:gosec // G204: fixed "git status" invocation, no caller-supplied arguments
+	cmd := exec.CommandContext(ctx, "git", "-C", r.Root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git status: %w", err)
+	}
+	entries, err := ParsePorcelainZ(out)
+	if err != nil {
+		return nil, fmt.Errorf("gitx: %w", err)
+	}
+	return entries, nil
+}
+
+// Add stages exactly the given paths (never -A).
+func (r *Repo) Add(ctx context.Context, paths ...string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	_, err := r.Run(ctx, append([]string{"add", "--"}, paths...)...)
+	return err
+}
+
+// Commit commits the index with msg and returns the new HEAD sha.
+func (r *Repo) Commit(ctx context.Context, msg string) (string, error) {
+	if _, err := r.Run(ctx, "commit", "-q", "-m", msg); err != nil {
+		return "", err
+	}
+	return r.HeadSHA(ctx)
+}
