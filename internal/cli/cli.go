@@ -30,6 +30,7 @@ const exitUsage = 2
 
 var commands = map[string]command{
 	"version": cmdVersion,
+	"init":    cmdInit,
 }
 
 // Main dispatches args[0] to a subcommand and returns the process exit code.
