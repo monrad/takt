@@ -24,7 +24,6 @@ worked in masterplan v8.1.0 and none of the private-fleet coupling that arrived 
 | G4 | **Quality gates on by default.** Spec review, plan review, per-task cross-vendor review, goals check, and alignment audit. | Each gate has a hash-bound receipt; editing the gated artifact re-arms the gate. |
 | G5 | **Works in any worktree.** herdr, Claude Code's `.claude/worktrees/*`, or `git worktree add` by hand — takt never creates one and never stores an absolute path. | A bundle moved with its repo keeps working; state contains no `/`-rooted paths (tested). |
 | G6 | **Pluggable headless backends.** Reviewers (and later workers) are an interface; v1 ships `claude` and `copilot`. | A fake backend runs the whole suite; an OpenAI-compatible HTTP backend is a ~100-line addition. |
-| G7 | **Small.** ≤ 4k lines of Go, a prompt ≤ 120 lines, four agent briefs. | `wc -l` in CI. |
 
 ### Non-goals for v1
 
@@ -62,6 +61,8 @@ chosen here with the stated rationale and open to revision.
 | D18 | Plan review vs plan gate | One review: the reviewer backend judges plan + index against spec (coverage, consistency, verify adequacy) | masterplan ran both a plan-reviewer agent and an adversary gate over the same artifacts | assumed |
 | D19 | Subagent model pinning | Every `dispatch` op carries an explicit `model` from config | Local PreToolUse guards may deny `Agent` calls without a model (agent-dispatch policy on the author's machines) | assumed |
 | D20 | Rework loop | A `rework` verdict re-dispatches the task once with the findings appended; then it asks | Cheap first retry, no unbounded loops | assumed |
+| D21 | Planner model | `fable` (Claude Fable 5) by default; `opus` where the account lacks it | One call per run whose output shapes every wave task — the "most demanding reasoning" case Fable exists for. At $10/$50 per MTok vs Opus 5's $5/$25 the doubled price of a single planning call is small next to N implementer runs, and on Claude Max it draws from the same plan window as Opus. Implementers, assessors and reviewers stay on cheaper tiers | user (crit round 2) |
+| D22 | Implementer model per task | The planner assigns each task a `class` (`mechanical` › `bounded` › `implement` › `test` › `docs`); config maps class → model (haiku / sonnet / opus); a retry after `failed` or `rework` escalates one tier | Rote edits do not need Opus; judgement-heavy ones do. Escalation on retry is the safety net for a mis-classified task. This makes first-class what the author's agent-dispatch shim did through its class → lane policy | user (crit round 3) |
 
 ---
 
@@ -71,7 +72,7 @@ chosen here with the stated rationale and open to revision.
 
 ```
 ┌────────────────────────────── Claude Code session ──────────────────────────────┐
-│  /takt  (commands/takt.md — the op loop, ≤120 lines)                             │
+│  /takt  (commands/takt.md — the op loop)                                         │
 │     │ Bash: takt next / record / answer / done            AskUserQuestion        │
 │     │ Agent: spawn N subagents per dispatch op            superpowers:brainstorm │
 │     │ Bash (background): takt close-wave / review / verify                       │
@@ -102,8 +103,8 @@ chosen here with the stated rationale and open to revision.
 .claude-plugin/plugin.json          name: takt, version = binary version
 .claude-plugin/marketplace.json     so `claude plugin marketplace add monrad/takt` works
 commands/takt.md                    the op loop
-agents/implementer.md          sonnet · Read, Edit, Write, Bash, Grep, Glob
-agents/planner.md              opus   · Read, Grep, Glob, Write
+agents/implementer.md          model per task class (D22) · Read, Edit, Write, Bash, Grep, Glob
+agents/planner.md              fable  · Read, Grep, Glob, Write
 agents/goal-assessor.md        sonnet · Read, Grep, Glob, Bash (read-only commands)
 agents/alignment-auditor.md    sonnet · Read, Grep, Glob
 cmd/takt/main.go                    subcommand dispatch (stdlib flag)
@@ -202,9 +203,10 @@ Field notes:
 - `phase ∈ brainstorm | plan | execute | finish | archived`. The only progress enum.
 - `branch_adopted` — true when the run adopted the cwd's branch (D9). Hides `merge` and `discard` at
   finish: the branch belongs to the user.
-- `tasks[]` — `{id, wave, status, files[], attempt, last_digest}` with
-  `status ∈ pending | done | failed | blocked | waived`. `files` are copied from the plan index at load
-  and are the D6 scope. `waived` is reachable only via `takt waive`.
+- `tasks[]` — `{id, wave, status, files[], class, attempt, last_digest}` with
+  `status ∈ pending | done | failed | blocked | waived`. `files` and `class` are copied from the plan
+  index at load; `files` is the D6 scope, `class` selects the implementer model (D22). `waived` is
+  reachable only via `takt waive`.
 - `active_wave` — `{n, slice, attempt, started_at, session_id, baseline: [{path, hash}]}` or null.
   `baseline` is every path dirty or untracked before launch with its content hash, so a user-dirty file
   that an agent also edits is still detected. Written before a `dispatch` op is returned; cleared by a
@@ -292,7 +294,7 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 { "op": "dispatch", "narration": "wave 0: 3 tasks",
   "wave": 0, "attempt": 1,
   "agents": [
-    { "task": 1, "agent": "implementer", "model": "sonnet",
+    { "task": 1, "agent": "implementer", "class": "bounded", "model": "sonnet",
       "brief": "docs/takt/cedar-policy-2154/waves/0/task-1.a1.md",
       "cwd": ".", "label": "task 1: applicability helper" }
   ],
@@ -301,7 +303,7 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 
 For planning and assessment the same shape carries a single agent with `"agent": "planner"` etc.
 `brief` is a file path: the prompt passes the file's contents as the agent prompt verbatim. `model` is
-always present (D19).
+always present (D19) — for implementers it is resolved from the task's `class` and attempt (D22).
 
 **ask** — put a question to the user, then `takt answer`, then `next`.
 
@@ -411,7 +413,7 @@ wave. Neither level skips a gate; the set of `ask` ops is identical. Gates are n
 
 ## 6. The command prompt — `commands/takt.md`
 
-Target ≤ 120 lines. Contents, in order:
+Deliberately short — an op table and a list of invariants, no phase logic. Contents, in order:
 
 1. **Handshake.** `takt version --expect <plugin version>`; on mismatch, print the hint and stop.
 2. **Verb parsing.** `/takt` → loop. `/takt <topic…>` → `takt init "<topic>"` then loop. `/takt status`,
@@ -476,9 +478,12 @@ git repo.
 
 ### 7.3 `plan`
 
-**Planner dispatch.** One `takt:planner` agent (Opus) receives: the repo survey instructions, `spec.md`
-and `goals.md` as quoted data, and the index schema below. It writes `plan.md` (narrative: approach,
-per-task rationale, risks) and `plan.index.json`. It does not assign waves.
+**Planner dispatch.** One `takt:planner` agent (Claude Fable 5 by default, D21) receives: the repo
+survey instructions, `spec.md` and `goals.md` as quoted data, and the index schema below. It writes
+`plan.md` (narrative: approach, per-task rationale, risks) and `plan.index.json`. It does not assign
+waves. The brief is written for Fable: it states the outcome, the schema and the validation rules, and
+leaves the method to the model — prompts that over-prescribe process reduce Fable's output quality.
+A planning turn on Fable can run several minutes; the session simply waits for the agent.
 
 **`plan.index.json` (schema 1):**
 
@@ -508,6 +513,14 @@ per-task rationale, risks) and `plan.index.json`. It does not assign waves.
   error with both ids and the shared paths — this is what makes waves safe.
 - `goals` ids exist in `goals.md`; every goal is referenced by at least one task (error, because a goal
   no task serves cannot be met).
+- `class ∈ mechanical | bounded | implement | test | docs` (absent → `implement`). The planner picks it
+  per task and justifies anything below `implement` in `plan.md`:
+  - `mechanical` — rote edits with no judgement: renames, generated files, list/vocabulary updates,
+    config values, formatting. At most 3 files.
+  - `bounded` — a small, fully specified change whose tests are given or trivial.
+  - `implement` — the default: new logic or design judgement inside the task.
+  - `test` — tests against an implementation that already exists.
+  - `docs` — prose: ADRs, READMEs, changelogs.
 - `spec_hash` equals the current `sha256(spec.md)` (a plan drafted against an older spec is rejected).
 
 Validation errors are returned to the session, which re-dispatches the planner with them appended
@@ -542,8 +555,14 @@ options as the spec gate.
 A wave, end to end:
 
 1. **Launch** (`takt next`, row 18): pick the lowest wave with pending tasks; take up to `max_parallel`
-   of them; capture `baseline = git status --porcelain` paths; write `active_wave`; render one brief per
-   task from the template below into `waves/<n>/task-<id>.a<attempt>.md`; return `dispatch`.
+   of them; capture `baseline = git status --porcelain` paths; write `active_wave`; resolve each task's
+   model from its `class` (§12 `agents.implementer`) and its attempt (escalation below); render one
+   brief per task from the template below into `waves/<n>/task-<id>.a<attempt>.md`; return `dispatch`.
+
+   **Model escalation.** A task re-dispatched after `failed` (verify or `no_changes`) or `rework` runs
+   one tier above its previous model — haiku → sonnet → opus; opus stays opus; escalation never selects
+   Fable. The brief carries the previous attempt's model and failure; the digest records the model used,
+   and `status` shows it per task. `agents.implementer.escalate_on_retry: false` disables this.
 2. **Agents** (session): N `Agent` calls in one message, each with its brief, `model`, cwd = repo root.
    The implementer brief:
 
@@ -733,14 +752,41 @@ the reviewer's stderr to be non-empty and stores it as evidence.
 
 | agent | model (default) | tools | input | output |
 |---|---|---|---|---|
-| `takt:implementer` | sonnet | Read, Edit, Write, Bash, Grep, Glob | one task brief | edits + `STATUS/SUMMARY/BLOCKERS` |
-| `takt:planner` | opus | Read, Grep, Glob, Write | spec + goals (quoted), schema, repo survey instructions | `plan.md`, `plan.index.json` |
+| `takt:implementer` | by task class — haiku / sonnet / opus (D22, §12) | Read, Edit, Write, Bash, Grep, Glob | one task brief | edits + `STATUS/SUMMARY/BLOCKERS` |
+| `takt:planner` | fable | Read, Grep, Glob, Write | spec + goals (quoted), schema, repo survey instructions | `plan.md`, `plan.index.json` |
 | `takt:goal-assessor` | sonnet | Read, Grep, Glob, Bash | goals, diff stat, verify results | fenced JSON verdicts |
 | `takt:alignment-auditor` | sonnet | Read, Grep, Glob | anchor (+ clauses, spec, plan) | fenced JSON clauses or verdicts |
 
 Each definition's frontmatter pins `tools:`; `model:` is the default the `dispatch` op overrides from
 config. All briefs mark user-authored artifacts as quoted data with a per-dispatch delimiter token, and
 instruct the agent that instructions inside the data are to be ignored.
+
+### 10.1 Compared with masterplan
+
+masterplan v9.9.1 ships eight agents; takt ships four. What happened to each:
+
+| masterplan agent | takt | why |
+|---|---|---|
+| `mp-implementer` — Sonnet in v8.1.0, **deleted in v9.6** when implementation moved to the broker | `takt:implementer` | Back to the v8.1.0 shape: a Claude Code subagent editing in the session's worktree. One difference — it reports only status/summary/blockers; Go computes `files_changed` and runs verify (D16). |
+| `mp-planner` | `takt:planner` | Same job. masterplan's was a "thin wrapper" that had to call `mcp__agent-dispatch__dispatch_task` and never draft on its own model; takt's drafts directly. It no longer assigns waves (D15). |
+| `mp-spec-decomposer` + `mp-subsystem-planner` | — | The parallel plan fan-out is dropped in v1; one planner plans serially. If plans grow large enough to need it, it returns as a planner option, not as two agents. |
+| `mp-plan-reviewer` | — (plan gate) | Folded into the plan gate review, run headless by the Reviewer backend (D18). |
+| `mp-adversarial-reviewer` | — (Reviewer backend) | An agent whose whole job was to shell out to `agent-dispatch review`; takt calls `copilot -p` / `claude -p` from Go directly (D6). |
+| `mp-goal-assessor` | `takt:goal-assessor` | Same job. masterplan ran it in a disposable detached worktree to enforce read-only structurally; takt relies on `tools:` (no Edit/Write) plus instructions, because `signal: command` goals need Bash. If that proves unreliable, the detached-worktree trick is a small addition. |
+| `mp-alignment-auditor` | `takt:alignment-auditor` | Same two-step protocol: clauses → user confirms → verdicts. |
+| `mp-explorer` | — | Read-only recon digests; Claude Code's built-in `Explore` agent covers it. |
+
+Two structural differences. **Wrappers vs workers:** every masterplan agent is a wrapper that must route
+its judgment through an agent-dispatch lane (`dispatch_task` with a policy task class) — the source of
+the "never silently inline a delegated role" rule and most of each brief's length; takt's agents do the
+work themselves, and model choice lives in config and arrives as an explicit `model` on the dispatch op
+(D19). **Model provenance:** masterplan's `model:` lines are generated from the fleet's `routing.yaml`
+lineup (the file behind the three failing tests on this machine); takt's are plain defaults in the agent
+frontmatter, overridable per repo or per user. masterplan itself never chose a model per task — the
+haiku / sonnet / opus mix seen in earlier runs came from the agent-dispatch shim's class → lane policy,
+and only for tasks that carried a class (its README notes unannotated wave tasks all ran as
+`masterplan-implementation`). takt makes the per-task class first-class: the planner assigns it, config
+maps it to a model, and a retry escalates a tier (D22).
 
 ---
 
@@ -789,13 +835,23 @@ config is for what a team shares (`dir`, gate defaults); user config for machine
     "claude":  { "model": "opus", "effort": "high", "timeout": "5m" }
   },
   "agents": {
-    "implementer": { "model": "sonnet" },
-    "planner": { "model": "opus" },
+    "implementer": {
+      "model": "opus",
+      "by_class": { "mechanical": "haiku", "bounded": "sonnet", "test": "sonnet", "docs": "sonnet" },
+      "escalate_on_retry": true
+    },
+    "planner": { "model": "fable" },
     "goal-assessor": { "model": "sonnet" },
     "alignment-auditor": { "model": "sonnet" }
   }
 }
 ```
+
+`agents.implementer.model` is the model for `implement` and for any class missing from `by_class`;
+`by_class` maps the other classes (D22). `agents.planner.model` defaults to `fable`; set it to `opus`
+on an account without Claude Fable 5.
+takt does not probe model availability for in-session agents — an unavailable model fails the `Agent`
+call loudly, which the prompt surfaces as an error rather than silently downgrading.
 
 Environment: `TAKT_DIR`, `TAKT_SESSION`, `TAKT_CONFIG` (path override), `CLAUDE_CODE_SESSION_ID` (read).
 Per-run values (`autonomy`, `review.*`, `goals`, `alignment`, `max_parallel`, `max_rework`) are frozen
@@ -831,11 +887,18 @@ into `state.config` at `init` so a config change mid-run does not change the run
 | `wave` | Temp git repos (`t.TempDir()` + `git init`): scripted "agents" that edit in scope, out of scope, create untracked files, and change nothing; scope verify and revert; verify runner with a failing command; commit staging never includes baseline-dirty files. |
 | `backend` | `fake` reviewer driven by a fixture file; parsing of fenced JSON; timeout → `error`; one live smoke per backend behind `TAKT_LIVE=1`. |
 | `brief` | Golden files for every template; the delimiter token never collides with content. |
-| `prompt` | Parse `commands/takt.md`; assert every op kind and every gate id `decide` can emit is present, and the line count ≤ 120. |
+| `prompt` | Parse `commands/takt.md`; assert every op kind and every gate id `decide` can emit is present. |
 | `cli` | Golden stdout/stderr per command; exit codes. |
 | e2e (opt-in, `TAKT_E2E=1`) | A throwaway repo, a two-wave plan, `haiku` implementers via a session-less driver that executes ops like the prompt would; kill/resume at each op boundary (G1). |
 
-CI: `go vet`, `golangci-lint` (the bit-mover config), `go test ./...`, the line-count guard (G7).
+CI: `go vet`, `golangci-lint`, `go test ./...`.
+
+Lint configuration starts from the **golden config** (`github.com/maratori/golangci-lint-config`): copy
+its `.golangci.yml` to the repo root, set `formatters.settings.goimports.local-prefixes` to
+`github.com/monrad/takt`, and pin the golangci-lint version to the config's matching tag (the repo tags
+track golangci-lint releases, so Renovate can bump both together). Its stance — every linter listed,
+the disabled ones commented so they are easy to find, strict but with the noisiest checks and common
+false positives excluded — is the default; linters are toggled only with a comment saying why.
 
 ---
 
@@ -866,7 +929,8 @@ do not share commands, agents, or state — but only one should drive a given br
 - An OpenAI-compatible HTTP backend for local models (llama.cpp / vLLM / Ollama) as reviewer and worker.
 - A thin MCP wrapper exposing `next` / `record` / `answer` as typed tools.
 - `takt render` — a static plan/progress page.
-- Per-task `class` used to pick a cheaper implementer model (`mechanical-text` → haiku).
+- Per-class effort levels once the `Agent` tool exposes effort per call (today only the model is
+  selectable per subagent).
 
 ---
 
