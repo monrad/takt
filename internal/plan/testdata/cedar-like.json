@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "spec_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "tasks": [
+    { "id": 1, "title": "applicability helper", "description": "Add lib/go/cedar/schema/applicability.go exporting Applicable(action, principal, resource) with tests.",
+      "files": ["lib/go/cedar/schema/applicability.go", "lib/go/cedar/schema/applicability_test.go"],
+      "verify": ["go test ./lib/go/cedar/schema/..."], "depends_on": [], "goals": ["G1"], "class": "implement" },
+    { "id": 2, "title": "schema principals", "description": "Remove CustomerUser from the three IAM actions in policies.cedarschema.",
+      "files": ["lib/go/cedar/schema/policies.cedarschema"],
+      "verify": ["go test ./lib/go/cedar/schema/..."], "depends_on": [], "goals": ["G3"], "class": "mechanical" },
+    { "id": 3, "title": "metrics counters", "description": "Add iam.cedar.policy.skipped and iam.cedar.action.dropped counters.",
+      "files": ["services/iam/internal/cedar/metrics.go", "services/iam/internal/cedar/metrics_test.go"],
+      "verify": ["go test ./services/iam/internal/cedar/..."], "depends_on": [], "goals": ["G5"], "class": "bounded" },
+    { "id": 4, "title": "schema invariants test", "description": "Assert every customer-applicable action has a Customer-descendant resource.",
+      "files": ["lib/go/cedar/schema/invariants_test.go"],
+      "verify": ["go test ./lib/go/cedar/schema/..."], "depends_on": [1, 2], "goals": ["G4"], "class": "test" },
+    { "id": 5, "title": "generator filtering", "description": "Filter granted slugs through the applicability helper; emit no policy when nothing survives.",
+      "files": ["services/iam/internal/cedar/generator.go", "services/iam/internal/cedar/generator_test.go"],
+      "verify": ["go test ./services/iam/internal/cedar/..."], "depends_on": [1, 3], "goals": ["G1", "G5"], "class": "implement" },
+    { "id": 6, "title": "publisher partition", "description": "validatePolicySet partitions; invalid generated permits are skipped, invalid forbids abort.",
+      "files": ["services/iam/internal/cedar/policy_publisher.go", "services/iam/internal/cedar/policy_publisher_test.go"],
+      "verify": ["go test ./services/iam/internal/cedar/..."], "depends_on": [3, 5], "goals": ["G2"], "class": "implement" },
+    { "id": 7, "title": "dashboard panels", "description": "Add panels for the new counters and regenerate the JSON.",
+      "files": ["tools/dashboards/cedar.go", "tools/development-docker/grafana/provisioning/dashboards/cedar-authorization.json"],
+      "verify": ["go run ./tools/dashboards -check"], "depends_on": [3], "goals": ["G5"], "class": "bounded" },
+    { "id": 8, "title": "ADR", "description": "Record the two-sided applicability rule and the permit/forbid asymmetry.",
+      "files": ["documentation/decisions/2026-08-23-cedar-policy-applicability.md"],
+      "verify": ["true"], "depends_on": [], "goals": ["G6"], "class": "docs" }
+  ]
+}
