@@ -53,3 +53,18 @@ func TestUnknownCommandExits2(t *testing.T) {
 		t.Fatalf("stderr = %q", errb)
 	}
 }
+
+func TestVersionBadFlagExitsUsageWithJSON(t *testing.T) {
+	t.Parallel()
+	code, _, errb := run(t, "version", "--bogus")
+	if code != 2 {
+		t.Fatalf("exit %d, want 2", code)
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(errb), &got); err != nil {
+		t.Fatalf("stderr is not JSON: %q", errb)
+	}
+	if !strings.Contains(got["error"], "bogus") {
+		t.Fatalf(`stderr "error" = %q, want it to contain "bogus"`, got["error"])
+	}
+}

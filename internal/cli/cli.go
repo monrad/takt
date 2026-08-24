@@ -5,6 +5,7 @@ package cli
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"sort"
@@ -66,4 +67,14 @@ func writeJSON(w io.Writer, v any) error {
 func fail(w io.Writer, code int, msg, hint string) int {
 	_ = writeJSON(w, map[string]string{"error": msg, "hint": hint})
 	return code
+}
+
+// usageError reports a flag-parsing failure through the JSON error contract.
+// Every command's [flag.FlagSet] must route fs.Parse errors through this
+// instead of returning exitUsage directly, so bad flags never leak the
+// flag package's own plain-text output onto stderr.
+func usageError(env Env, fs *flag.FlagSet, err error) int {
+	return fail(env.Stderr, exitUsage,
+		"invalid flags for "+fs.Name()+": "+err.Error(),
+		"run `takt "+fs.Name()+" -h` for the accepted flags")
 }
