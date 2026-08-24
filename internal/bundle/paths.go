@@ -23,7 +23,11 @@ func CheckRelPath(root, p string) error {
 		return errors.New("path escapes the repository: " + p)
 	}
 	abs := filepath.Join(root, clean)
-	if abs != root && !strings.HasPrefix(abs, root+string(filepath.Separator)) {
+	prefix := root
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	if abs != root && !strings.HasPrefix(abs, prefix) {
 		return errors.New("path resolves outside the repository: " + p)
 	}
 	return nil
