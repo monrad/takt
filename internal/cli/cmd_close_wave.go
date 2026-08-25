@@ -398,11 +398,16 @@ func commitWaveOnce(ctx context.Context, tgt *runTarget, res *wave.CloseResult, 
 		})
 		return nil, nil
 	}
+	// The commit stages the whole wave's done and waived files — an earlier
+	// slice's are already in HEAD, so staging them costs nothing — but what
+	// this commit is *about* is this slice, so the subject and the recorded
+	// task list are narrowed to the tasks that went out with it.
+	mine := inSlice(tgt.st.ActiveWave, done)
 	ids := graded
 	if len(ids) == 0 {
-		ids = done
+		ids = mine
 	}
-	msg := waveSubject(tgt.st, tgt.slug, res.Wave, graded, done)
+	msg := waveSubject(tgt.st, tgt.slug, res.Wave, graded, mine)
 	sha, err := wave.CommitWave(ctx, tgt.ws.Repo, paths, rel, msg)
 	if err != nil {
 		return nil, err
@@ -412,10 +417,10 @@ func commitWaveOnce(ctx context.Context, tgt *runTarget, res *wave.CloseResult, 
 }
 
 // waveSubject names what the commit records: the tasks this close graded,
-// else — for a re-close that graded nothing — the wave's done tasks, else the
-// tasks it waived, because a wave whose dispatched work was all waived still
-// has its bundle to commit and should say so rather than trail off after
-// "tasks".
+// else — for a re-close that graded nothing — the done tasks its caller
+// hands it (this slice's, see commitWaveOnce), else the tasks it waived,
+// because a wave whose dispatched work was all waived still has its bundle
+// to commit and should say so rather than trail off after "tasks".
 func waveSubject(st *bundle.State, slug string, waveN int, graded, done []int) string {
 	prefix := fmt.Sprintf("takt(%s): wave %d — ", slug, waveN)
 	switch {
@@ -434,6 +439,25 @@ func waveSubject(st *bundle.State, slug string, waveN int, graded, done []int) s
 		return prefix + "waived " + joinInts(waived)
 	}
 	return prefix + "close"
+}
+
+// inSlice narrows a list of the wave's task ids to the ones the dispatch on
+// the table went out with. A wave larger than max_parallel is closed once
+// per slice, so a question asked about "the wave's done tasks" is answered
+// across every slice that has already committed — which is exactly what a
+// later slice must not claim as its own. With no active wave (nothing to
+// narrow against) the list is unchanged.
+func inSlice(aw *bundle.ActiveWave, ids []int) []int {
+	if aw == nil {
+		return ids
+	}
+	out := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if slices.Contains(aw.Tasks, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // stageWave stages the wave's pathspec and reports whether it holds anything

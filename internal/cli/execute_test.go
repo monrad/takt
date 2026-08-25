@@ -1143,3 +1143,45 @@ func TestPostCommitKillBackfillsTheSha(t *testing.T) {
 		t.Fatalf("the repair must be in the log: %+v", events)
 	}
 }
+
+// TestSliceReCloseSubjectNamesOnlyItsOwnSlice covers what a re-close falls
+// back to when it grades nothing: "the wave's done tasks" is, by the time a
+// second slice is closing, the answer the first slice already committed
+// under — so the second slice's commit would carry a subject naming tasks it
+// had nothing to do with, and a reader of the log would see the same wave
+// commit twice. The fallback is this slice's own tasks.
+func TestSliceReCloseSubjectNamesOnlyItsOwnSlice(t *testing.T) {
+	t.Parallel()
+	root, _ := wideRun(t, 2)
+	next(t, root, nil) // slice 1: tasks 1 and 2
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	record(t, root, 1, 1, "done", "a")
+	record(t, root, 2, 1, "done", "b")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 1, 2" {
+		t.Fatalf("slice 1's commit: %q", msg)
+	}
+	// Slice 2 goes out, fails, and is waived — so its re-close grades
+	// nothing at all.
+	next(t, root, nil)
+	recordReport(t, root, 3, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
+	if code, out, _ := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
+		t.Fatalf("%d %v", code, out)
+	}
+	next(t, root, nil) // raises wave_failures
+	waiveOne(t, root, 3, "lands with the next run")
+	next(t, root, nil)
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	msg := testutil.Git(t, root, "log", "-1", "--format=%s")
+	if msg == "takt(demo): wave 0 — tasks 1, 2" {
+		t.Fatalf("slice 2 must not commit under slice 1's subject: %q", msg)
+	}
+	if !strings.Contains(msg, "3") {
+		t.Fatalf("slice 2's subject must name its own task: %q", msg)
+	}
+}

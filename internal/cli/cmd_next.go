@@ -280,7 +280,7 @@ func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bo
 		return false
 	}
 	subj, err := r.ws.Repo.Run(ctx, "log", "-1", "--format=%s")
-	if err != nil || subj != waveSubject(r.st, r.slug, c.Wave, gradedIDs(c.Tasks), done) {
+	if err != nil || subj != waveSubject(r.st, r.slug, c.Wave, gradedIDs(c.Tasks), inSlice(r.st.ActiveWave, done)) {
 		return false
 	}
 	if clean, cerr := pathsCommitted(ctx, r.ws.Repo, files); cerr != nil || !clean {
