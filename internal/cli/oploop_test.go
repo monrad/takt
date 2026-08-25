@@ -2,8 +2,12 @@ package cli_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -47,12 +51,42 @@ func (d *driver) nextOp() map[string]any {
 	if d.replay {
 		d.assertReplay(o)
 	}
-	kind, ok := o["op"].(string)
-	if !ok {
+	if _, ok := o["op"].(string); !ok {
 		d.t.Fatalf("next printed no op: %v", o)
 	}
-	d.ops = append(d.ops, kind)
+	d.ops = append(d.ops, opLabel(d.t, o))
 	return o
+}
+
+// opLabel names an op the way the walk reads best: the kind, and the thing
+// that kind is about — the step of a run, the agent of a dispatch, the gate
+// of an ask, the reason of a stop. The kind is always the prefix, so a test
+// asking whether a kind was ever seen still looks for the bare word.
+func opLabel(t *testing.T, o map[string]any) string {
+	t.Helper()
+	kind, _ := o["op"].(string)
+	switch kind {
+	case "run":
+		return kind + "/" + opText(o["step"])
+	case "dispatch":
+		ags := agentsOf(t, o)
+		if len(ags) == 0 {
+			t.Fatalf("dispatch op with no agents: %v", o)
+		}
+		return kind + "/" + opText(ags[0]["agent"])
+	case "ask":
+		return kind + "/" + opText(o["gate"])
+	case "stop":
+		return kind + "/" + opText(o["reason"])
+	}
+	return kind
+}
+
+// opText is a field of an op as text, so a malformed op labels itself rather
+// than panicking on the way to the assertion that will report it.
+func opText(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // assertReplay re-runs `takt next` and checks the run is none the worse for
@@ -123,8 +157,6 @@ func (d *driver) playToFinish(maxSteps int) map[string]any {
 
 // play drives the loop, executing every op, until one of them is a stop, and
 // returns that stop's reason.
-//
-//nolint:unused // the finish-to-archive walk that drives the loop to its stop lands in a later plan-3 task
 func (d *driver) play(maxSteps int) string {
 	d.t.Helper()
 	for range maxSteps {
@@ -176,12 +208,58 @@ func (d *driver) run(o map[string]any) {
 		writeAt(d.t, in["spec_path"].(string), "# spec\n\n## Assumptions & Open Decisions\n| q | d | r | s |\n")
 	case "goals":
 		writeAt(d.t, in["goals_path"].(string), goalsMD)
+	case "retro":
+		writeAt(d.t, in["retro_path"].(string), d.retrospective(in))
+	case "push_pr":
+		// push_pr is the one run step whose done line is not the generic
+		// one: the pull request URL is what it has instead of an artifact,
+		// so it closes itself and the shared tail below is skipped.
+		if code, _, errb := d.cmd("done", "--step", "push_pr", "--url", fixturePRURL, "--slug", "demo"); code != 0 {
+			d.t.Fatalf("done push_pr: %s", errb)
+		}
+		return
 	default:
 		d.t.Fatalf("unknown run step %q", step)
 	}
 	if code, _, errb := d.cmd("done", "--step", step, "--slug", "demo"); code != 0 {
 		d.t.Fatalf("done %s: %s", step, errb)
 	}
+}
+
+// fixturePRURL is the pull request the scripted session reports opening. It
+// is never reached over the network — `takt done --step push_pr` only records
+// the string the session hands it.
+const fixturePRURL = "https://example.invalid/pr/1"
+
+// stopArchived is the reason a finished run stops with (spec §5.3 row 25).
+const stopArchived = "archived"
+
+// retrospective is the retro.md a scripted session writes: a heading and one
+// line per fact the run op handed it, read back from inputs_path so the walk
+// proves the file `next` wrote is really there and really JSON.
+func (d *driver) retrospective(in map[string]any) string {
+	d.t.Helper()
+	p, ok := in["inputs_path"].(string)
+	if !ok {
+		d.t.Fatalf("retro op without inputs_path: %v", in)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		d.t.Fatal(err)
+	}
+	var inputs map[string]any
+	if err = json.Unmarshal(raw, &inputs); err != nil {
+		d.t.Fatalf("retro inputs are not JSON: %v\n%s", err, raw)
+	}
+	if len(inputs) == 0 {
+		d.t.Fatalf("retro inputs say nothing about the run: %s", raw)
+	}
+	var b strings.Builder
+	b.WriteString("# Retro — demo\n\n")
+	for _, k := range slices.Sorted(maps.Keys(inputs)) {
+		fmt.Fprintf(&b, "- %s: noted\n", k)
+	}
+	return b.String()
 }
 
 // dispatch plays every agent of a dispatch op and records each result.
@@ -195,6 +273,8 @@ func (d *driver) dispatch(o map[string]any) {
 			d.playAuditor(ag)
 		case "implementer":
 			d.playImplementer(o, ag)
+		case "goal-assessor":
+			d.playAssessor(ag)
 		default:
 			d.t.Fatalf("unknown agent %v", ag["agent"])
 		}
@@ -250,18 +330,73 @@ func (d *driver) playImplementer(o, ag map[string]any) {
 	}
 }
 
-// answer takes the first option, which every gate lists as the recommended
-// one — "confirm" for alignment_confirm, "retry" for the wave gates
-// (internal/decide/questions.go).
+// goalID matches the ids the assessor brief asks about — both in the quoted
+// goals.md and in the template's own "one entry per goal id (G1 …)" line.
+var goalID = regexp.MustCompile(`\bG\d+\b`)
+
+// playAssessor answers the goal-assessor dispatch the way the agent would:
+// one verdict per goal id the brief names, fenced as JSON in a final message.
+// The ids come from the brief rather than from the fixture, so a run whose
+// goals.md grows a goal is assessed on all of them without the driver
+// knowing anything about it.
+func (d *driver) playAssessor(ag map[string]any) {
+	d.t.Helper()
+	brief, err := os.ReadFile(ag["brief"].(string))
+	if err != nil {
+		d.t.Fatal(err)
+	}
+	ids := slices.Compact(slices.Sorted(slices.Values(goalID.FindAllString(string(brief), -1))))
+	if len(ids) == 0 {
+		d.t.Fatalf("the assessor brief names no goal: %s", brief)
+	}
+	verdicts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		verdicts = append(verdicts, fmt.Sprintf(
+			`{"id":%q,"verdict":"achieved","evidence":"a.go and b.go exist","citations":["a.go:1"]}`, id))
+	}
+	msg := d.message("```json\n[" + strings.Join(verdicts, ",") + "]\n```\n")
+	code, out, errb := d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo")
+	if code != 0 || out["all_achieved"] != true {
+		d.t.Fatalf("record goal-assessor: %d %v %s", code, out, errb)
+	}
+}
+
+// answer takes the first option a user could actually pick, which every gate
+// lists as the recommended one — "confirm" for alignment_confirm, "retry" for
+// the wave gates (internal/decide/questions.go). An option carrying a
+// `disabled` reason is skipped rather than chosen: branch_finish leads with
+// merge, and in a plain checkout — the primary worktree holding the run
+// branch — merge is exactly the one takt cannot do, so the walk lands on pr.
 func (d *driver) answer(o map[string]any) {
 	d.t.Helper()
 	opts, ok := o["options"].([]any)
 	if !ok || len(opts) == 0 {
 		d.t.Fatalf("ask op without options: %v", o)
 	}
-	choice := opts[0].(map[string]any)["choice"].(string)
+	choice := ""
+	for _, x := range opts {
+		m, isMap := x.(map[string]any)
+		if !isMap {
+			d.t.Fatalf("option is not an object: %v", x)
+		}
+		if reason, _ := m["disabled"].(string); reason == "" {
+			choice = m["choice"].(string)
+			break
+		}
+	}
+	if choice == "" {
+		d.t.Fatalf("every option of %v is disabled: %v", o["gate"], opts)
+	}
 	gate := o["gate"].(string)
-	if code, _, errb := d.cmd("answer", "--gate", gate, "--choice", choice, "--slug", "demo"); code != 0 {
+	args := []string{"answer", "--gate", gate, "--choice", choice, "--slug", "demo"}
+	// The destructive choice takes the slug back as a confirmation. The
+	// fixture never reaches it — merge is disabled and pr comes first — but
+	// a driver that answered it wrongly would report a takt bug that was its
+	// own.
+	if gate == "branch_finish" && choice == "discard" {
+		args = append(args, "--confirm", "demo")
+	}
+	if code, _, errb := d.cmd(args...); code != 0 {
 		d.t.Fatalf("answer %s=%s: %s", gate, choice, errb)
 	}
 }
@@ -336,23 +471,36 @@ func writeAt(t *testing.T, path, content string) {
 // TestOpLoopEndToEndWithFakeReviewer drives one whole run through cli.Main
 // the way the command prompt will: init → brainstorm → goals → spec review →
 // planner → plan review → alignment (clauses, confirm, verdicts) → load →
-// wave 0 → wave 1 → finish. Every `next` is run twice (replay), so the run
-// also proves spec §5.4's idempotency along the way.
+// wave 0 → wave 1 → finish → verify → goal assessment → retro →
+// branch_finish → push_pr → archive. Every `next` is run twice (replay), so
+// the run also proves spec §5.4's idempotency along the way — including
+// through the finish phase, where a repeated call re-derives the retro
+// inputs, re-renders the stored gate and re-reads git for the disposition
+// rather than replaying a record.
+//
+//nolint:gocognit // one scripted run, end to end; splitting it would hide the sequence
 func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 	t.Parallel()
 	root, bdir := setupRun(t)
 	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"}, replay: true}
 
-	if o := d.playToFinish(60); o["op"] != "exec" || !strings.Contains(o["command"].(string), "takt verify") {
-		t.Fatalf("op at finish = %v (ops: %v)", o, d.ops)
+	if reason := d.play(80); reason != stopArchived {
+		t.Fatalf("the run must end archived, stopped %q (ops: %v)", reason, d.ops)
 	}
 
 	st, err := bundle.LoadState(bdir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Phase != bundle.PhaseFinish || st.ActiveWave != nil {
-		t.Fatalf("phase=%s active=%+v", st.Phase, st.ActiveWave)
+	if st.Phase != bundle.PhaseArchived || st.ActiveWave != nil || st.Session != nil {
+		t.Fatalf("phase=%s active=%+v session=%+v", st.Phase, st.ActiveWave, st.Session)
+	}
+	if st.VerifiedSHA == nil || st.GoalsCheckedSHA == nil {
+		t.Fatalf("the run must be verified and its goals checked: %v %v", st.VerifiedSHA, st.GoalsCheckedSHA)
+	}
+	if st.Disposition == nil || st.Disposition.Choice != "pr" ||
+		st.Disposition.PRURL == "" || !st.Disposition.Applied {
+		t.Fatalf("merge is disabled in a plain checkout, so the walk takes pr: %+v", st.Disposition)
 	}
 	for _, tk := range st.Tasks {
 		if tk.Status != bundle.StatusDone {
@@ -360,9 +508,20 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 		}
 	}
 	log := testutil.Git(t, root, "log", "--format=%s")
-	for _, want := range []string{"wave 0 — tasks 1", "wave 1 — tasks 2", "plan → execute", "brainstorm → plan"} {
+	for _, want := range []string{
+		"wave 0 — tasks 1", "wave 1 — tasks 2", "plan → execute", "brainstorm → plan",
+		"execute → finish", "retro done", "push_pr done", "takt(demo): archive",
+	} {
 		if !strings.Contains(log, want) {
 			t.Errorf("missing commit %q in:\n%s", want, log)
+		}
+	}
+	// The finish records are the run's receipts; the archive commit is what
+	// puts them on the branch for whoever reads it later.
+	tracked := testutil.Git(t, root, "ls-files")
+	for _, want := range []string{"docs/takt/demo/finish/verify.json", "docs/takt/demo/finish/goals.json"} {
+		if !strings.Contains(tracked, want) {
+			t.Errorf("%s must be committed:\n%s", want, tracked)
 		}
 	}
 	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
@@ -382,11 +541,76 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 	}
 	assertCloneIgnoresLogs(t, root)
 	joined := strings.Join(d.ops, " ")
-	for _, kind := range []string{"run", "exec", "dispatch", "ask"} {
-		if !strings.Contains(joined, kind) {
-			t.Errorf("op kind %s never seen: %s", kind, joined)
+	for _, want := range []string{
+		"run", "exec", "dispatch", "ask", "stop",
+		"run/retro", "run/push_pr", "dispatch/goal-assessor", "ask/branch_finish", "stop/archived",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("op %s never seen: %s", want, joined)
 		}
 	}
+	t.Logf("ops: %s", joined)
+}
+
+// TestOpLoopFinishSurvivesRestart is spec §5.4 inside the finish phase: the
+// session that got the run as far as the retrospective goes away without
+// writing one, and a new one picks the run up from the records on disk. It is
+// asked before it takes the lock (the run is still held), `--force` hands it
+// the very same op the first session was looking at, and it drives the rest
+// of the finish phase — retro, disposition, pull request, archive — to the
+// end.
+func TestOpLoopFinishSurvivesRestart(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	a := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "A"}}
+
+	// Session A drives to the retro run op, then "crashes" without writing
+	// the retrospective or calling done.
+	var last map[string]any
+	for range 60 {
+		o := a.nextOp()
+		if o["op"] == "run" && o["step"] == "retro" {
+			last = o
+			break
+		}
+		if reason, stopped := a.step(o); stopped {
+			t.Fatalf("session A stopped (%s) before the retro: %v", reason, a.ops)
+		}
+	}
+	if last == nil {
+		t.Fatalf("session A never reached the retro: %v", a.ops)
+	}
+
+	b := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "B"}}
+	if code, o, errb := b.cmd("next", "--slug", "demo"); code != 0 || o["gate"] != "owner" {
+		t.Fatalf("outsider must be asked: %d %v %s", code, o, errb)
+	}
+	code, o, errb := b.cmd("next", "--slug", "demo", "--force")
+	if code != 0 || o["op"] != "run" || o["step"] != "retro" {
+		t.Fatalf("finish re-derives the same op from disk: %d %v %s", code, o, errb)
+	}
+	// Not merely the same step: the same op, to the byte. The finish phase
+	// remembers nothing about the session that asked, so the run op a
+	// takeover is handed has to be the one its predecessor was looking at.
+	was, _ := json.Marshal(last)
+	is, _ := json.Marshal(o)
+	if string(was) != string(is) {
+		t.Fatalf("the taken-over op differs:\n%s\n%s", was, is)
+	}
+	if reason := b.play(40); reason != stopArchived {
+		t.Fatalf("the taken-over run must still end archived, stopped %q (ops: %v)", reason, b.ops)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Phase != bundle.PhaseArchived || st.VerifiedSHA == nil {
+		t.Fatalf("%+v", st)
+	}
+	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("tree not clean: %q", status)
+	}
+	t.Logf("session A ops: %s\nsession B ops: %s", strings.Join(a.ops, " "), strings.Join(b.ops, " "))
 }
 
 // TestOpLoopSurvivesACrashAfterDispatch kills the session between a wave
