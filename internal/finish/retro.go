@@ -111,8 +111,11 @@ func lastReasons(closes []wave.CloseResult) map[int]string {
 // reports the attempt that actually landed, not the whole span of the wave,
 // and a wave larger than max_parallel reports one span per slice: its slices
 // all run at attempt 1, so wave and attempt alone would collapse them into
-// one. Events written before slices were recorded carry no slice key and
-// decode to 0, which still pairs them with each other.
+// one. An event written before slices were recorded carries no slice key and
+// decodes to 0, which is floored to 1: that is the number takt heals a
+// slice-less wave to, so a bundle that upgraded mid-run — an old
+// wave_dispatched answered by a healed wave_committed that says slice 1 —
+// still pairs, and two old events still pair with each other.
 func waveTimings(events []bundle.Event) []WaveTiming {
 	type key struct{ w, s, a int }
 	dispatched := map[key]time.Time{}
@@ -121,7 +124,7 @@ func waveTimings(events []bundle.Event) []WaveTiming {
 		w, _ := e.Data[keyWave].(float64)
 		sl, _ := e.Data[keySlice].(float64)
 		a, _ := e.Data[keyAttempt].(float64)
-		k := key{int(w), int(sl), int(a)}
+		k := key{int(w), max(int(sl), 1), int(a)}
 		switch e.Type {
 		case evDispatched:
 			dispatched[k] = e.TS

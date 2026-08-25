@@ -91,3 +91,46 @@ func TestBuildRetroInputs(t *testing.T) {
 		t.Fatalf("%+v", in)
 	}
 }
+
+// TestWaveTimingsPairAcrossTheSliceUpgrade covers a bundle that straddles
+// the upgrade to per-slice records. Its wave_dispatched events were written
+// by a build that had no slice to record; the wave_committed that answers
+// one of them was written by this build, which heals a slice-less wave to
+// slice 1 and says so. Keyed on the raw numbers those two never pair, and
+// the retro of the run that upgraded mid-flight loses the spans it is
+// mostly there to report.
+func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	legacy := func(after time.Duration, typ string, w, a int) bundle.Event {
+		return bundle.Event{
+			TS: t0.Add(after), Type: typ,
+			Data: map[string]any{"wave": float64(w), "attempt": float64(a)},
+		}
+	}
+	healed := func(after time.Duration, typ string, w, sl, a int) bundle.Event {
+		return bundle.Event{
+			TS: t0.Add(after), Type: typ,
+			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
+		}
+	}
+	events := []bundle.Event{
+		legacy(0, "wave_dispatched", 0, 1),
+		healed(4*time.Minute, "wave_committed", 0, 1, 1),
+		legacy(5*time.Minute, "wave_dispatched", 1, 1),
+		legacy(9*time.Minute, "wave_committed", 1, 1),
+	}
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil)
+	if len(in.WaveTimings) != 2 {
+		t.Fatalf("both spans must pair: %+v", in.WaveTimings)
+	}
+	for i, want := range []finish.WaveTiming{{Wave: 0, Slice: 1, Attempt: 1}, {Wave: 1, Slice: 1, Attempt: 1}} {
+		got := in.WaveTimings[i]
+		if got.Wave != want.Wave || got.Slice != want.Slice || got.Attempt != want.Attempt {
+			t.Fatalf("timing %d = %+v, want wave %d slice %d attempt %d", i, got, want.Wave, want.Slice, want.Attempt)
+		}
+		if d := got.CommittedAt.Sub(got.DispatchedAt); d != 4*time.Minute {
+			t.Fatalf("timing %d spans %s", i, d)
+		}
+	}
+}
