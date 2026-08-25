@@ -143,3 +143,17 @@ func (r *Repo) Commit(ctx context.Context, msg string) (string, error) {
 	}
 	return r.HeadSHA(ctx)
 }
+
+// Checkout switches to an already-existing local branch.
+func (r *Repo) Checkout(ctx context.Context, name string) error {
+	_, err := r.Run(ctx, "checkout", "-q", name)
+	return err
+}
+
+// DeleteBranch force-deletes a local branch. Used to roll back a run
+// branch takt init created but then failed to finish initialising
+// (spec D9).
+func (r *Repo) DeleteBranch(ctx context.Context, name string) error {
+	_, err := r.Run(ctx, "branch", "-D", name)
+	return err
+}

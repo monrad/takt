@@ -171,3 +171,54 @@ func TestInitFlagsFreezeConfig(t *testing.T) {
 		t.Fatalf("frozen config = %+v", st.Config)
 	}
 }
+
+// TestInitBadAutonomyFailsBeforeAnyGitMutation covers review finding 1: a
+// bad --autonomy value must be caught before chooseBranch ever runs, so the
+// repo stays on the default branch, no takt/<slug> branch is created, and a
+// retry with a valid value is not mis-classified as an adopted branch.
+func TestInitBadAutonomyFailsBeforeAnyGitMutation(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "--autonomy", "bogus", "topic")
+	if code != 2 && code != 1 {
+		t.Fatalf("exit = %d, want 1 or 2: %s", code, errb)
+	}
+	if !strings.Contains(errb, "autonomy") {
+		t.Fatalf("stderr must mention autonomy: %s", errb)
+	}
+	if b := testutil.Git(t, root, "rev-parse", "--abbrev-ref", "HEAD"); b != "main" {
+		t.Fatalf("must stay on the default branch: %s", b)
+	}
+	if list := testutil.Git(t, root, "branch", "--list", "takt/demo"); list != "" {
+		t.Fatalf("takt/demo must not have been created: %q", list)
+	}
+
+	code, got, errb := runIn(t, root, nil, "init", "--slug", "demo", "--autonomy", "step", "topic")
+	if code != 0 {
+		t.Fatalf("valid retry must succeed: %d %s", code, errb)
+	}
+	if got["branch_adopted"] != false {
+		t.Fatalf("retry out = %v, want a freshly created branch, not an adopted one", got)
+	}
+}
+
+// TestInitAdoptedBranchMergeBaseFailureIsFatal covers review finding 2: when
+// adopting a branch, a MergeBase failure (here, default_branch pointing at a
+// ref that does not exist locally) must fail init outright rather than
+// silently using HEAD as base_sha, and must leave no bundle directory
+// behind.
+func TestInitAdoptedBranchMergeBaseFailureIsFatal(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	testutil.WriteFile(t, root, ".takt.json", `{"default_branch":"nonexistent"}`)
+	testutil.Commit(t, root, "add config")
+	testutil.Git(t, root, "checkout", "-q", "-b", "monrad/2166")
+
+	code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "topic")
+	if code != 1 || !strings.Contains(errb, "merge-base") {
+		t.Fatalf("must fail with a merge-base error: %d %s", code, errb)
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "takt", "demo")); !os.IsNotExist(err) {
+		t.Fatalf("bundle dir must not be created: err = %v", err)
+	}
+}

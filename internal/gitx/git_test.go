@@ -119,3 +119,26 @@ func TestRunErrorIncludesStderr(t *testing.T) {
 		t.Fatalf("error too terse: %q", got)
 	}
 }
+
+func TestCheckoutAndDeleteBranch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, _ := gitx.Open(ctx, root)
+
+	if err := r.CreateAndCheckout(ctx, "takt/tmp"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Checkout(ctx, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := r.CurrentBranch(ctx); b != "main" {
+		t.Fatalf("CurrentBranch after Checkout = %q", b)
+	}
+	if err := r.DeleteBranch(ctx, "takt/tmp"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := r.BranchExists(ctx, "takt/tmp"); ok {
+		t.Fatal("BranchExists true after DeleteBranch")
+	}
+}
