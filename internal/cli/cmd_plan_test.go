@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -74,5 +75,40 @@ func TestPlanValidateUsesSpecHashAndGoals(t *testing.T) {
 	if code != 1 || !strings.Contains(joined, "spec_hash") || !strings.Contains(joined, "unknown goal G7") ||
 		!strings.Contains(joined, "G1 is served by no task") {
 		t.Fatalf("%d %s", code, joined)
+	}
+}
+
+// TestPlanValidateRejectsInvalidSlug covers review finding 1 for the second
+// --slug consumer.
+func TestPlanValidateRejectsInvalidSlug(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	runIn(t, root, nil, "init", "--slug", "demo", "topic")
+	code, _, errb := runIn(t, root, nil, "plan", "validate", "--slug", "../../escaped")
+	if code != 2 || !strings.Contains(errb, "slug") {
+		t.Fatalf("exit %d, want 2 with a slug error: %s", code, errb)
+	}
+}
+
+// TestPlanValidateAcceptsPathBeforeFlags covers review finding 2 for
+// `takt plan validate [path]`.
+func TestPlanValidateAcceptsPathBeforeFlags(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	runIn(t, root, nil, "init", "--slug", "demo", "topic")
+	src, err := os.ReadFile("../plan/testdata/cedar-like.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "elsewhere/plan.index.json", string(src))
+	// The positional path is resolved against the process cwd, so it must be
+	// absolute here; what this test pins is the argument *order*.
+	abs := filepath.Join(root, "elsewhere", "plan.index.json")
+	code, got, errb := runIn(t, root, nil, "plan", "validate", abs, "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if got["tasks"] != float64(8) {
+		t.Fatalf("out = %v", got)
 	}
 }

@@ -20,6 +20,11 @@ type workspace struct {
 	Home string
 }
 
+// workspaceHint is the recovery advice for an openWorkspace failure: not a
+// repository, an unreadable or invalid config layer, or a bundle dir that
+// resolves outside the repo.
+const workspaceHint = "run takt inside a git repository; check .takt.json, $TAKT_CONFIG and $TAKT_DIR"
+
 // openWorkspace resolves repo, config and bundle dir from the cwd (spec §4.1).
 func openWorkspace(ctx context.Context, env Env, dirFlag string) (*workspace, error) {
 	repo, err := gitx.Open(ctx, env.Cwd)

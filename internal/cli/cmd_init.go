@@ -35,6 +35,19 @@ type branchInit struct {
 	created bool // a new takt/<slug> branch was created and checked out
 }
 
+// initRun accumulates everything a failed init must undo (spec D9, review
+// finding 3): the branch chooseBranch created, the bundle directory and
+// files persistState wrote, and the path commitBundle staged.
+// checkPreconditions has already proved no state.json was there, so undoing
+// init's own writes can never destroy earlier work.
+type initRun struct {
+	ws     *workspace
+	bi     *branchInit
+	bdir   string
+	newDir bool   // init created bdir; it did not exist beforehand
+	staged string // repo-relative path successfully staged, "" if none
+}
+
 // cmdInit implements `takt init` (spec §7.1): resolve the workspace,
 // validate everything that can fail without touching git, apply the branch
 // rule (spec D9), freeze this run's config, write state.json and
@@ -48,10 +61,11 @@ func cmdInit(env Env) int {
 		return code
 	}
 
-	ctx := context.Background()
+	ctx, cancel := commandContext(env)
+	defer cancel()
 	ws, err := openWorkspace(ctx, env, opts.dir)
 	if err != nil {
-		return fail(env.Stderr, 1, err.Error(), "run takt inside a git repository")
+		return fail(env.Stderr, 1, err.Error(), workspaceHint)
 	}
 	if opts.slug == "" {
 		opts.slug = deriveSlug(opts.topic)
@@ -76,20 +90,21 @@ func cmdInit(env Env) int {
 	if code != 0 {
 		return code
 	}
+	run := &initRun{ws: ws, bi: bi, bdir: bdir, newDir: !dirExists(bdir)}
 
-	baseSHA, code := resolveBase(ctx, env, ws, bi)
+	baseSHA, code := resolveBase(ctx, env, run)
 	if code != 0 {
 		return code
 	}
 
 	st := newRunState(env, cfg, opts, bi, baseSHA)
 
-	code = persistState(ctx, env, ws, bi, bdir, st, baseSHA)
+	code = persistState(ctx, env, run, st, baseSHA)
 	if code != 0 {
 		return code
 	}
 
-	committed, bundleOut, code := commitBundle(ctx, env, ws, bi, bdir, opts.slug)
+	committed, bundleOut, code := commitBundle(ctx, env, run, opts.slug)
 	if code != 0 {
 		return code
 	}
@@ -105,6 +120,9 @@ func cmdInit(env Env) int {
 }
 
 // initFlags parses takt init's flags and the free-text topic argument.
+// Flags may appear anywhere among the topic's words (spec §5.1, review
+// finding 2), and an explicit --slug is validated before anything else runs
+// (review finding 1).
 func initFlags(env Env) (*initOptions, int) {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -116,10 +134,16 @@ func initFlags(env Env) (*initOptions, int) {
 	noTasks := fs.Bool("no-review-tasks", false, "disable per-task review for this run")
 	noGoals := fs.Bool("no-goals", false, "disable goals for this run")
 	noAlign := fs.Bool("no-alignment", false, "disable the alignment audit for this run")
-	if err := fs.Parse(env.Args); err != nil {
+	positional, err := parseInterspersed(fs, env.Args)
+	if err != nil {
 		return nil, usageError(env, fs, err)
 	}
-	topic := strings.TrimSpace(strings.Join(fs.Args(), " "))
+	if *slug != "" {
+		if verr := bundle.ValidSlug(*slug); verr != nil {
+			return nil, fail(env.Stderr, exitUsage, verr.Error(), slugHint)
+		}
+	}
+	topic := strings.TrimSpace(strings.Join(positional, " "))
 	if topic == "" {
 		return nil, fail(env.Stderr, exitUsage, "init needs a topic", `takt init "<what you want built>"`)
 	}
@@ -195,15 +219,16 @@ func chooseBranch(ctx context.Context, env Env, ws *workspace, slug string) (*br
 // MergeBase failure is a hard error (review finding 2): silently falling
 // back to HEAD would forge false provenance, and nothing needs rolling back
 // since adopting a branch never mutates git.
-func resolveBase(ctx context.Context, env Env, ws *workspace, bi *branchInit) (string, int) {
+func resolveBase(ctx context.Context, env Env, run *initRun) (string, int) {
+	bi := run.bi
 	if !bi.adopted {
-		head, err := ws.Repo.HeadSHA(ctx)
+		head, err := run.ws.Repo.HeadSHA(ctx)
 		if err != nil {
-			return "", failInit(ctx, env, ws, bi, err.Error())
+			return "", failInit(ctx, env, run, err.Error())
 		}
 		return head, 0
 	}
-	mb, err := ws.Repo.MergeBase(ctx, bi.def, "HEAD")
+	mb, err := run.ws.Repo.MergeBase(ctx, bi.def, "HEAD")
 	if err != nil {
 		return "", fail(env.Stderr, 1,
 			"cannot determine the merge-base of "+bi.def+" and HEAD: "+err.Error(),
@@ -243,65 +268,91 @@ func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, 
 
 // persistState saves state.json and appends the init event (spec §4.4); a
 // failure here happens after CreateAndCheckout when a run branch was just
-// created, so it rolls the branch back (review finding 1).
-func persistState(
-	ctx context.Context, env Env, ws *workspace, bi *branchInit, bdir string, st *bundle.State, baseSHA string,
-) int {
-	if err := bundle.SaveState(bdir, st); err != nil {
-		return failInit(ctx, env, ws, bi, err.Error())
+// created, so it rolls back everything init has done so far (review
+// findings 1 and 3).
+func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, baseSHA string) int {
+	bi := run.bi
+	if err := bundle.SaveState(run.bdir, st); err != nil {
+		return failInit(ctx, env, run, err.Error())
 	}
-	if err := bundle.AppendEvent(bdir, "init", map[string]any{
+	if err := bundle.AppendEvent(run.bdir, "init", map[string]any{
 		keySlug: st.Slug, keyBranch: bi.branch, keyBranchAdopted: bi.adopted, keyBase: bi.def, keyBaseSHA: baseSHA,
 	}); err != nil {
-		return failInit(ctx, env, ws, bi, err.Error())
+		return failInit(ctx, env, run, err.Error())
 	}
 	return 0
 }
 
 // commitBundle stages and commits only the bundle directory when it lives
 // inside the repo (spec §4.1); an external bundle dir is never committed,
-// and nothing outside the bundle directory is ever staged. A failure here
-// happens after CreateAndCheckout when a run branch was just created, so it
-// rolls the branch back (review finding 1).
-func commitBundle(ctx context.Context, env Env, ws *workspace, bi *branchInit, bdir, slug string) (bool, string, int) {
+// and nothing outside the bundle directory is ever staged. Recording the
+// staged path on run is what lets a later failure — a rejected commit hook,
+// a signing failure — take it back out of the index (review finding 3).
+func commitBundle(ctx context.Context, env Env, run *initRun, slug string) (bool, string, int) {
+	ws := run.ws
 	if !ws.Dir.InRepo {
-		return false, bdir, 0
+		return false, run.bdir, 0
 	}
-	rel, err := ws.Dir.RelToRepo(bdir)
+	rel, err := ws.Dir.RelToRepo(run.bdir)
 	if err != nil {
-		return false, "", failInit(ctx, env, ws, bi, err.Error())
+		return false, "", failInit(ctx, env, run, err.Error())
 	}
-	err = ws.Repo.Add(ctx, rel)
-	if err != nil {
-		return false, "", failInit(ctx, env, ws, bi, err.Error())
+	if err = ws.Repo.Add(ctx, rel); err != nil {
+		return false, "", failInit(ctx, env, run, err.Error())
 	}
+	run.staged = rel
 	if _, err = ws.Repo.Commit(ctx, "takt("+slug+"): init"); err != nil {
-		return false, "", failInit(ctx, env, ws, bi, err.Error())
+		return false, "", failInit(ctx, env, run, err.Error())
 	}
 	return true, rel, 0
 }
 
-// rollbackCreatedBranch checks out def and deletes branch — best-effort
-// cleanup for an init that created a run branch but then failed before
-// anything was committed (spec D9, review finding 1): the user must never
-// be silently left on a half-initialised branch.
-func rollbackCreatedBranch(ctx context.Context, ws *workspace, def, branch string) error {
-	if err := ws.Repo.Checkout(ctx, def); err != nil {
-		return err
-	}
-	return ws.Repo.DeleteBranch(ctx, branch)
+// dirExists reports whether p is an existing directory.
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
 
-// failInit fails init with msg (hint defaults to "", or a manual-recovery
-// message when the rollback below fails); when bi.created is true (a run
-// branch was just made) it best-effort rolls the checkout back so the user
-// is told exactly what to run by hand (review finding 1).
-func failInit(ctx context.Context, env Env, ws *workspace, bi *branchInit, msg string) int {
-	hint := ""
-	if bi.created {
-		if rerr := rollbackCreatedBranch(ctx, ws, bi.def, bi.branch); rerr != nil {
-			hint = "you are on branch " + bi.branch + "; run: git checkout " + bi.def + " && git branch -D " + bi.branch
-		}
+// rollbackInit undoes an init that failed partway through and returns the
+// manual-recovery hint for whatever it could not undo — "" when the
+// repository is back exactly as init found it (spec D9, review finding 3).
+// Order matters: the index and the bundle files are cleaned first, so the
+// checkout back to the default branch cannot carry init's own half-written
+// state across with it.
+func rollbackInit(ctx context.Context, run *initRun) string {
+	if run.staged != "" {
+		_ = run.ws.Repo.Unstage(ctx, run.staged)
 	}
-	return fail(env.Stderr, 1, msg, hint)
+	removeInitWrites(run)
+	if !run.bi.created {
+		return ""
+	}
+	if err := run.ws.Repo.Checkout(ctx, run.bi.def); err != nil {
+		return "you are on branch " + run.bi.branch +
+			"; run: git checkout " + run.bi.def + " && git branch -D " + run.bi.branch
+	}
+	if err := run.ws.Repo.DeleteBranch(ctx, run.bi.branch); err != nil {
+		return "branch " + run.bi.branch + " was left behind; run: git branch -D " + run.bi.branch
+	}
+	return ""
+}
+
+// removeInitWrites deletes exactly what init put on disk: the whole bundle
+// directory when init created it, otherwise only the two files init writes,
+// so a spec.md drafted by hand before running init survives the rollback.
+func removeInitWrites(run *initRun) {
+	if run.newDir {
+		_ = os.RemoveAll(run.bdir)
+		return
+	}
+	_ = os.Remove(bundle.StatePath(run.bdir))
+	_ = os.Remove(bundle.EventsPath(run.bdir))
+}
+
+// failInit fails init with msg after rolling back everything init did, and
+// attaches the hint for whatever could not be rolled back (review finding
+// 3): the user must never be left on a half-initialised branch, with takt's
+// files staged, or with a retry-blocking bundle on disk.
+func failInit(ctx context.Context, env Env, run *initRun, msg string) int {
+	return fail(env.Stderr, 1, msg, rollbackInit(ctx, run))
 }

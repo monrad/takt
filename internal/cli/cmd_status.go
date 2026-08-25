@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -67,13 +66,15 @@ func cmdStatus(env Env) int {
 // loadStatus resolves the workspace and the selected bundle, then builds its
 // status view (spec §11).
 func loadStatus(env Env, dirFlag, slugFlag string) (statusInfo, int) {
-	ws, err := openWorkspace(context.Background(), env, dirFlag)
+	ctx, cancel := commandContext(env)
+	defer cancel()
+	ws, err := openWorkspace(ctx, env, dirFlag)
 	if err != nil {
-		return statusInfo{}, fail(env.Stderr, 1, err.Error(), "")
+		return statusInfo{}, fail(env.Stderr, 1, err.Error(), workspaceHint)
 	}
 	s, err := selectSlug(ws, slugFlag)
 	if err != nil {
-		return statusInfo{}, fail(env.Stderr, 1, err.Error(), "use --slug <name>")
+		return statusInfo{}, failSelectSlug(env, err)
 	}
 	bdir, st, err := loadBundle(ws, s)
 	if err != nil {

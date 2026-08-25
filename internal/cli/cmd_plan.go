@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"flag"
 	"io"
 	"os"
@@ -32,21 +31,24 @@ func planValidateTarget(env Env) (*workspace, string, string, int) {
 	fs.SetOutput(io.Discard)
 	dirFlag := addDirFlag(fs)
 	slug := fs.String("slug", "", "run whose plan to validate")
-	if err := fs.Parse(env.Args[1:]); err != nil {
+	positional, err := parseInterspersed(fs, env.Args[1:])
+	if err != nil {
 		return nil, "", "", usageError(env, fs, err)
 	}
-	ws, err := openWorkspace(context.Background(), env, *dirFlag)
+	ctx, cancel := commandContext(env)
+	defer cancel()
+	ws, err := openWorkspace(ctx, env, *dirFlag)
 	if err != nil {
-		return nil, "", "", fail(env.Stderr, 1, err.Error(), "")
+		return nil, "", "", fail(env.Stderr, 1, err.Error(), workspaceHint)
 	}
 	s, err := selectSlug(ws, *slug)
 	if err != nil {
-		return nil, "", "", fail(env.Stderr, 1, err.Error(), "use --slug <name>")
+		return nil, "", "", failSelectSlug(env, err)
 	}
 	bdir := ws.Dir.Bundle(s)
 	path := filepath.Join(bdir, "plan.index.json")
-	if fs.NArg() > 0 {
-		path = fs.Arg(0)
+	if len(positional) > 0 {
+		path = positional[0]
 	}
 	return ws, bdir, path, 0
 }

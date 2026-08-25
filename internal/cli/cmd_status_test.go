@@ -81,3 +81,18 @@ func TestStatusNoRun(t *testing.T) {
 		t.Fatalf("%d %s", code, errb)
 	}
 }
+
+// TestStatusRejectsInvalidSlug covers review finding 1: every command that
+// takes --slug must reject a bad value before touching the filesystem, not
+// just init.
+func TestStatusRejectsInvalidSlug(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	if code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "topic"); code != 0 {
+		t.Fatal(errb)
+	}
+	code, _, errb := runIn(t, root, nil, "status", "--json", "--slug", "My Feature")
+	if code != 2 || !strings.Contains(errb, "slug") {
+		t.Fatalf("exit %d, want 2 with a slug error: %s", code, errb)
+	}
+}

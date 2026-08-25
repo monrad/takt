@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -19,11 +18,13 @@ func cmdDoctor(env Env) int {
 	if err := fs.Parse(env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
-	ws, err := openWorkspace(context.Background(), env, *dirFlag)
+	ctx, cancel := commandContext(env)
+	defer cancel()
+	ws, err := openWorkspace(ctx, env, *dirFlag)
 	if err != nil {
-		return fail(env.Stderr, 1, err.Error(), "")
+		return fail(env.Stderr, 1, err.Error(), workspaceHint)
 	}
-	findings := doctor.Run(context.Background(), ws.Dir, *all, doctor.Default,
+	findings := doctor.Run(ctx, ws.Dir, *all, doctor.Default,
 		func(bdir string) plan.ValidateOpts { return validateOpts(ws, bdir) })
 	errs := countErrors(findings)
 	if *asJSON {
