@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -281,7 +282,31 @@ func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, 
 	}); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
+	if err := writeLogsIgnore(run.bdir); err != nil {
+		return failInit(ctx, env, run, err.Error())
+	}
 	return 0
+}
+
+// logsIgnore is what init puts in the run's logs directory. Reviewer
+// prompts, stdout and stderr land there and quote repo content, and spec
+// §13 says they are gitignored — but the bundle tree is staged wholesale by
+// every takt commit, so without an ignore file they are committed with it
+// (review I4). The pattern covers the .gitignore itself, which is the point:
+// nothing under logs/ is ever tracked, so a stray reviewer log can never
+// turn up in a diff.
+const logsIgnore = "*\n"
+
+// writeLogsIgnore creates <bundle>/logs/.gitignore. The directory is created
+// here rather than waiting for the first review, so the ignore rule is in
+// place before anything can be written into it; the backend still creates it
+// on demand for bundles that predate this.
+func writeLogsIgnore(bdir string) error {
+	dir := filepath.Join(bdir, "logs")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(logsIgnore), 0o600)
 }
 
 // commitInitBundle stages and commits only the bundle directory when it lives
@@ -354,6 +379,8 @@ func removeInitWrites(run *initRun) {
 	}
 	_ = os.Remove(bundle.StatePath(run.bdir))
 	_ = os.Remove(bundle.EventsPath(run.bdir))
+	_ = os.Remove(filepath.Join(run.bdir, "logs", ".gitignore"))
+	_ = os.Remove(filepath.Join(run.bdir, "logs")) // only if init left it empty
 }
 
 // rollbackTimeout bounds the cleanup after a failed init. It is derived

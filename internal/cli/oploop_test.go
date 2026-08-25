@@ -345,6 +345,15 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
 		t.Fatalf("tree not clean: %q", status)
 	}
+	// Review I4 / spec §13: reviewer logs quote repo content and are
+	// gitignored. Every takt commit stages the bundle tree wholesale, so
+	// this is the assertion that keeps them out of it.
+	if logs := testutil.Git(t, root, "ls-files", "docs/takt/demo/logs"); logs != "" {
+		t.Fatalf("reviewer logs must never be committed: %q", logs)
+	}
+	if _, serr := os.Stat(filepath.Join(bdir, "logs")); serr != nil {
+		t.Fatalf("the walk must have written reviewer logs at all: %v", serr)
+	}
 	joined := strings.Join(d.ops, " ")
 	for _, kind := range []string{"run", "exec", "dispatch", "ask"} {
 		if !strings.Contains(joined, kind) {
