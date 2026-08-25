@@ -157,3 +157,15 @@ func (r *Repo) DeleteBranch(ctx context.Context, name string) error {
 	_, err := r.Run(ctx, "branch", "-D", name)
 	return err
 }
+
+// Unstage removes exactly the given paths from the index, leaving the files
+// on disk untouched. It is the inverse of [Repo.Add] and is used to take an
+// aborted takt init's own paths back out of the index (spec D9); paths not
+// in the index are silently fine.
+func (r *Repo) Unstage(ctx context.Context, paths ...string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	_, err := r.Run(ctx, append([]string{"reset", "-q", "--"}, paths...)...)
+	return err
+}

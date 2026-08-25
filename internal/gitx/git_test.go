@@ -142,3 +142,35 @@ func TestCheckoutAndDeleteBranch(t *testing.T) {
 		t.Fatal("BranchExists true after DeleteBranch")
 	}
 }
+
+// TestUnstage covers review finding 3's new primitive: a failed init must be
+// able to take its own paths back out of the index without touching the
+// files or anything else that was staged.
+func TestUnstage(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, err := gitx.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "docs/takt/demo/state.json", "{}\n")
+	if aerr := r.Add(ctx, "docs/takt/demo"); aerr != nil {
+		t.Fatal(aerr)
+	}
+	if staged, serr := r.HasStaged(ctx); serr != nil || !staged {
+		t.Fatalf("precondition: staged = %v, err = %v", staged, serr)
+	}
+	if uerr := r.Unstage(ctx, "docs/takt/demo"); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if staged, serr := r.HasStaged(ctx); serr != nil || staged {
+		t.Fatalf("Unstage left the index dirty: staged = %v, err = %v", staged, serr)
+	}
+	if _, serr := os.Stat(filepath.Join(root, "docs", "takt", "demo", "state.json")); serr != nil {
+		t.Fatalf("Unstage must not delete the file: %v", serr)
+	}
+	if uerr := r.Unstage(ctx); uerr != nil {
+		t.Fatalf("Unstage with no paths must be a no-op: %v", uerr)
+	}
+}
