@@ -51,8 +51,18 @@ var staleGates = []staleGate{
 // IndexStaleness flags a gate that a later edit re-armed after the phase
 // already passed it, and an index drafted against an older spec (spec §11).
 // The gate check runs first: an unsatisfied gate is the more serious
-// (ERROR) condition, so it is what a reader sees first when both fire.
+// (ERROR) condition, so it is what a reader sees first when both fire. An
+// archived run is skipped entirely: its artifacts are frozen history, so a
+// spec.md or plan.index.json edited after the run ended (e.g. by a later
+// run on the same branch) must not turn every archived run into an ERROR
+// under `--all`.
 var IndexStaleness = Check{Name: indexStalenessCheckName, Run: func(_ context.Context, in Input) []Finding {
+	if in.State.Phase == bundle.PhaseArchived {
+		return []Finding{{
+			Level: levelPass, Check: indexStalenessCheckName, Slug: in.Slug,
+			Message: "index and gates match the artifacts",
+		}}
+	}
 	rank := phaseRank[in.State.Phase]
 	var out []Finding
 	out = append(out, staleGateFindings(in, rank)...)

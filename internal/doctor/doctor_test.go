@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,10 +125,15 @@ func TestArchivedSkippedUnlessAll(t *testing.T) {
 	if err := bundle.SaveState(d.Bundle("old"), st); err != nil {
 		t.Fatal(err)
 	}
-	if fs := doctor.Run(context.Background(), d, false, doctor.Default, noOpts); len(fs) != 0 {
-		t.Fatalf("archived must be skipped: %+v", fs)
+	// index-lock is repo-wide (task 7): it runs once per invocation
+	// regardless of any bundle being archived, so the only finding left when
+	// the sole bundle is skipped is its PASS (doctor.Run never sets
+	// RepoRoot, so index-lock always passes here).
+	skipped := doctor.Run(context.Background(), d, false, doctor.Default, noOpts)
+	if len(skipped) != 1 || skipped[0].Check != "index-lock" {
+		t.Fatalf("archived must be skipped, leaving only the repo-wide check: %+v", skipped)
 	}
-	if fs := doctor.Run(context.Background(), d, true, doctor.Default, noOpts); len(fs) == 0 {
+	if all := doctor.Run(context.Background(), d, true, doctor.Default, noOpts); len(all) <= 1 {
 		t.Fatal("--all must include archived")
 	}
 }
@@ -223,5 +229,63 @@ func TestIndexStalenessSkipsADisabledReview(t *testing.T) {
 	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.IndexStaleness})
 	if l := levels(fs, "index-staleness"); len(l) != 1 || l[0] != "PASS" {
 		t.Fatalf("a disabled review has no receipt to go stale: %+v", fs)
+	}
+}
+
+func TestIndexLockWarnsOnlyWhenStale(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".git"), 0o750)
+	d := newDir(t)
+	st := healthy("w")
+	bundle.SaveState(d.Bundle("w"), st)
+	o := doctor.Options{
+		Now: time.Now(), RepoRoot: root, ValidateOpts: noOpts, Resolve: func(string) bool { return true },
+	}
+	checks := []doctor.Check{doctor.IndexLock}
+	if l := levels(doctor.RunWith(context.Background(), d, o, checks), "index-lock"); len(l) != 1 || l[0] != "PASS" {
+		t.Fatalf("no lock file → PASS: %v", l)
+	}
+	lock := filepath.Join(root, ".git", "index.lock")
+	os.WriteFile(lock, nil, 0o600)
+	if l := levels(doctor.RunWith(context.Background(), d, o, checks), "index-lock"); l[0] != "PASS" {
+		t.Fatal("a fresh lock belongs to a running git command")
+	}
+	old := time.Now().Add(-10 * time.Minute)
+	os.Chtimes(lock, old, old)
+	fs := doctor.RunWith(context.Background(), d, o, checks)
+	if l := levels(fs, "index-lock"); l[0] != "WARN" {
+		t.Fatalf("stale lock → WARN: %+v", fs)
+	}
+	if !strings.Contains(fs[0].Fix, lock) {
+		t.Fatalf("fix names the file: %+v", fs[0])
+	}
+}
+
+// TestIndexStalenessSkipsArchived is the fixture TestIndexStalenessAndBranch
+// ERRORs/WARNs with (an ungated gate, a plan.index.json spec_hash that no
+// longer matches spec.md), replayed on an archived bundle: its artifacts
+// are frozen history, so a later edit to spec.md — e.g. by a subsequent run
+// reusing the same branch — must not turn every archived run into an ERROR
+// under --all.
+func TestIndexStalenessSkipsArchived(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("s")
+	st.Phase = bundle.PhaseArchived
+	st.Gates = map[string]string{"spec": "ok", "plan": "ok"}
+	bundle.SaveState(d.Bundle("s"), st)
+	os.WriteFile(filepath.Join(d.Bundle("s"), "spec.md"), []byte("# spec\n"), 0o600)
+	os.WriteFile(filepath.Join(d.Bundle("s"), "plan.md"), []byte("# plan\n"), 0o600)
+	staleIndex := `{"schema":1,"spec_hash":"sha256:stale","tasks":[` +
+		`{"id":1,"title":"a","description":"d","files":["a.go"],"verify":["true"]}]}`
+	os.WriteFile(filepath.Join(d.Bundle("s"), "plan.index.json"), []byte(staleIndex), 0o600)
+	o := doctor.Options{
+		All: true, Now: time.Now(), WaveStaleAfter: time.Hour, LockTTL: time.Hour,
+		ValidateOpts: noOpts, Resolve: func(string) bool { return true },
+	}
+	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.IndexStaleness})
+	if l := levels(fs, "index-staleness"); len(l) != 1 || l[0] != "PASS" {
+		t.Fatalf("archived artifacts are history, not stale: %+v", fs)
 	}
 }

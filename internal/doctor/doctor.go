@@ -19,7 +19,9 @@ type Finding struct {
 	Fix     string `json:"fix,omitempty"`
 }
 
-// Input is what a check sees for one bundle.
+// Input is what a check sees for one bundle. RepoRoot is set even for a
+// repo-wide check's single Input{RepoRoot, Now} (Slug ""); per-bundle
+// checks get it too, copied from Options, though none currently use it.
 type Input struct {
 	Dir            bundle.Dir
 	Slug           string
@@ -29,14 +31,19 @@ type Input struct {
 	Now            time.Time
 	WaveStaleAfter time.Duration
 	LockTTL        time.Duration
+	RepoRoot       string
 	CurrentBranch  string
 	Resolve        func(ref string) bool
 }
 
-// Check is one named health check.
+// Check is one named health check. RepoWide marks a check that judges the
+// repository as a whole (e.g. a single .git/index.lock) rather than one
+// bundle; RunWith runs it once per invocation instead of once per bundle
+// (spec §11).
 type Check struct {
-	Name string
-	Run  func(ctx context.Context, in Input) []Finding
+	Name     string
+	RepoWide bool
+	Run      func(ctx context.Context, in Input) []Finding
 }
 
 // Finding levels, shared by every check so goconst sees one definition
@@ -49,8 +56,9 @@ const (
 
 // Default is the check set every `takt doctor` run applies unless a caller
 // narrows it (plan 1 shipped state-schema and plan-disjoint; plan 2 adds the
-// liveness, staleness and branch checks of spec §11).
-var Default = []Check{StateSchema, PlanDisjoint, StaleWave, IndexStaleness, Branch}
+// liveness, staleness and branch checks of spec §11; plan 3 adds the
+// repo-wide index-lock check).
+var Default = []Check{StateSchema, PlanDisjoint, StaleWave, IndexStaleness, Branch, IndexLock}
 
 // Options parameterises a doctor run: the clock and thresholds the
 // liveness/staleness checks judge against, the branch context, and how a
@@ -84,18 +92,36 @@ func Run(
 
 // RunWith executes checks over every bundle (archived only with o.All). A
 // bundle whose state cannot load yields one state-schema ERROR and no other
-// checks.
+// checks. A repo-wide check (Check.RepoWide) runs once, before the
+// per-bundle loop, against Input{RepoRoot, Now} with Slug "" — sortFindings
+// orders an empty slug first, so it heads the output.
 func RunWith(ctx context.Context, dir bundle.Dir, o Options, checks []Check) []Finding {
-	var out []Finding
+	out, perBundle := runRepoWide(ctx, o, checks)
 	slugs, err := dir.ListSlugs()
 	if err != nil {
-		return []Finding{{Level: levelError, Check: "bundles", Message: err.Error()}}
+		return append(out, Finding{Level: levelError, Check: "bundles", Message: err.Error()})
 	}
 	for _, slug := range slugs {
-		out = append(out, runBundle(ctx, dir, slug, o, checks)...)
+		out = append(out, runBundle(ctx, dir, slug, o, perBundle)...)
 	}
 	sortFindings(out)
 	return out
+}
+
+// runRepoWide splits checks into repo-wide (run once here) and per-bundle
+// (returned for the caller's loop), so runBundle never re-runs a check
+// that judges the repository as a whole.
+func runRepoWide(ctx context.Context, o Options, checks []Check) ([]Finding, []Check) {
+	var out []Finding
+	perBundle := make([]Check, 0, len(checks))
+	for _, c := range checks {
+		if !c.RepoWide {
+			perBundle = append(perBundle, c)
+			continue
+		}
+		out = append(out, c.Run(ctx, Input{RepoRoot: o.RepoRoot, Now: o.Now})...)
+	}
+	return out, perBundle
 }
 
 // runBundle loads one bundle's state and, unless it is archived and skipped,
@@ -116,7 +142,7 @@ func runBundle(ctx context.Context, dir bundle.Dir, slug string, o Options, chec
 	}
 	in := Input{
 		Dir: dir, Slug: slug, BundleDir: bdir, State: st, ValidateOpts: o.ValidateOpts(bdir),
-		Now: o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL,
+		Now: o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL, RepoRoot: o.RepoRoot,
 		CurrentBranch: o.CurrentBranch, Resolve: o.Resolve,
 	}
 	var out []Finding

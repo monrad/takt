@@ -152,3 +152,58 @@ func TestStatusRejectsInvalidSlug(t *testing.T) {
 		t.Fatalf("exit %d, want 2 with a slug error: %s", code, errb)
 	}
 }
+
+// TestStatusShowsFinishBlock covers task 7: once a run reaches the finish
+// phase, status carries a "finish" block built from the finish/ records and
+// the disposition — and that block is absent before the run gets there.
+func TestStatusShowsFinishBlock(t *testing.T) {
+	t.Parallel()
+	d, _, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "keep", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	if o := d.nextOp(); o["op"] != "stop" || o["reason"] != "archived" {
+		t.Fatalf("%v", o)
+	}
+	code, got, errb := d.cmd("status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	fin, ok := got["finish"].(map[string]any)
+	if !ok {
+		t.Fatalf("no finish block: %v", got)
+	}
+	if sha, _ := fin["verified_sha"].(string); sha == "" {
+		t.Fatalf("verified_sha empty: %v", fin)
+	}
+	if fin["disposition"] != "keep" {
+		t.Fatalf("disposition = %v", fin["disposition"])
+	}
+	if fin["applied"] != true {
+		t.Fatalf("applied = %v", fin["applied"])
+	}
+
+	var out strings.Builder
+	cli.Main([]string{"status", "--slug", "demo"}, &out, &out, func(k string) string {
+		if k == "HOME" {
+			return d.root + "/.home"
+		}
+		return ""
+	}, d.root)
+	text := out.String()
+	for _, want := range []string{"verify: passed at ", "disposition: keep (applied)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text status lacks %q:\n%s", want, text)
+		}
+	}
+
+	// A run still in execute phase carries no finish block.
+	root2, _ := setupRun(t)
+	code2, got2, errb2 := runIn(t, root2, nil, "status", "--json")
+	if code2 != 0 {
+		t.Fatalf("exit %d: %s", code2, errb2)
+	}
+	if _, hasFinish := got2["finish"]; hasFinish {
+		t.Fatalf("execute phase must have no finish key: %v", got2)
+	}
+}
