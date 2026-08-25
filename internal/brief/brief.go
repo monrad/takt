@@ -82,6 +82,18 @@ type AlignmentData struct {
 	SpecText, PlanText, IndexText string
 }
 
+// ClauseLines renders the confirmed clauses as one block, so the verdicts
+// template can quote them in a single delimiter pair. The text is the
+// auditor's own earlier output and travels as data like every other
+// agent-authored artifact (spec §10).
+func (d AlignmentData) ClauseLines() string {
+	var b strings.Builder
+	for _, c := range d.Clauses {
+		fmt.Fprintf(&b, "%s — %s\n", c.ID, c.Text)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // ReviewData fills the three reviewer templates.
 type ReviewData struct {
 	Gate, Title, Token, Schema string
