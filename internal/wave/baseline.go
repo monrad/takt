@@ -84,7 +84,9 @@ type Touched struct {
 // baseline paths that have fallen out of `git status` entirely: an
 // untracked file git never reports once it is deleted (git has no record
 // of something it never tracked), so those baseline paths are checked
-// directly against the filesystem instead of via dirtyPaths. The result is
+// directly against the filesystem instead of via dirtyPaths. A baseline path
+// recorded with no content — a rename's origin — that is still absent is not
+// reported at all: there was never anything there to delete. The result is
 // sorted by path.
 func TouchedSince(ctx context.Context, repo *gitx.Repo, baseline []bundle.BaselineEntry) ([]Touched, error) {
 	base := map[string]string{}
@@ -117,6 +119,12 @@ func TouchedSince(ctx context.Context, repo *gitx.Repo, baseline []bundle.Baseli
 			return nil, herr
 		}
 		switch {
+		case h == "" && e.Hash == "":
+			// A baseline entry with no content at a path that still has
+			// none: a rename's origin, which dirtyPaths records alongside
+			// the path git renamed it to. Nothing was ever there, so
+			// nothing has been deleted.
+			continue
 		case h == "":
 			out = append(out, Touched{Path: e.Path, Deleted: true})
 		case h != e.Hash:

@@ -133,3 +133,20 @@ func TestSaveBaselineIsAtomic(t *testing.T) {
 		t.Fatalf("%v %d %+v", err, slice, got)
 	}
 }
+
+// TestTouchedSinceIgnoresRenameOriginsWithoutContent covers the other shape
+// a baseline entry comes in: `git status` reports a rename as its origin
+// path plus its new one, and dirtyPaths records both — but the origin has no
+// content, so Baseline stores it with an empty hash. A path that had nothing
+// at baseline time and still has nothing has not been deleted by the wave,
+// and reporting it as a deletion would put a path the wave never touched in
+// front of the scope check (which reverts what no task owns).
+func TestTouchedSinceIgnoresRenameOriginsWithoutContent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	_, r := repo(t)
+	touched, err := wave.TouchedSince(ctx, r, []bundle.BaselineEntry{{Path: "old.go", Hash: ""}})
+	if err != nil || len(touched) != 0 {
+		t.Fatalf("a rename origin that is still absent is not a deletion: %v %+v", err, touched)
+	}
+}
