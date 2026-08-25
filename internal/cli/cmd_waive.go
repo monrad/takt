@@ -96,7 +96,11 @@ func latestClose(bdir string, waveN int) *wave.CloseResult {
 	return c
 }
 
-// readPrevClose parses one slice's retired record, nil when it has none.
+// readPrevClose parses one slice's retired record, nil when it has none. It
+// is the last word on the tasks the round that wrote it judged: what the
+// re-close carries forward (carryForward), what makes a rework-exhausted
+// task waivable (latestClose), and — while there is no live record — what a
+// retry brief quotes back (previousFailure).
 func readPrevClose(bdir string, waveN, slice int) *wave.CloseResult {
 	b, err := os.ReadFile(prevClosePath(bdir, waveN, slice))
 	if err != nil {

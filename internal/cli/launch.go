@@ -107,7 +107,9 @@ func modelForAttempt(cfg config.Config, class string, attempt int, prev string) 
 func digestModel(cfg config.Config, bdir string, waveN int, t *bundle.Task) string {
 	prev := ""
 	if t.Attempt > 1 {
-		prev, _, _ = previousAttempt(bdir, waveN, t.ID, t.Attempt-1)
+		if d, _ := readDigest(bdir, waveN, t.ID, t.Attempt-1); d != nil {
+			prev = d.Model
+		}
 	}
 	return modelForAttempt(cfg, t.Class, t.Attempt, prev)
 }
@@ -137,7 +139,7 @@ func launchWave(ctx context.Context, r *nextRun, d decide.Decision) int {
 			return fail(r.env.Stderr, exitError,
 				fmt.Sprintf("task %d missing from state or index", id), "run `takt doctor`")
 		}
-		ag, aerr := renderTaskBrief(r, pt, t, d.Wave, attempt)
+		ag, aerr := renderTaskBrief(r, pt, t, d.Wave, slice, attempt)
 		if aerr != nil {
 			return fail(r.env.Stderr, exitError, aerr.Error(), "")
 		}
@@ -275,8 +277,8 @@ func waveHasRun(st *bundle.State, waveN int) bool {
 // agent that runs it. It stamps the attempt onto the task and drops the
 // previous digest, so state never claims a result the new attempt has not
 // produced yet.
-func renderTaskBrief(r *nextRun, pt *plan.Task, t *bundle.Task, waveN, attempt int) (op.Agent, error) {
-	prev, failure, findings := previousAttempt(r.bdir, waveN, t.ID, t.Attempt)
+func renderTaskBrief(r *nextRun, pt *plan.Task, t *bundle.Task, waveN, slice, attempt int) (op.Agent, error) {
+	prev, failure, findings := previousAttempt(r.bdir, waveN, slice, t.ID, t.Attempt)
 	model := modelForAttempt(r.ws.Cfg, t.Class, attempt, prev)
 	text, err := renderImplementer(r, pt, t, attempt, prev, failure, findings)
 	if err != nil {
@@ -300,7 +302,7 @@ func renderTaskBrief(r *nextRun, pt *plan.Task, t *bundle.Task, waveN, attempt i
 // previousAttempt collects what a retry brief needs from the task's last
 // attempt: the model it ran on, the failure the close recorded, and the
 // review findings to address. All three are empty on a first attempt.
-func previousAttempt(bdir string, waveN, task, lastAttempt int) (string, string, []string) {
+func previousAttempt(bdir string, waveN, slice, task, lastAttempt int) (string, string, []string) {
 	if lastAttempt == 0 {
 		return "", "", nil
 	}
@@ -308,16 +310,20 @@ func previousAttempt(bdir string, waveN, task, lastAttempt int) (string, string,
 	if d, _ := readDigest(bdir, waveN, task, lastAttempt); d != nil {
 		model = d.Model
 	}
-	failure, findings := previousFailure(bdir, waveN, task)
+	failure, findings := previousFailure(bdir, waveN, slice, task)
 	return model, failure, findings
 }
 
-// previousFailure renders the newest slice record's verdict for one task as
-// the sentence its retry brief quotes back, plus that review's findings. A
-// retry is always of the wave's latest slice, so that is the record that
-// judged the task.
-func previousFailure(bdir string, waveN, task int) (string, []string) {
-	c, _ := wave.LatestClose(bdir, waveN)
+// previousFailure renders this slice's close record's verdict for one task
+// as the sentence its retry brief quotes back, plus that review's findings.
+// A retry is of the slice the task went out with, so that slice's record is
+// the one that judged it — read live, or from the copy a wave_failures retry
+// retired on its way out (dropClose), which is then the only one left.
+func previousFailure(bdir string, waveN, slice, task int) (string, []string) {
+	c, _ := wave.ReadClose(bdir, waveN, slice)
+	if c == nil {
+		c = readPrevClose(bdir, waveN, slice)
+	}
 	if c == nil {
 		return "", nil
 	}

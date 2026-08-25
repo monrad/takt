@@ -1185,3 +1185,56 @@ func TestSliceReCloseSubjectNamesOnlyItsOwnSlice(t *testing.T) {
 		t.Fatalf("slice 2's subject must name its own task: %q", msg)
 	}
 }
+
+// TestRetryCarriesTheEarlierRoundsResultsForward covers what answering
+// wave_failures with `retry` used to throw away. The failed round had
+// already verified and reviewed the tasks that passed, and a close grades
+// only what is still pending — so the retry's own close wrote a record
+// holding the retried task alone, and the evidence for everything it did not
+// re-grade (verify output, review findings, files_changed) was gone from the
+// wave's story. Retiring the record instead of leaving it to be overwritten
+// is what lets the re-close carry those results forward.
+func TestRetryCarriesTheEarlierRoundsResultsForward(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	next(t, root, nil)
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	record(t, root, 1, 1, "done", "a")
+	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: ran out of ideas\nBLOCKERS: none\n")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+	if code, _, errb := runIn(t, root, nil,
+		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || o["attempt"] != float64(2) || len(agentsOf(t, o)) != 1 {
+		t.Fatalf("retry dispatch: %v", o)
+	}
+	// The retired record is the only copy of what judged task 2, and the
+	// retry brief is written from it.
+	b, err := os.ReadFile(agentsOf(t, o)[0]["brief"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "ran out of ideas") {
+		t.Fatalf("the retry brief must still quote the failure it is retrying: %s", b)
+	}
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	record(t, root, 2, 2, "done", "b")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	c, err := wave.ReadClose(bdir, 0, 1)
+	if err != nil || c == nil {
+		t.Fatalf("%v %+v", err, c)
+	}
+	i := slices.IndexFunc(c.Tasks, func(tr wave.TaskResult) bool { return tr.Task == 1 })
+	if i < 0 || len(c.Tasks[i].Verify) == 0 || c.Tasks[i].Review == nil || len(c.Tasks[i].FilesChanged) == 0 {
+		t.Fatalf("task 1's evidence from the first round must survive the retry: %+v", c.Tasks)
+	}
+}

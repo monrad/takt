@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -333,12 +332,8 @@ func recordCloseOutcome(tgt *runTarget, res *wave.CloseResult, ids []int) error 
 // did not grade. Nothing is overwritten: a task graded again keeps its fresh
 // result.
 func carryForward(bdir string, res *wave.CloseResult) {
-	b, err := os.ReadFile(prevClosePath(bdir, res.Wave, res.Slice))
-	if err != nil {
-		return
-	}
-	var prev wave.CloseResult
-	if err = json.Unmarshal(b, &prev); err != nil {
+	prev := readPrevClose(bdir, res.Wave, res.Slice)
+	if prev == nil {
 		return
 	}
 	for _, tr := range prev.Tasks {

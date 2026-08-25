@@ -296,6 +296,15 @@ func answerWaveGate(bdir string, st *bundle.State, gate, choice, reason string) 
 			if err := wave.SaveBaseline(bdir, aw.N, sliceOf(aw), aw.Baseline); err != nil {
 				return false, err
 			}
+			// And the round's own record is retired rather than left to be
+			// overwritten: the re-close grades only what is still pending, so
+			// the results of the tasks it will not judge again — their verify
+			// output, review findings and files_changed — live in the retired
+			// copy until carryForward merges them back (review M2's rule,
+			// applied to the path that reaches a re-close through the gate).
+			if err := dropClose(bdir, aw.N, sliceOf(aw)); err != nil {
+				return false, err
+			}
 		}
 		st.ActiveWave = nil
 		return false, bundle.SaveState(bdir, st)
