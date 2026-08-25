@@ -72,6 +72,13 @@ func (r *Repo) BranchCheckedOut(ctx context.Context, branch string) (string, boo
 }
 
 // IsCleanIn is true when dir has no modified, staged or untracked files.
+//
+// It runs `git -C <root> -C <dir> status`, and git resolves a second -C
+// relative to the first: the answer is only about dir when dir is absolute,
+// and is about <root>/<dir> when it is not. Every caller passes a worktree
+// path from [Repo.Worktrees], which git itself reports absolute, so the
+// invariant holds — but a relative dir would be answered about the wrong
+// directory rather than refused.
 func (r *Repo) IsCleanIn(ctx context.Context, dir string) (bool, error) {
 	out, err := r.Run(ctx, "-C", dir, "status", "--porcelain", "--untracked-files=normal")
 	if err != nil {
@@ -82,6 +89,11 @@ func (r *Repo) IsCleanIn(ctx context.Context, dir string) (bool, error) {
 
 // MergeNoFF merges branch into dir's checked-out branch with a merge commit
 // and returns its sha (spec §7.5 merge disposition).
+//
+// Like [Repo.IsCleanIn] it runs `git -C <root> -C <dir>`, whose second -C is
+// resolved relative to the first, so dir must be absolute — which every
+// worktree path from [Repo.Worktrees] is. A relative dir would merge into
+// whatever <root>/<dir> happens to be.
 func (r *Repo) MergeNoFF(ctx context.Context, dir, branch, msg string) (string, error) {
 	if _, err := r.Run(ctx, "-C", dir, "merge", "--no-ff", "--no-edit", "-m", msg, branch); err != nil {
 		return "", err
@@ -94,6 +106,7 @@ func (r *Repo) MergeNoFF(ctx context.Context, dir, branch, msg string) (string, 
 // the commit it was on. takt is not there to resolve a conflict — and the
 // worktree the merge ran in is usually not the one the user is sitting in —
 // so a merge it could not finish is taken back out rather than left staged.
+// dir must be absolute, for the reason [Repo.IsCleanIn] gives.
 func (r *Repo) MergeAbort(ctx context.Context, dir string) error {
 	_, err := r.Run(ctx, "-C", dir, "merge", "--abort")
 	return err
