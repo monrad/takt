@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/config"
 	"github.com/monrad/takt/internal/plan"
 )
 
@@ -75,9 +76,14 @@ type Options struct {
 }
 
 // Run executes checks over every bundle with the defaults a caller that
-// predates plan 2's Options needs: the clock is now, and every ref resolves
-// (so the branch check never fires without a real Resolve). Kept so
-// existing callers of the plan-1 signature are unaffected (spec §11).
+// predates plan 2's Options needs: the clock is now, every ref resolves (so
+// the branch check never fires without a real Resolve), and the two
+// thresholds are config's shipped defaults. Those thresholds are not
+// optional the way Resolve is — left at the zero value, every wave is past a
+// "0s" staleness budget and every heartbeat past a "0s" lock TTL, so a wave
+// dispatched a minute ago by a session that is alive and answering reports
+// as stale. Taking them from [config.Defaults] keeps the wrapper judging by
+// the same numbers a run does (spec §11, §12).
 func Run(
 	ctx context.Context,
 	dir bundle.Dir,
@@ -85,8 +91,11 @@ func Run(
 	checks []Check,
 	opts func(bundleDir string) plan.ValidateOpts,
 ) []Finding {
+	cfg := config.Defaults()
 	return RunWith(ctx, dir, Options{
-		All: all, Now: time.Now(), ValidateOpts: opts, Resolve: func(string) bool { return true },
+		All: all, Now: time.Now(),
+		WaveStaleAfter: time.Duration(cfg.WaveStaleAfter), LockTTL: time.Duration(cfg.LockTTL),
+		ValidateOpts: opts, Resolve: func(string) bool { return true },
 	}, checks)
 }
 

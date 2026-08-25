@@ -321,3 +321,27 @@ func TestIndexStalenessSkipsArchived(t *testing.T) {
 		t.Fatalf("archived artifacts are history, not stale: %+v", fs)
 	}
 }
+
+// TestRunWrapperUsesRealDurations covers the plan-1 wrapper: Run left both
+// thresholds at the zero value, so every wave was past a "0s" staleness
+// budget and every heartbeat past a "0s" lock TTL — a five-minute-old wave
+// whose session is alive and answering came back WARN, telling the user to
+// recover a wave whose agents are still working. The wrapper carries
+// config's shipped defaults instead.
+func TestRunWrapperUsesRealDurations(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("live")
+	now := time.Now()
+	st.ActiveWave = &bundle.ActiveWave{
+		N: 0, Slice: 1, Attempt: 1, StartedAt: now.Add(-5 * time.Minute), SessionID: "S", Tasks: []int{1},
+	}
+	st.Session = &bundle.Session{ID: "S", Heartbeat: now}
+	if err := bundle.SaveState(d.Bundle("live"), st); err != nil {
+		t.Fatal(err)
+	}
+	fs := doctor.Run(context.Background(), d, false, []doctor.Check{doctor.StaleWave}, noOpts)
+	if l := levels(fs, "stale-wave"); len(l) != 1 || l[0] != "PASS" {
+		t.Fatalf("a five-minute wave with a live session is not stale: %+v", fs)
+	}
+}
