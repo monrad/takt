@@ -146,3 +146,37 @@ func dropVerify(bdir string) error {
 	}
 	return err
 }
+
+// answerBranchFinish records the disposition after re-checking that it is
+// available right now. The gate's payload is rendered once and re-rendered
+// verbatim from it (spec §4.3), so what it says about merge and discard is
+// as old as the question: the primary worktree may have moved or gone dirty
+// since, and a disabled option the prompt still shows must not be able to
+// start a merge takt cannot make.
+func answerBranchFinish(ctx context.Context, tgt *runTarget, choice, reason, confirm string) (bool, error) {
+	df, err := gatherDispositionFacts(ctx, tgt.ws, tgt.st)
+	if err != nil {
+		return false, err
+	}
+	switch choice {
+	case dispositionMerge:
+		if !df.MergeAllowed {
+			return false, errorf("merge is not available: %s", df.MergeBlocked)
+		}
+	case dispositionDiscard:
+		if !df.DiscardAllowed {
+			return false, errorf("discard is not available: %s", df.DiscardBlocked)
+		}
+		if confirm != tgt.slug {
+			return false, errorf("discard requires --confirm %s", tgt.slug)
+		}
+	case dispositionPR, dispositionKeep:
+	default:
+		return false, errorf("unknown choice %q for branch_finish", choice)
+	}
+	tgt.st.Disposition = &bundle.Disposition{Choice: choice, At: timeNow(), Reason: reason}
+	if err = bundle.SaveState(tgt.bdir, tgt.st); err != nil {
+		return false, err
+	}
+	return false, bundle.AppendEvent(tgt.bdir, "disposition", map[string]any{keyChoice: choice, keyReason: reason})
+}

@@ -63,6 +63,13 @@ func (d Dir) Bundle(slug string) string {
 	return filepath.Join(d.Base, d.RepoName, slug)
 }
 
+// Discarded is where a discarded run's bundle is copied before its branch
+// is deleted (spec §7.5): a sibling of the live bundles, gitignored, so the
+// record survives the branch that held the commits. It mirrors Bundle.
+func (d Dir) Discarded(slug string) string {
+	return filepath.Join(d.root(), ".discarded", slug)
+}
+
 // root returns the directory that holds this repo's bundles.
 func (d Dir) root() string {
 	if d.InRepo {

@@ -62,6 +62,14 @@ func cmdNext(env Env) int {
 	if code != 0 {
 		return code
 	}
+	// An archived run has nothing left to decide (spec §5.3 row 26), and the
+	// answer must not cost it a state write: acquireLock would stamp a fresh
+	// holder on the run takt just released and rewrite state.json — a tracked
+	// file — leaving the worktree dirty with nothing to commit, every time
+	// anyone asks a finished run what is next.
+	if tgt.st.Phase == bundle.PhaseArchived {
+		return printOp(env, op.Op{Op: op.Stop, Narration: "run archived", Reason: reasonArchived})
+	}
 	id, generated := sessionID(env.Getenv)
 	r := &nextRun{
 		env: env, ws: tgt.ws, slug: tgt.slug, bdir: tgt.bdir, st: tgt.st, now: timeNow(),
@@ -161,11 +169,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 		case decide.ActExec, decide.ActStop:
 			return printOp(r.env, *d.Op)
 		case decide.ActArchive:
-			// Row 25/26 (archive, commit, apply the disposition) lands in a
-			// later plan-3 task; until then it fails like any other decision
-			// this loop cannot yet execute (same as default, named so the
-			// exhaustive switch still catches a future Action nobody wired up).
-			return fail(r.env.Stderr, exitError, "unknown decision "+string(d.Action), "")
+			return r.archive(ctx)
 		default:
 			return fail(r.env.Stderr, exitError, "unknown decision "+string(d.Action), "")
 		}

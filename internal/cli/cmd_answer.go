@@ -26,6 +26,7 @@ func cmdAnswer(env Env) int {
 	choice := fs.String("choice", "", "chosen option")
 	reason := fs.String("reason", "", "reason for an override/waiver")
 	file := fs.String("file", "", "file with a corrected clause list (alignment_confirm edit)")
+	confirm := fs.String("confirm", "", "type the slug to confirm a discard (branch_finish)")
 	if _, err := parseInterspersed(fs, env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
@@ -47,7 +48,7 @@ func cmdAnswer(env Env) int {
 	if tgt.st.PendingGate == nil || tgt.st.PendingGate.ID != *g {
 		return printJSON(env, map[string]any{keyIgnored: true, keyReason: "no pending gate " + *g})
 	}
-	keep, err := applyAnswer(ctx, tgt, *g, *choice, *reason, *file)
+	keep, err := applyAnswer(ctx, tgt, *g, *choice, *reason, *file, *confirm)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
@@ -65,7 +66,7 @@ func cmdAnswer(env Env) int {
 
 // applyAnswer applies the choice to the gate's own state. keep is true when
 // the gate must stay open (the user chose to stop).
-func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file string) (bool, error) {
+func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, confirm string) (bool, error) {
 	switch g {
 	case "gate_review":
 		return answerGateReview(tgt.bdir, tgt.st, choice, reason)
@@ -84,6 +85,8 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file st
 		return answerNoVerification(ctx, tgt, choice, reason)
 	case "goals_unmet":
 		return answerGoalsUnmet(tgt, choice, reason)
+	case "branch_finish":
+		return answerBranchFinish(ctx, tgt, choice, reason, confirm)
 	}
 	return false, errorf("unknown gate %s", g)
 }

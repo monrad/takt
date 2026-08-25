@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/decide"
 	"github.com/monrad/takt/internal/finish"
+	"github.com/monrad/takt/internal/gitx"
 )
 
 // bundleRel is this run's bundle directory relative to the repo root, or
@@ -29,11 +31,21 @@ func bundleRel(ws *workspace, bdir string) string {
 // headCovered says whether sha still stands for HEAD: it is HEAD, or an
 // ancestor of HEAD that differs from it only inside the bundle directory
 // (takt's own answer/done commits must not re-arm verify — plan 3 decision 3).
+// It reads HEAD itself, for the callers that only ask this one question.
 func headCovered(ctx context.Context, ws *workspace, bdir, sha string) (bool, error) {
 	head, err := ws.Repo.HeadSHA(ctx)
 	if err != nil {
 		return false, err
 	}
+	return headCoveredAt(ctx, ws, bdir, head, sha)
+}
+
+// headCoveredAt is headCovered against a HEAD the caller already read. One
+// `takt next` asks the question up to four times (verified_sha, the verify
+// record, goals_checked_sha, the goal record) and the answer must be
+// against one HEAD, not four reads of it — so gatherFinishFacts resolves
+// HEAD once and threads it through here (task-3 review).
+func headCoveredAt(ctx context.Context, ws *workspace, bdir, head, sha string) (bool, error) {
 	if sha == head {
 		return true, nil
 	}
@@ -48,43 +60,104 @@ func headCovered(ctx context.Context, ws *workspace, bdir, sha string) (bool, er
 	return ws.Repo.DiffQuietExcluding(ctx, sha, head, rel)
 }
 
-// gatherFinishFacts fills rows 20–26's inputs. Disposition availability
-// (merge/discard) is computed in archive.go (Task 6) and merged here.
+// gatherFinishFacts fills rows 20–26's inputs.
 func gatherFinishFacts(ctx context.Context, ws *workspace, bdir string, st *bundle.State) (decide.FinishFacts, error) {
 	var fin decide.FinishFacts
-	var err error
+	head, err := ws.Repo.HeadSHA(ctx)
+	if err != nil {
+		return fin, err
+	}
 	if st.VerifiedSHA != nil {
-		if fin.Verified, err = headCovered(ctx, ws, bdir, *st.VerifiedSHA); err != nil {
+		if fin.Verified, err = headCoveredAt(ctx, ws, bdir, head, *st.VerifiedSHA); err != nil {
 			return fin, err
 		}
 	}
-	if fin.Verify, err = verifyFacts(ctx, ws, bdir); err != nil {
+	if fin.Verify, err = verifyFacts(ctx, ws, bdir, head); err != nil {
 		return fin, err
 	}
 	if st.GoalsCheckedSHA != nil {
-		if fin.GoalsChecked, err = headCovered(ctx, ws, bdir, *st.GoalsCheckedSHA); err != nil {
+		if fin.GoalsChecked, err = headCoveredAt(ctx, ws, bdir, head, *st.GoalsCheckedSHA); err != nil {
 			return fin, err
 		}
 	}
-	if fin.Goals, err = goalFacts(ctx, ws, bdir); err != nil {
+	if fin.Goals, err = goalFacts(ctx, ws, bdir, head); err != nil {
 		return fin, err
 	}
 	fin.HasRetro = fileNonEmpty(filepath.Join(bdir, "retro.md"))
 	if st.Disposition != nil {
 		fin.Disposition = st.Disposition.Choice
 		fin.PRPushed = st.Disposition.PRURL != ""
+		return fin, nil
 	}
+	// Row 23 is the only consumer of the availability facts, and answering
+	// them costs three git calls, so they are gathered only when that row is
+	// the one about to be reached.
+	if !fin.HasRetro {
+		return fin, nil
+	}
+	df, err := gatherDispositionFacts(ctx, ws, st)
+	if err != nil {
+		return fin, err
+	}
+	fin.MergeAllowed, fin.MergeBlocked = df.MergeAllowed, df.MergeBlocked
+	fin.DiscardAllowed, fin.DiscardBlocked = df.DiscardAllowed, df.DiscardBlocked
 	return fin, nil
+}
+
+// dispositionFacts is what branch_finish may offer (spec §7.5 step 4).
+// Every unavailable option carries its reason: the question renders the
+// blocked string verbatim under the greyed-out option, so an empty one is a
+// disabled choice with no explanation.
+type dispositionFacts struct {
+	MergeAllowed   bool
+	MergeBlocked   string
+	DiscardAllowed bool
+	DiscardBlocked string
+	Primary        gitx.Worktree
+}
+
+// gatherDispositionFacts decides what takt can do itself: merge needs the
+// primary worktree on the base branch and clean; discard needs a branch takt
+// created. takt never checks out another branch (spec §4.7), so anything
+// else is handed to the session as cleanup commands.
+func gatherDispositionFacts(ctx context.Context, ws *workspace, st *bundle.State) (dispositionFacts, error) {
+	var f dispositionFacts
+	if st.BranchAdopted {
+		f.MergeBlocked = "the run adopted branch " + st.Branch + "; integrate it yourself"
+		f.DiscardBlocked = f.MergeBlocked
+		return f, nil
+	}
+	f.DiscardAllowed = true
+	prim, err := ws.Repo.PrimaryWorktree(ctx)
+	if err != nil {
+		return f, err
+	}
+	f.Primary = prim
+	if prim.Branch != st.Base {
+		f.MergeBlocked = fmt.Sprintf("primary worktree %s is on %s, not %s; merge by hand after archiving",
+			prim.Path, prim.Branch, st.Base)
+		return f, nil
+	}
+	clean, err := ws.Repo.IsCleanIn(ctx, prim.Path)
+	if err != nil {
+		return f, err
+	}
+	if !clean {
+		f.MergeBlocked = "primary worktree " + prim.Path + " has uncommitted changes"
+		return f, nil
+	}
+	f.MergeAllowed = true
+	return f, nil
 }
 
 // verifyFacts reads finish/verify.json and reports it only while it still
 // covers HEAD; a record left behind by an earlier commit is no record at all.
-func verifyFacts(ctx context.Context, ws *workspace, bdir string) (decide.VerifyFacts, error) {
+func verifyFacts(ctx context.Context, ws *workspace, bdir, head string) (decide.VerifyFacts, error) {
 	rec, err := finish.ReadVerify(bdir)
 	if err != nil || rec == nil {
 		return decide.VerifyFacts{}, err
 	}
-	covered, err := headCovered(ctx, ws, bdir, rec.SHA)
+	covered, err := headCoveredAt(ctx, ws, bdir, head, rec.SHA)
 	if err != nil || !covered {
 		return decide.VerifyFacts{}, err
 	}
@@ -95,12 +168,12 @@ func verifyFacts(ctx context.Context, ws *workspace, bdir string) (decide.Verify
 
 // goalFacts reads finish/goals.json and reports it only while it still
 // covers HEAD, exactly as verifyFacts does for the verification record.
-func goalFacts(ctx context.Context, ws *workspace, bdir string) (decide.GoalFacts, error) {
+func goalFacts(ctx context.Context, ws *workspace, bdir, head string) (decide.GoalFacts, error) {
 	rec, err := finish.ReadGoals(bdir)
 	if err != nil || rec == nil {
 		return decide.GoalFacts{}, err
 	}
-	covered, err := headCovered(ctx, ws, bdir, rec.SHA)
+	covered, err := headCoveredAt(ctx, ws, bdir, head, rec.SHA)
 	if err != nil || !covered {
 		return decide.GoalFacts{}, err
 	}
