@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -48,7 +49,7 @@ func cmdRecord(env Env) int {
 	}
 	switch *agent {
 	case "planner":
-		return recordPlanner(env, tgt)
+		return recordPlanner(ctx, env, tgt)
 	case "alignment-auditor":
 		return recordAlignment(env, tgt.bdir, tgt.st, *mode, *from)
 	}
@@ -57,8 +58,8 @@ func cmdRecord(env Env) int {
 
 // recordPlanner validates what the planner wrote and reports the problems
 // instead of failing, so the loop can re-dispatch it (spec §5.3 row 8).
-func recordPlanner(env Env, tgt *runTarget) int {
-	facts, err := gatherFacts(tgt.ws, tgt.bdir, tgt.st, false, false, timeNow(), "")
+func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
+	facts, err := gatherFacts(ctx, tgt.ws, tgt.bdir, tgt.st, false, false, timeNow(), "")
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}

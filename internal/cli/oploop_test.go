@@ -121,6 +121,21 @@ func (d *driver) playToFinish(maxSteps int) map[string]any {
 	return nil
 }
 
+// play drives the loop, executing every op, until one of them is a stop, and
+// returns that stop's reason.
+//
+//nolint:unused // the finish-to-archive walk that drives the loop to its stop lands in a later plan-3 task
+func (d *driver) play(maxSteps int) string {
+	d.t.Helper()
+	for range maxSteps {
+		if reason, stopped := d.step(d.nextOp()); stopped {
+			return reason
+		}
+	}
+	d.t.Fatalf("loop did not stop in %d steps: %v", maxSteps, d.ops)
+	return ""
+}
+
 // step performs one op. It reports the stop reason and true for a stop op.
 func (d *driver) step(o map[string]any) (string, bool) {
 	d.t.Helper()

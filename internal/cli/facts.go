@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func fileNonEmpty(p string) bool {
 
 // gatherFacts reads everything Decide needs from the bundle (spec §5.3).
 func gatherFacts(
-	ws *workspace, bdir string, st *bundle.State,
+	ctx context.Context, ws *workspace, bdir string, st *bundle.State,
 	force, recovering bool, now time.Time, session string,
 ) (decide.Facts, error) {
 	f := decide.Facts{
@@ -51,6 +52,11 @@ func gatherFacts(
 			ClausesConfirmed: a.Confirmed || a.Skipped,
 			VerdictsPresent:  len(a.Verdicts) > 0 || a.Skipped,
 			ClauseCount:      len(a.Clauses),
+		}
+	}
+	if st.Phase == bundle.PhaseFinish {
+		if f.Finish, err = gatherFinishFacts(ctx, ws, bdir, st); err != nil {
+			return f, err
 		}
 	}
 	err = gatherWaveFacts(&f, bdir, st)

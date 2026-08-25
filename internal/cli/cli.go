@@ -62,6 +62,9 @@ const (
 	keyStatus        = "status"
 	keyCommitted     = "committed"
 	keySHA           = "sha"
+	keyPassed        = "passed"
+	keyFailed        = "failed"
+	keyNoCommands    = "no_commands"
 )
 
 // state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`
@@ -104,6 +107,7 @@ var commands = map[string]command{
 	"unlock":     cmdUnlock,
 	"close-wave": cmdCloseWave,
 	"waive":      cmdWaive,
+	"verify":     cmdVerify,
 }
 
 // Main dispatches args[0] to a subcommand and returns the process exit code.
