@@ -3,6 +3,7 @@ package gate_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -150,5 +151,34 @@ func TestOverrideEventMalformedDataDoesNotPanic(t *testing.T) {
 	); !st.Satisfied ||
 		st.Verdict != "overridden" {
 		t.Fatalf("a well-formed override alongside a malformed one must still satisfy: %+v", st)
+	}
+}
+
+// TestWriteReceiptLeavesNoTempOnSuccess pins the gates directory after a
+// receipt is written: exactly the receipt. The write goes through the shared
+// atomic writer, which flushes the bytes before the rename and removes its
+// temporary file on every path out.
+func TestWriteReceiptLeavesNoTempOnSuccess(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write(t, dir, "spec.md", "# spec\n")
+	h, _, _ := gate.Hash(gate.Spec, dir)
+	rc := gate.Receipt{
+		Gate: gate.Spec, Hash: h, Verdict: gate.VerdictApprove,
+		Reviewer: gate.Reviewer{Provider: "fake", Model: "m"}, TS: time.Now(),
+	}
+	if err := gate.WriteReceipt(dir, rc); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "gates"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != gate.Spec+".json" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("gates/ must hold only the receipt, got %s", strings.Join(names, ", "))
 	}
 }

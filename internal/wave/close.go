@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/backend"
+	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gitx"
 )
 
@@ -134,39 +135,7 @@ func WriteClose(bundleDir string, c CloseResult) error {
 	if c.Slice < 1 {
 		return fmt.Errorf("close record for wave %d has no slice number", c.Wave)
 	}
-	p := ClosePath(bundleDir, c.Wave, c.Slice)
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-	if _, werr := tmp.Write(append(b, '\n')); werr != nil {
-		_ = tmp.Close()
-		cleanup()
-		return werr
-	}
-	if serr := tmp.Sync(); serr != nil {
-		_ = tmp.Close()
-		cleanup()
-		return serr
-	}
-	if cerr := tmp.Close(); cerr != nil {
-		cleanup()
-		return cerr
-	}
-	if rerr := os.Rename(tmpName, p); rerr != nil {
-		cleanup()
-		return rerr
-	}
-	return nil
+	return bundle.WriteJSONAtomic(ClosePath(bundleDir, c.Wave, c.Slice), c)
 }
 
 // CommitWave stages exactly the task files (modifications, additions,

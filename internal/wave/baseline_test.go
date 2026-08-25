@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gitx"
 	"github.com/monrad/takt/internal/testutil"
 	"github.com/monrad/takt/internal/wave"
@@ -105,5 +107,29 @@ func TestTouchedSinceReportsRevertedBaselineFile(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("a baseline path whose content changed (even back to HEAD) must be reported as touched")
+	}
+}
+
+// TestSaveBaselineIsAtomic pins what the shared atomic writer must leave
+// behind: the record and nothing else. A temp file left in waves/<n>/ would
+// be litter in a directory takt's own readers scan, and a half-written
+// baseline would send the retry it exists for against the wrong tree.
+func TestSaveBaselineIsAtomic(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	entries := []bundle.BaselineEntry{{Path: "a.go", Hash: "h"}}
+	if err := wave.SaveBaseline(dir, 0, 1, entries); err != nil {
+		t.Fatal(err)
+	}
+	names, err := filepath.Glob(filepath.Join(dir, "waves", "0", "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 1 || !strings.HasSuffix(names[0], "baseline.json") {
+		t.Fatalf("the write must leave the record and no temp file: %v", names)
+	}
+	got, slice, err := wave.ReadBaseline(dir, 0)
+	if err != nil || slice != 1 || len(got) != 1 || got[0].Path != "a.go" {
+		t.Fatalf("%v %d %+v", err, slice, got)
 	}
 }

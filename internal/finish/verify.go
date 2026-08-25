@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
 )
@@ -53,7 +54,7 @@ func ReadVerify(bundleDir string) (*VerifyRecord, error) {
 
 // WriteVerify writes the record atomically.
 func WriteVerify(bundleDir string, r VerifyRecord) error {
-	return writeJSONAtomic(VerifyPath(bundleDir), r)
+	return bundle.WriteJSONAtomic(VerifyPath(bundleDir), r)
 }
 
 // UnionCommands is every task's verify commands plus the user's extras, in
@@ -106,33 +107,5 @@ func AppendExtra(bundleDir, cmd string) error {
 	if slices.Contains(cur, cmd) {
 		return nil
 	}
-	return writeJSONAtomic(extraPath(bundleDir), append(cur, cmd))
-}
-
-// writeJSONAtomic is the temp+rename+fsync pattern every takt record uses.
-func writeJSONAtomic(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err = tmp.Write(append(b, '\n')); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return bundle.WriteJSONAtomic(extraPath(bundleDir), append(cur, cmd))
 }

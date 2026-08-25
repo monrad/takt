@@ -130,32 +130,13 @@ func ReadReceipt(bundleDir, gate string) (*Receipt, error) {
 	return &r, nil
 }
 
-// WriteReceipt writes gates/<gate>.json atomically.
+// WriteReceipt writes gates/<gate>.json atomically — through the shared
+// writer, so the receipt is flushed to disk before it replaces the old one:
+// a gate is the record of a review that really happened, and a receipt that
+// survives a crash only as a half-written file would re-arm a gate the user
+// has already answered.
 func WriteReceipt(bundleDir string, r Receipt) error {
-	dir := filepath.Join(bundleDir, "gates")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, r.Gate+".json.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) } // best-effort: the write/close error is already returned
-	if _, werr := tmp.Write(append(b, '\n')); werr != nil {
-		_ = tmp.Close() // best-effort: werr is already returned
-		cleanup()
-		return werr
-	}
-	if cerr := tmp.Close(); cerr != nil {
-		cleanup()
-		return cerr
-	}
-	return os.Rename(tmpName, receiptPath(bundleDir, r.Gate))
+	return bundle.WriteJSONAtomic(receiptPath(bundleDir, r.Gate), r)
 }
 
 // eventString reads a string field out of an event's data map. Data is

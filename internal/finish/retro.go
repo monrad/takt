@@ -143,5 +143,5 @@ func RetroInputsPath(bundleDir string) string {
 
 // WriteRetroInputs writes them atomically.
 func WriteRetroInputs(bundleDir string, in RetroInputs) error {
-	return writeJSONAtomic(RetroInputsPath(bundleDir), in)
+	return bundle.WriteJSONAtomic(RetroInputsPath(bundleDir), in)
 }

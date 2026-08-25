@@ -150,18 +150,10 @@ type parked struct {
 // began in, not the one its failed attempt left behind (review M1,
 // spec §7.4 step 5).
 func SaveBaseline(bundleDir string, wave, slice int, entries []bundle.BaselineEntry) error {
-	p := BaselinePath(bundleDir, wave)
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return err
-	}
 	if entries == nil {
 		entries = []bundle.BaselineEntry{}
 	}
-	b, err := json.MarshalIndent(parked{Slice: slice, Entries: entries}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(p, append(b, '\n'), 0o600)
+	return bundle.WriteJSONAtomic(BaselinePath(bundleDir, wave), parked{Slice: slice, Entries: entries})
 }
 
 // ReadBaseline returns the parked baseline and the slice it was captured

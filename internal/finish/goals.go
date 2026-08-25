@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/monrad/takt/internal/bundle"
 )
 
 // GoalVerdict is one goal's assessment (spec §7.5 step 2).
@@ -65,7 +67,7 @@ func ReadGoals(bundleDir string) (*GoalsRecord, error) {
 
 // WriteGoals writes the record atomically.
 func WriteGoals(bundleDir string, r GoalsRecord) error {
-	return writeJSONAtomic(GoalsPath(bundleDir), r)
+	return bundle.WriteJSONAtomic(GoalsPath(bundleDir), r)
 }
 
 // ParseVerdicts validates the assessor's JSON: every goal id exactly once,
