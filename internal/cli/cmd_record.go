@@ -69,9 +69,21 @@ func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
 		})
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: []string{"plan.index.json was not written"}})
 	}
-	if !facts.IndexValid {
-		_ = bundle.AppendEvent(tgt.bdir, "plan_invalid", map[string]any{keyProblems: facts.IndexProblems})
-		return printJSON(env, map[string]any{keyValid: false, keyProblems: facts.IndexProblems})
+	problems := facts.IndexProblems
+	// The planner writes plan.md as well as the index (spec §13), and the
+	// plan gate hashes it. Without this check a planner that wrote only the
+	// index was reported valid, and the run then stalled: gatherGateFacts
+	// will not compute a gate whose artifact is missing, so `next` kept
+	// re-dispatching the planner — or, once the gate was reached anyway,
+	// failed on gate.Hash's read of a file nobody had written (review M8).
+	// Reported as a planner problem, it goes back to the planner with the
+	// rest and lands on the plan_invalid gate after three tries.
+	if !fileNonEmpty(filepath.Join(tgt.bdir, "plan.md")) {
+		problems = append(problems, "plan.md is missing or empty")
+	}
+	if len(problems) > 0 {
+		_ = bundle.AppendEvent(tgt.bdir, "plan_invalid", map[string]any{keyProblems: problems})
+		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
 	return printJSON(env, map[string]any{keyValid: true})
 }

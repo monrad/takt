@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,5 +111,37 @@ func TestPlanValidateAcceptsPathBeforeFlags(t *testing.T) {
 	}
 	if got["tasks"] != float64(8) {
 		t.Fatalf("out = %v", got)
+	}
+}
+
+// TestRecordPlannerRequiresPlanMD covers review M8: the planner writes
+// plan.md as well as plan.index.json (spec §13), and the plan gate hashes
+// it. A planner that wrote only the index was recorded valid, which left the
+// run with a gate that could never be computed — so it is a planner problem
+// like any other, reported back for the retry rather than surfacing later as
+// a failed read inside gate.Hash.
+func TestRecordPlannerRequiresPlanMD(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	specH := specHash(t, bdir)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", strings.Replace(validIndex, "%s", specH, 1))
+
+	code, out, errb := runIn(t, root, nil, "record", "--agent", "planner", "--from", "/dev/null", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("%d %s", code, errb)
+	}
+	if out["valid"] != false {
+		t.Fatalf("an index with no plan.md is not a valid plan: %v", out)
+	}
+	problems, ok := out["problems"].([]any)
+	if !ok || len(problems) == 0 || !strings.Contains(fmt.Sprint(problems), "plan.md") {
+		t.Fatalf("the reason must name plan.md: %v", out)
+	}
+
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# plan\n")
+	if code, out, errb = runIn(t, root, nil,
+		"record", "--agent", "planner", "--from", "/dev/null", "--slug", "demo"); code != 0 || out["valid"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
 	}
 }
