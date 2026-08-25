@@ -601,3 +601,27 @@ func TestGateReviewOutlivesTheGitDeadline(t *testing.T) {
 		t.Fatalf("the receipt must still be committed: %q", msg)
 	}
 }
+
+// TestDoneIsANoOpOnADoneStep covers spec §5.4 for `takt done`: replaying the
+// call the session already made must not append a second receipt or take an
+// empty commit, while editing the artifact and closing the step again is a
+// real done, not a replay.
+func TestDoneIsANoOpOnADoneStep(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	if code, _, errb := runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	before := testutil.Git(t, root, "rev-parse", "HEAD")
+	code, got, _ := runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	if code != 0 || got["ignored"] != true || testutil.Git(t, root, "rev-parse", "HEAD") != before {
+		t.Fatalf("%d %v", code, got)
+	}
+	// an edited artifact is a new done, not a replay
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec v2\n")
+	if code, got, _ = runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo"); code != 0 ||
+		got["ignored"] == true {
+		t.Fatalf("%d %v", code, got)
+	}
+}

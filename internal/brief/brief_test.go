@@ -110,13 +110,20 @@ func TestPlannerAndReviewBriefs(t *testing.T) {
 			t.Fatalf("%s: %v", mode, err)
 		}
 	}
-	for _, step := range []string{"run-brainstorm", "run-goals"} {
-		s, err := brief.Render(
-			step,
-			brief.RunData{Slug: "demo", Topic: "t", SpecPath: "/b/spec.md", GoalsPath: "/b/goals.md"},
-		)
-		if err != nil || !strings.Contains(s, "/b/") {
-			t.Fatalf("%s: %v", step, err)
+	// One RunData feeds every step's template, so each one is checked for
+	// the field it is the only reader of.
+	runData := brief.RunData{
+		Slug: "demo", Topic: "t", SpecPath: "/b/spec.md", GoalsPath: "/b/goals.md",
+		Branch: "takt/demo", Base: "main",
+		RetroPath: "/b/retro.md", InputsPath: "/b/finish/retro-inputs.json",
+	}
+	for step, want := range map[string]string{
+		"run-brainstorm": "/b/spec.md", "run-goals": "/b/goals.md",
+		"run-retro": "/b/finish/retro-inputs.json", "run-push_pr": "takt/demo",
+	} {
+		s, err := brief.Render(step, runData)
+		if err != nil || !strings.Contains(s, want) {
+			t.Fatalf("%s: %v\n%s", step, err, s)
 		}
 	}
 	if _, err := brief.Render("nope", nil); err == nil {

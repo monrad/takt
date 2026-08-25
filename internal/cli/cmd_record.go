@@ -296,7 +296,7 @@ func recordTask(env Env, ws *workspace, bdir string, st *bundle.State, in digest
 	}
 	if aw.Attempt != in.attempt {
 		_ = bundle.AppendEvent(bdir, "digest_ignored", map[string]any{keyTask: in.task, keyAttempt: in.attempt})
-		return printJSON(env, map[string]any{"ignored": true, keyReason: "not the active wave attempt"})
+		return printJSON(env, map[string]any{keyIgnored: true, keyReason: "not the active wave attempt"})
 	}
 	if code := writeDigest(env, ws, bdir, aw.N, t, in); code != 0 {
 		return code

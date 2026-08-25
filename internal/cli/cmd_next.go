@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -473,21 +474,93 @@ func (r *nextRun) ask(o op.Op) int {
 	return printOp(r.env, o)
 }
 
-// run fills a run op's instructions from the step's template (spec §5.2).
+// run fills a run op's instructions from the step's template (spec §5.2)
+// and adds whatever else that step needs to do its work.
 func (r *nextRun) run(o op.Op) int {
 	data := brief.RunData{
 		Slug: r.slug, Topic: r.st.Topic,
 		SpecPath: filepath.Join(r.bdir, "spec.md"), GoalsPath: filepath.Join(r.bdir, "goals.md"),
+		Branch: r.st.Branch, Base: r.st.Base,
+		RetroPath: filepath.Join(r.bdir, "retro.md"), InputsPath: finish.RetroInputsPath(r.bdir),
+	}
+	inputs := map[string]any{
+		keySlug: r.slug, "topic": r.st.Topic, "spec_path": data.SpecPath, "goals_path": data.GoalsPath,
+	}
+	switch o.Step {
+	case stepRetro:
+		// The inputs are re-derived on every call that emits this op: they
+		// are a pure function of what is on disk, so a repeated `next`
+		// writes the same bytes and hands back the same op (spec §5.4).
+		if err := r.writeRetroInputs(); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+		inputs["inputs_path"] = data.InputsPath
+		inputs["retro_path"] = data.RetroPath
+	case stepPushPR:
+		inputs[keyBranch] = data.Branch
+		inputs[keyBase] = data.Base
+		o.Done = "takt done --step " + stepPushPR + " --url <pr-url> --slug " + r.slug
 	}
 	text, err := brief.Render("run-"+o.Step, data)
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	o.Instructions = text
-	o.Inputs = map[string]any{
-		keySlug: r.slug, "topic": r.st.Topic, "spec_path": data.SpecPath, "goals_path": data.GoalsPath,
-	}
+	o.Inputs = inputs
 	return printOp(r.env, o)
+}
+
+// writeRetroInputs re-derives finish/retro-inputs.json from the run's own
+// records, so the retro op always names a file that describes the run as it
+// stands (spec §7.5 step 3).
+func (r *nextRun) writeRetroInputs() error {
+	idx, err := readIndex(r.bdir)
+	if err != nil {
+		return err
+	}
+	events, err := bundle.ReadEvents(r.bdir)
+	if err != nil {
+		return err
+	}
+	closes, err := readCloses(r.bdir, r.st.Tasks)
+	if err != nil {
+		return err
+	}
+	v, err := finish.ReadVerify(r.bdir)
+	if err != nil {
+		return err
+	}
+	g, err := finish.ReadGoals(r.bdir)
+	if err != nil {
+		return err
+	}
+	return finish.WriteRetroInputs(r.bdir, finish.BuildRetroInputs(r.st, idx, events, closes, v, g))
+}
+
+// readCloses collects the close record of every wave the run has tasks in,
+// in wave order; a wave that never wrote one is skipped rather than
+// reported, because a run can reach finish with a wave whose tasks were all
+// waived. Task 8 replaces the one record per wave with one per slice, and
+// this is the reader that widens with it.
+func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
+	var waves []int
+	for _, t := range tasks {
+		if !slices.Contains(waves, t.Wave) {
+			waves = append(waves, t.Wave)
+		}
+	}
+	slices.Sort(waves)
+	out := make([]wave.CloseResult, 0, len(waves))
+	for _, n := range waves {
+		c, err := wave.ReadClose(bdir, n)
+		if err != nil {
+			return nil, err
+		}
+		if c != nil {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
 }
 
 // plannerSchema is quoted into the planner brief (spec §7.3).

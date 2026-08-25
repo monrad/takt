@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/plan"
@@ -358,5 +359,124 @@ func TestWaiverSurvivesBundleCommitsButNotCodeCommits(t *testing.T) {
 	testutil.Commit(t, d.root, "user fix")
 	if code, got, _ = recordGoalVerdict(t, d, "missed"); code != 0 || got["all_achieved"] != false {
 		t.Fatalf("a code commit must drop the waiver: %d %v", code, got)
+	}
+}
+
+// TestRetroRunInputsAndDone covers row 22 end to end: `next` writes the
+// retro inputs and hands the session their absolute path, `done --step
+// retro` refuses without a retrospective and commits with one, a repeated
+// `done` is ignored without a commit (spec §5.4), and the run then moves on
+// to branch_finish.
+func TestRetroRunInputsAndDone(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	o := d.nextOp()
+	if o["op"] != "run" || o["step"] != "retro" {
+		t.Fatalf("%v", o)
+	}
+	in, ok := o["inputs"].(map[string]any)
+	if !ok {
+		t.Fatalf("run op without inputs: %v", o)
+	}
+	p, _ := in["inputs_path"].(string)
+	if !filepath.IsAbs(p) || !fileExists(p) {
+		t.Fatalf("inputs_path must be absolute and written: %q", p)
+	}
+	b, _ := os.ReadFile(p)
+	if !strings.Contains(string(b), `"tasks": 2`) || !strings.Contains(string(b), `"verify"`) {
+		t.Fatalf("retro inputs: %s", b)
+	}
+	if !strings.Contains(o["instructions"].(string), "retro.md") ||
+		!strings.Contains(o["done"].(string), "--step retro") {
+		t.Fatalf("%v", o)
+	}
+	if code, _, _ := d.cmd("done", "--step", "retro", "--slug", "demo"); code == 0 {
+		t.Fatal("done retro needs retro.md")
+	}
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md", "# Retro\n\nfine\n")
+	if code, got, errb := d.cmd("done", "--step", "retro", "--slug", "demo"); code != 0 || got["ok"] != true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	if s := testutil.Git(t, d.root, "log", "-1", "--format=%s"); !strings.Contains(s, "retro done") {
+		t.Fatalf("commit: %s", s)
+	}
+	// idempotent: a second done is ignored and commits nothing.
+	before := testutil.Git(t, d.root, "rev-parse", "HEAD")
+	if code, got, _ := d.cmd("done", "--step", "retro", "--slug", "demo"); code != 0 || got["ignored"] != true {
+		t.Fatalf("%d %v", code, got)
+	}
+	if after := testutil.Git(t, d.root, "rev-parse", "HEAD"); after != before {
+		t.Fatal("a no-op done must not commit")
+	}
+	_ = bdir
+	if o = d.nextOp(); o["op"] != "ask" || o["gate"] != "branch_finish" {
+		t.Fatalf("retro done → branch_finish: %v", o)
+	}
+}
+
+// fileExists reports whether an op's path names something that is there.
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// prURL is the pull request the scripted session reports having opened.
+const prURL = "https://git.invalid/monrad/takt/pull/1"
+
+// TestPushPRRunAndDone covers row 24: the push_pr run op carries the branch
+// and base the session must push, its done line asks for the URL, and
+// `done --step push_pr` records that URL on the disposition. Answering
+// branch_finish is a later task, so the disposition is set through
+// bundle.SaveState rather than through `takt answer`.
+func TestPushPRRunAndDone(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	d.nextOp() // the retro run op
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md", "# Retro\n\nfine\n")
+	if code, _, errb := d.cmd("done", "--step", "retro", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	if code, _, _ := d.cmd("done", "--step", "push_pr", "--url", prURL, "--slug", "demo"); code == 0 {
+		t.Fatal("push_pr before the pr disposition must be refused")
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Disposition = &bundle.Disposition{Choice: "pr", At: time.Now().UTC()}
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	o := d.nextOp()
+	if o["op"] != "run" || o["step"] != "push_pr" {
+		t.Fatalf("%v", o)
+	}
+	in, ok := o["inputs"].(map[string]any)
+	if !ok || in["branch"] != st.Branch || in["base"] != st.Base {
+		t.Fatalf("inputs must name the branch and base: %v", o["inputs"])
+	}
+	if !strings.Contains(o["done"].(string), "--url") ||
+		!strings.Contains(o["instructions"].(string), "gh pr create") {
+		t.Fatalf("%v", o)
+	}
+	if code, _, _ := d.cmd("done", "--step", "push_pr", "--slug", "demo"); code == 0 {
+		t.Fatal("done push_pr needs --url")
+	}
+	if code, got, errb := d.cmd("done", "--step", "push_pr", "--url", prURL,
+		"--slug", "demo"); code != 0 || got["ok"] != true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	if st, err = bundle.LoadState(bdir); err != nil || st.Disposition.PRURL != prURL {
+		t.Fatalf("%v %+v", err, st.Disposition)
+	}
+	// idempotent: the pull request is already on the record.
+	before := testutil.Git(t, d.root, "rev-parse", "HEAD")
+	if code, got, _ := d.cmd("done", "--step", "push_pr", "--url", prURL,
+		"--slug", "demo"); code != 0 || got["ignored"] != true {
+		t.Fatalf("%d %v", code, got)
+	}
+	if after := testutil.Git(t, d.root, "rev-parse", "HEAD"); after != before {
+		t.Fatal("a no-op done must not commit")
 	}
 }

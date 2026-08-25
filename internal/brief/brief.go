@@ -113,8 +113,10 @@ type ReviewData struct {
 	VerifyOutput               string
 }
 
-// RunData fills the `run` op instruction templates.
-type RunData struct{ Slug, Topic, SpecPath, GoalsPath string }
+// RunData fills the `run` op instruction templates. Every field is set for
+// every step — the templates pick out what they need — so a step that grows
+// an input does not have to be threaded through the others.
+type RunData struct{ Slug, Topic, SpecPath, GoalsPath, Branch, Base, InputsPath, RetroPath string }
 
 var funcs = template.FuncMap{
 	"quote": Quote,

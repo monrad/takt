@@ -45,7 +45,7 @@ func cmdAnswer(env Env) int {
 		})
 	}
 	if tgt.st.PendingGate == nil || tgt.st.PendingGate.ID != *g {
-		return printJSON(env, map[string]any{"ignored": true, keyReason: "no pending gate " + *g})
+		return printJSON(env, map[string]any{keyIgnored: true, keyReason: "no pending gate " + *g})
 	}
 	keep, err := applyAnswer(ctx, tgt, *g, *choice, *reason, *file)
 	if err != nil {
