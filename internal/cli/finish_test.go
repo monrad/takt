@@ -325,3 +325,38 @@ func TestGoalAssessorRecordRejectsBadVerdicts(t *testing.T) {
 		t.Fatalf("a rejected record leaves the dispatch pending: %v", o)
 	}
 }
+
+// TestWaiverSurvivesBundleCommitsButNotCodeCommits is the goals-side twin of
+// TestVerifiedShaSurvivesBundleOnlyCommitsButNotCodeCommits. Waiving commits
+// the bundle on its way out, so HEAD is always one takt commit past the
+// record holding the waivers: a re-assessment has to carry them forward
+// through takt's own commits (or the user is asked the same question again
+// the moment the assessor is re-run) and drop them once real code moves.
+func TestWaiverSurvivesBundleCommitsButNotCodeCommits(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t)
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	d.nextOp() // the assessor dispatch
+	recordGoalVerdict(t, d, "missed")
+	d.nextOp() // the goals_unmet ask
+	if code, _, errb := d.cmd("answer", "--gate", "goals_unmet", "--choice", "waive",
+		"--reason", "docs later", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	code, got, errb := recordGoalVerdict(t, d, "missed")
+	if code != 0 || got["all_achieved"] != true {
+		t.Fatalf("takt's own answer commit must not drop the waiver: %d %v %s", code, got, errb)
+	}
+	rec, _ := os.ReadFile(filepath.Join(bdir, "finish", "goals.json"))
+	if !strings.Contains(string(rec), `"docs later"`) {
+		t.Fatalf("the waiver is not in the re-written record: %s", rec)
+	}
+	// A code commit re-opens the question: the waiver was given against code
+	// HEAD no longer holds.
+	testutil.WriteFile(t, d.root, "z.go", "package z\n")
+	testutil.Commit(t, d.root, "user fix")
+	if code, got, _ = recordGoalVerdict(t, d, "missed"); code != 0 || got["all_achieved"] != false {
+		t.Fatalf("a code commit must drop the waiver: %d %v", code, got)
+	}
+}

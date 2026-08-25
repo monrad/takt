@@ -31,6 +31,27 @@ func TestParseVerdictsValidatesAgainstGoalIDs(t *testing.T) {
 	}
 }
 
+func TestParseVerdictsReturnsGoalsMdOrder(t *testing.T) {
+	t.Parallel()
+	ids := []string{"G1", "G2", "G3"}
+	shuffled := []byte(`[{"id":"G3","verdict":"missed","evidence":"nothing"},
+	                     {"id":"G1","verdict":"achieved","evidence":"go test passed"},
+	                     {"id":"G2","verdict":"partial","evidence":"docs missing"}]`)
+	vs, err := finish.ParseVerdicts(shuffled, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range vs {
+		if v.ID != ids[i] {
+			t.Fatalf("verdict %d is %s, want %s: %+v", i, v.ID, ids[i], vs)
+		}
+	}
+	u := finish.GoalsRecord{Verdicts: vs}.Unmet()
+	if len(u) != 2 || u[0].ID != "G2" || u[1].ID != "G3" {
+		t.Fatalf("Unmet must follow goals.md order: %+v", u)
+	}
+}
+
 func TestGoalsRecordUnmetHonoursWaivers(t *testing.T) {
 	t.Parallel()
 	r := finish.GoalsRecord{Verdicts: []finish.GoalVerdict{

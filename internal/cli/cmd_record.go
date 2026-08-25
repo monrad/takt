@@ -99,8 +99,22 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	rec := finish.GoalsRecord{SHA: head, Verdicts: vs, At: timeNow()}
-	if prev, _ := finish.ReadGoals(tgt.bdir); prev != nil && prev.SHA == head {
-		rec.Waived = prev.Waived // a re-assessment keeps earlier waivers at the same HEAD
+	// A re-assessment keeps the earlier waivers as long as the record they
+	// were written into still covers HEAD. "Still covers" has to be
+	// headCovered, not prev.SHA == head: the waive answer commits the bundle
+	// on its way out, so by the time a record with waivers exists HEAD is
+	// already one bundle-only commit past it, and an equality test would
+	// silently re-open every goal the user just waived. A code commit does
+	// move the goalposts, and there the waivers are correctly dropped —
+	// they were given against code HEAD no longer holds.
+	if prev, _ := finish.ReadGoals(tgt.bdir); prev != nil {
+		covered, cerr := headCovered(ctx, tgt.ws, tgt.bdir, prev.SHA)
+		if cerr != nil {
+			return fail(env.Stderr, exitError, cerr.Error(), "")
+		}
+		if covered {
+			rec.Waived = prev.Waived
+		}
 	}
 	unmet := rec.Unmet()
 	if len(unmet) == 0 {

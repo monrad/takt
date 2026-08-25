@@ -80,31 +80,39 @@ func ParseVerdicts(js []byte, ids []string) ([]GoalVerdict, error) {
 	for _, id := range ids {
 		want[id] = true
 	}
-	seen := map[string]bool{}
+	seen := map[string]GoalVerdict{}
 	for i := range vs {
 		v := &vs[i]
 		if err := checkVerdict(*v, want, seen); err != nil {
 			return nil, err
 		}
-		seen[v.ID] = true
 		if v.Citations == nil {
 			v.Citations = []string{}
 		}
+		seen[v.ID] = *v
 	}
+	// Returned in goals.md order, not the order the assessor happened to
+	// emit: the record is the user's list of goals with a verdict against
+	// each, and Unmet walks it in that same order.
+	out := make([]GoalVerdict, 0, len(ids))
 	for _, id := range ids {
-		if !seen[id] {
+		v, ok := seen[id]
+		if !ok {
 			return nil, fmt.Errorf("goal %s has no verdict", id)
 		}
+		out = append(out, v)
 	}
-	return vs, nil
+	return out, nil
 }
 
-// checkVerdict is ParseVerdicts's per-entry validation.
-func checkVerdict(v GoalVerdict, want, seen map[string]bool) error {
+// checkVerdict is ParseVerdicts's per-entry validation; seen holds the
+// entries already accepted, keyed by goal id.
+func checkVerdict(v GoalVerdict, want map[string]bool, seen map[string]GoalVerdict) error {
+	_, dup := seen[v.ID]
 	switch {
 	case !want[v.ID]:
 		return fmt.Errorf("verdict for unknown goal %q", v.ID)
-	case seen[v.ID]:
+	case dup:
 		return fmt.Errorf("goal %s judged twice", v.ID)
 	case !verdicts[v.Verdict]:
 		return fmt.Errorf("goal %s: verdict %q is not achieved|partial|missed", v.ID, v.Verdict)
