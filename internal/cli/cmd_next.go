@@ -86,8 +86,17 @@ func (r *nextRun) acquireLock() (int, bool) {
 		})
 		return printOp(r.env, q), true
 	}
-	if err := bundle.SaveState(r.bdir, r.st); err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), ""), true
+	// LockKept means the refreshed heartbeat is not worth a write of its
+	// own: this session already holds the lock and the recorded heartbeat is
+	// still current. Saving anyway would rewrite state.json — a tracked file
+	// — on every `takt next`, so a call that only reads the run (a repeated
+	// op, a `stop`) would leave the worktree dirty with nothing to commit.
+	// The refreshed heartbeat is still in r.st, so any later write in this
+	// call — a launch, a transition, a gate — carries it.
+	if outcome != bundle.LockKept {
+		if err := bundle.SaveState(r.bdir, r.st); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), ""), true
+		}
 	}
 	if outcome == bundle.LockStolen || (outcome == bundle.LockForced && r.force) {
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{

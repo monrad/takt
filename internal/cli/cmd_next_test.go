@@ -418,6 +418,58 @@ func TestDoneLeavesUnrelatedStagedFilesAlone(t *testing.T) {
 	}
 }
 
+// TestNextLeavesTheTreeCleanWhenItOnlyHeartbeats covers the integration bug
+// Task 9's end-to-end test found: the session heartbeat lives in state.json,
+// which is tracked and committed, so stamping it on every `takt next` left a
+// modified state.json behind after any call that decided nothing and
+// committed nothing. A run whose last op was a `stop` therefore ended with a
+// dirty worktree, and the plan's acceptance test — which replays every op —
+// saw it. A call that changes nothing must now write nothing; the lock is
+// still refreshed, but only once the holder's own heartbeat has aged past
+// half the ttl (bundle.Acquire, LockKept).
+func TestNextLeavesTheTreeCleanWhenItOnlyHeartbeats(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	env := map[string]string{"TAKT_SESSION": "S"}
+	// The first next takes the lock over from the generated holder init left
+	// behind — a real change — and `done` commits the bundle, so the run
+	// starts this test with a clean tree.
+	if code, o, errb := next(t, root, env); code != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	if code, _, errb := runIn(t, root, env, "done", "--step", "brainstorm", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("precondition: %q", status)
+	}
+
+	before, err := os.ReadFile(filepath.Join(bdir, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if code, o, errb := next(t, root, env); code != 0 || o["step"] != "goals" {
+			t.Fatalf("%d %v %s", code, o, errb)
+		}
+	}
+	after, err := os.ReadFile(filepath.Join(bdir, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("a repeated next rewrote state.json:\n%s\n%s", before, after)
+	}
+	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("repeating next dirtied the tree: %q", status)
+	}
+	// The lock is still held: keeping the heartbeat must not release the run.
+	if _, o, _ := next(t, root, map[string]string{"TAKT_SESSION": "B"}); o["gate"] != "owner" {
+		t.Fatalf("the kept lock must still hold the run: %v", o)
+	}
+}
+
 func TestNextSessionLock(t *testing.T) {
 	t.Parallel()
 	root, _ := setupRun(t)
