@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -70,11 +69,11 @@ func (c *claudeReviewer) Review(ctx context.Context, req ReviewRequest) (ReviewR
 	if run.Err != nil && run.Stdout == "" {
 		return errorResult(nameClaude, req.Model, run.Err.Error()+": "+tail(run.Stderr), "", run.Elapsed), nil
 	}
+	// parseClaudeEnvelope only ever fails on the envelope's own JSON, which
+	// is a reviewer outcome (fail closed with the raw output attached), never
+	// a takt-level error.
 	r, err := parseClaudeEnvelope([]byte(run.Stdout))
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return ReviewResult{}, err
-		}
 		return errorResult(nameClaude, req.Model, err.Error(), run.Stdout, run.Elapsed), nil
 	}
 	r.Provider, r.Model, r.Raw, r.Elapsed = nameClaude, req.Model, run.Stdout, run.Elapsed

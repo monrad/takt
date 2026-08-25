@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -19,10 +20,25 @@ import (
 // out as constants because goconst flags the repeated literals, not because
 // callers reference them (they still describe the JSON key in op.Op.Context).
 const (
-	ctxSlug  = "slug"
-	ctxWave  = "wave"
-	ctxCount = "count"
+	ctxSlug      = "slug"
+	ctxWave      = "wave"
+	ctxCount     = "count"
+	ctxFailed    = "failed"
+	ctxBlocked   = "blocked"
+	ctxExhausted = "exhausted"
+	ctxRework    = "rework"
 )
+
+// ids normalises a nil id list to an empty one. A gate's context is
+// persisted as the pending gate's payload and re-rendered from it verbatim
+// (spec §4.3), so `null` where the user expects a list is durable noise —
+// every id list in a question renders as `[]` when it is empty.
+func ids(v []int) []int {
+	if v == nil {
+		return []int{}
+	}
+	return v
+}
 
 // Action is what `takt next` must do with a Decision.
 type Action string
@@ -247,13 +263,15 @@ func decideExecute(st *bundle.State, f Facts) (Decision, error) {
 	if aw := st.ActiveWave; aw != nil {
 		return decideActiveWave(st, aw, f), nil
 	}
-	pending, failedOrBlocked := []int{}, []int{}
+	pending, failed, blocked := []int{}, []int{}, []int{}
 	for _, t := range st.Tasks {
 		switch t.Status {
 		case bundle.StatusPending:
 			pending = append(pending, t.ID)
-		case bundle.StatusFailed, bundle.StatusBlocked:
-			failedOrBlocked = append(failedOrBlocked, t.ID)
+		case bundle.StatusFailed:
+			failed = append(failed, t.ID)
+		case bundle.StatusBlocked:
+			blocked = append(blocked, t.ID)
 		}
 	}
 	if len(pending) > 0 {
@@ -267,15 +285,19 @@ func decideExecute(st *bundle.State, f Facts) (Decision, error) {
 		sort.Ints(ids)
 		return Decision{Action: ActLaunch, Wave: wave, Tasks: ids, Attempt: 1}, nil
 	}
-	if len(failedOrBlocked) > 0 {
+	if len(failed) > 0 || len(blocked) > 0 {
+		// Failed and blocked are shown under their own headings: lumping the
+		// blocked ids in with the failed ones told the user a task had tried
+		// and failed when it had reported that it could not start.
 		return ask(
 			"wave_failures",
 			map[string]any{
-				ctxSlug:     st.Slug,
-				ctxWave:     lowestWave(st, failedOrBlocked),
-				"failed":    failedOrBlocked,
-				"blocked":   []int{},
-				"exhausted": []int{},
+				ctxSlug:      st.Slug,
+				ctxWave:      lowestWave(st, append(slices.Clone(failed), blocked...)),
+				ctxFailed:    failed,
+				ctxBlocked:   blocked,
+				ctxExhausted: []int{},
+				ctxRework:    []int{},
 			},
 		), nil
 	}
@@ -336,7 +358,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 			},
 		)
 	}
-	var retry, exhausted []int
+	retry, exhausted := []int{}, []int{}
 	for _, id := range c.Rework {
 		if t := st.Task(id); t != nil && t.Attempt < 1+st.Config.MaxRework {
 			retry = append(retry, id)
@@ -347,14 +369,19 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 	if len(c.Failed) == 0 && len(c.Blocked) == 0 && len(exhausted) == 0 && len(retry) > 0 {
 		return Decision{Action: ActLaunch, Wave: aw.N, Tasks: retry, Attempt: aw.Attempt + 1}
 	}
+	// retry rides along: when a failed or blocked task is holding the wave,
+	// the rework tasks that would have been re-dispatched on their own are
+	// part of what the user is deciding about and the question has to name
+	// them (they are re-dispatched by whichever choice reopens the wave).
 	return ask(
 		"wave_failures",
 		map[string]any{
-			ctxSlug:     st.Slug,
-			ctxWave:     aw.N,
-			"failed":    c.Failed,
-			"blocked":   c.Blocked,
-			"exhausted": exhausted,
+			ctxSlug:      st.Slug,
+			ctxWave:      aw.N,
+			ctxFailed:    ids(c.Failed),
+			ctxBlocked:   ids(c.Blocked),
+			ctxExhausted: exhausted,
+			ctxRework:    retry,
 		},
 	)
 }

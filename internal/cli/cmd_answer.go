@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -47,7 +46,7 @@ func cmdAnswer(env Env) int {
 	if tgt.st.PendingGate == nil || tgt.st.PendingGate.ID != *g {
 		return printJSON(env, map[string]any{"ignored": true, keyReason: "no pending gate " + *g})
 	}
-	keep, err := applyAnswer(ctx, tgt, *g, *choice, *reason, *file)
+	keep, err := applyAnswer(tgt, *g, *choice, *reason, *file)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
@@ -65,7 +64,7 @@ func cmdAnswer(env Env) int {
 
 // applyAnswer applies the choice to the gate's own state. keep is true when
 // the gate must stay open (the user chose to stop).
-func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file string) (bool, error) {
+func applyAnswer(tgt *runTarget, g, choice, reason, file string) (bool, error) {
 	switch g {
 	case "gate_review":
 		return answerGateReview(tgt.bdir, tgt.st, choice, reason)
@@ -77,7 +76,7 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file st
 		}
 		return true, nil
 	case "wave_failures", "review_error":
-		return answerWaveGate(ctx, tgt.ws, tgt.bdir, tgt.st, g, choice, reason)
+		return answerWaveGate(tgt.bdir, tgt.st, g, choice, reason)
 	}
 	return false, errorf("unknown gate %s", g)
 }

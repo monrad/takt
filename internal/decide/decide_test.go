@@ -446,3 +446,73 @@ func TestQuestionShapes(t *testing.T) {
 		}
 	}
 }
+
+// TestWaveFailuresContextShape covers the JSON-shape half of review M10: the
+// gate's context is persisted as the pending gate's payload and re-rendered
+// from it verbatim (spec §4.3), so every id list has to be a list — `null`
+// in a question the user reads is durable noise — blocked ids belong under
+// `blocked` rather than lumped in with the failed ones, and the rework tasks
+// that ride along with a failure have to be named too.
+func TestWaveFailuresContextShape(t *testing.T) {
+	t.Parallel()
+	t.Run("no active wave: blocked ids are their own list", func(t *testing.T) {
+		t.Parallel()
+		st := execState()
+		st.Tasks[0].Status = bundle.StatusFailed
+		st.Tasks[1].Status = bundle.StatusBlocked
+		st.Tasks[2].Status = bundle.StatusDone
+		d := mustDecide(t, st, facts())
+		if d.Action != decide.ActAsk || d.Op.Gate != "wave_failures" {
+			t.Fatalf("%+v", d)
+		}
+		assertIDs(t, d.Op.Context, "failed", []int{1})
+		assertIDs(t, d.Op.Context, "blocked", []int{2})
+		assertIDs(t, d.Op.Context, "exhausted", nil)
+		assertIDs(t, d.Op.Context, "rework", nil)
+	})
+	t.Run("active wave: a failure names the rework tasks riding along", func(t *testing.T) {
+		t.Parallel()
+		st := execState()
+		st.Tasks[1].Attempt = 1 // one rework left at max_rework 1
+		st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: t0, SessionID: "S", Tasks: []int{1, 2}}
+		f := facts()
+		f.Wave.Recorded = map[int]bool{1: true, 2: true}
+		f.Wave.Close = &decide.CloseFacts{Failed: []int{1}, Rework: []int{2}}
+		d := mustDecide(t, st, f)
+		if d.Action != decide.ActAsk || d.Op.Gate != "wave_failures" {
+			t.Fatalf("%+v", d)
+		}
+		assertIDs(t, d.Op.Context, "failed", []int{1})
+		assertIDs(t, d.Op.Context, "blocked", nil)
+		assertIDs(t, d.Op.Context, "exhausted", nil)
+		assertIDs(t, d.Op.Context, "rework", []int{2})
+		if !strings.Contains(d.Op.Question, "rework pending [2]") {
+			t.Fatalf("the question must name the rework tasks: %q", d.Op.Question)
+		}
+	})
+}
+
+// assertIDs checks one id list of a gate context: present, a list (never
+// null once marshalled), and holding exactly want.
+func assertIDs(t *testing.T, ctx map[string]any, key string, want []int) {
+	t.Helper()
+	got, ok := ctx[key].([]int)
+	if !ok {
+		t.Fatalf("context[%q] = %#v, want an []int", key, ctx[key])
+	}
+	b, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) == "null" {
+		t.Fatalf("context[%q] marshals to null; a gate's id lists are always lists", key)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("context[%q] = %v, want %v", key, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("context[%q] = %v, want %v", key, got, want)
+		}
+	}
+}

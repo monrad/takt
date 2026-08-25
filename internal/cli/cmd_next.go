@@ -123,7 +123,7 @@ func (r *nextRun) acquireLock() (int, bool) {
 // returns as soon as one op is printed (spec §5.3 rows 7, 12, 19).
 func (r *nextRun) loop(ctx context.Context) int {
 	for range maxDecideIterations {
-		facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, r.force, r.recover, r.now, r.waveSession())
+		facts, err := gatherFacts(r.ws, r.bdir, r.st, r.force, r.recover, r.now, r.waveSession())
 		if err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
@@ -149,7 +149,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 		case decide.ActRecover:
 			return recoverWave(ctx, r, d)
 		case decide.ActDispatch:
-			return r.dispatchAgent(ctx, d)
+			return r.dispatchAgent(d)
 		case decide.ActAsk:
 			return r.ask(*d.Op)
 		case decide.ActRun:
@@ -322,7 +322,7 @@ func (r *nextRun) materialiseTasks(idx plan.Index, waves map[int]int) int {
 }
 
 // dispatchAgent renders the planner / auditor brief and prints the op.
-func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
+func (r *nextRun) dispatchAgent(d decide.Decision) int {
 	tok, err := brief.Token()
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
@@ -332,7 +332,7 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	var text, name string
 	switch ag.Agent {
 	case "planner":
-		text, name, err = r.plannerBrief(ctx, &ag, tok)
+		text, name, err = r.plannerBrief(&ag, tok)
 	case "alignment-auditor":
 		text, name, err = r.auditorBrief(&ag, tok)
 	default:
@@ -358,10 +358,10 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 
 // plannerBrief pins the planner's model and renders its brief, appending the
 // problems of the previous attempt when there was one (spec §5.3 row 8).
-func (r *nextRun) plannerBrief(ctx context.Context, ag *op.Agent, tok string) (string, string, error) {
+func (r *nextRun) plannerBrief(ag *op.Agent, tok string) (string, string, error) {
 	ag.Model = r.ws.Cfg.Agents.Planner.Model
 	ag.Label = "plan the run"
-	facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, false, false, r.now, r.session)
+	facts, err := gatherFacts(r.ws, r.bdir, r.st, false, false, r.now, r.session)
 	if err != nil {
 		return "", "", err
 	}

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -24,7 +23,7 @@ func fileNonEmpty(p string) bool {
 
 // gatherFacts reads everything Decide needs from the bundle (spec §5.3).
 func gatherFacts(
-	_ context.Context, ws *workspace, bdir string, st *bundle.State,
+	ws *workspace, bdir string, st *bundle.State,
 	force, recovering bool, now time.Time, session string,
 ) (decide.Facts, error) {
 	f := decide.Facts{

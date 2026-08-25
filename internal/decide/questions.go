@@ -134,8 +134,8 @@ func questionPlanInvalid(q *op.Op, ctx map[string]any) {
 func questionWaveFailures(q *op.Op, ctx map[string]any) {
 	q.Narration = fmt.Sprintf("wave %v has failed or blocked tasks", ctx[ctxWave])
 	q.Question = fmt.Sprintf(
-		"Wave %v: failed %v, blocked %v, rework exhausted %v. How do you want to proceed?",
-		ctx[ctxWave], ctx["failed"], ctx["blocked"], ctx["exhausted"],
+		"Wave %v: failed %v, blocked %v, rework exhausted %v, rework pending %v. How do you want to proceed?",
+		ctx[ctxWave], ctx[ctxFailed], ctx[ctxBlocked], ctx[ctxExhausted], ctx[ctxRework],
 	)
 	q.Options = []op.Option{
 		{

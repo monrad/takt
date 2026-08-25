@@ -65,8 +65,3 @@ type Op struct {
 	// stop
 	Reason string `json:"reason,omitempty"`
 }
-
-// IntPtr is a small helper for the Wave field.
-//
-//go:fix inline
-func IntPtr(n int) *int { return new(n) }

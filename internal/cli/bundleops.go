@@ -226,9 +226,7 @@ func errorf(format string, a ...any) error { return fmt.Errorf(format, a...) }
 
 // answerWaveGate applies a wave_failures / review_error choice (spec §7.4
 // step 5). It reports whether the gate must stay open — only `stop` does.
-func answerWaveGate(
-	_ context.Context, _ *workspace, bdir string, st *bundle.State, gate, choice, reason string,
-) (bool, error) {
+func answerWaveGate(bdir string, st *bundle.State, gate, choice, reason string) (bool, error) {
 	aw := st.ActiveWave
 	switch gate + "/" + choice {
 	case "wave_failures/retry":
