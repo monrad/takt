@@ -294,6 +294,12 @@ func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bo
 	if err = wave.WriteClose(r.bdir, *c); err != nil {
 		return false
 	}
+	// Everything the interrupted recordCloseOutcome would have done, not
+	// just the record: the baseline a retry parked for this wave is spent
+	// the moment the wave commits. Left behind, the next launch prefers it
+	// over the tree the commit left — coming up as the slice it was parked
+	// for, and closing over the record of the slice that has just landed.
+	_ = wave.DeleteBaseline(r.bdir, c.Wave)
 	_ = bundle.AppendEvent(r.bdir, "wave_committed", map[string]any{
 		keyWave: c.Wave, keySlice: c.Slice, keyAttempt: c.Attempt, keySHA: head, "backfilled": true,
 	})

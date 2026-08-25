@@ -1238,3 +1238,97 @@ func TestRetryCarriesTheEarlierRoundsResultsForward(t *testing.T) {
 		t.Fatalf("task 1's evidence from the first round must survive the retry: %+v", c.Tasks)
 	}
 }
+
+// TestBackfillRetiresTheParkedBaseline covers the other half of what the
+// interrupted recordCloseOutcome would have done: it deletes the baseline a
+// retry parked, because the next slice must start from the tree the commit
+// left. Repairing the record without that left the parked copy on disk, and
+// the next launch of the wave prefers it — coming up as slice 1 again, with
+// the tree the failed attempt started in, and closing over the record of the
+// slice that had just committed.
+func TestBackfillRetiresTheParkedBaseline(t *testing.T) {
+	t.Parallel()
+	root, bdir := wideRun(t, 2)
+	parked := retryLandsSliceOne(t, root, bdir)
+	// The crash window, in full: the commit landed, and neither the sha nor
+	// the deletion of the parked baseline reached the disk.
+	if werr := os.WriteFile(wave.BaselinePath(bdir, 0), parked, 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	blankTheSha(t, bdir)
+
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || len(agentsOf(t, o)) != 1 || agentsOf(t, o)[0]["task"] != float64(3) {
+		t.Fatalf("the reconciled wave launches its next slice: %v", o)
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.ActiveWave == nil || st.ActiveWave.Slice != 2 {
+		t.Fatalf("the repaired slice has committed, so the next one is slice 2: %+v", st.ActiveWave)
+	}
+	if _, serr := os.Stat(wave.BaselinePath(bdir, 0)); !os.IsNotExist(serr) {
+		t.Fatalf("the landed wave's parked baseline must be gone: %v", serr)
+	}
+	testutil.WriteFile(t, root, "c.go", "package c\n")
+	record(t, root, 3, 1, "done", "c")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	first, err := wave.ReadClose(bdir, 0, 1)
+	if err != nil || first == nil || len(first.Tasks) != 2 {
+		t.Fatalf("slice 1's record must survive with both its tasks: %v %+v", err, first)
+	}
+	second, err := wave.ReadClose(bdir, 0, 2)
+	if err != nil || second == nil || len(second.Tasks) != 1 || second.Tasks[0].Task != 3 {
+		t.Fatalf("slice 2 must keep its own record: %v %+v", err, second)
+	}
+}
+
+// retryLandsSliceOne drives slice 1 of a wideRun(2) through a failed round, a
+// wave_failures retry and the close that finally commits it, and returns the
+// baseline the retry parked on its way out — the copy recordCloseOutcome
+// deletes once the wave commits, and the one a kill in that window leaves
+// behind.
+func retryLandsSliceOne(t *testing.T, root, bdir string) []byte {
+	t.Helper()
+	next(t, root, nil) // slice 1: tasks 1 and 2
+	recordReport(t, root, 1, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
+	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+	if code, _, errb := runIn(t, root, nil,
+		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	parked, err := os.ReadFile(wave.BaselinePath(bdir, 0))
+	if err != nil {
+		t.Fatalf("the retry must park a baseline: %v", err)
+	}
+	next(t, root, nil) // the retry, at attempt 2
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	record(t, root, 1, 2, "done", "a")
+	record(t, root, 2, 2, "done", "b")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	return parked
+}
+
+// blankTheSha rewrites the wave's newest close record without its commit
+// sha: the half of the crash window that makes the record claim a commit
+// waveCommitLanded cannot confirm.
+func blankTheSha(t *testing.T, bdir string) {
+	t.Helper()
+	c, err := wave.LatestClose(bdir, 0)
+	if err != nil || c == nil {
+		t.Fatalf("%v %+v", err, c)
+	}
+	c.CommitSHA = ""
+	if err = wave.WriteClose(bdir, *c); err != nil {
+		t.Fatal(err)
+	}
+}
