@@ -100,7 +100,7 @@ func (r *nextRun) acquireLock() (int, bool) {
 // returns as soon as one op is printed (spec §5.3 rows 7, 12, 19).
 func (r *nextRun) loop(ctx context.Context) int {
 	for range maxDecideIterations {
-		facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, r.force, r.recover, r.now, r.session)
+		facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, r.force, r.recover, r.now, r.waveSession())
 		if err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
@@ -140,6 +140,20 @@ func (r *nextRun) loop(ctx context.Context) int {
 	return fail(r.env.Stderr, exitError, "decide loop did not converge", "run `takt doctor`")
 }
 
+// waveSession is the session id the wave-liveness check (spec §5.3 row 13)
+// compares the active wave's dispatcher against. When takt had to invent
+// this process's id — nothing set CLAUDE_CODE_SESSION_ID or TAKT_SESSION —
+// two calls of one real session are indistinguishable, so an in-flight wave
+// is taken to be this session's own and `next` waits: waiting for an agent
+// that is still working costs a turn, while recovering resets its files and
+// cannot be undone. `takt next --recover` forces the other reading.
+func (r *nextRun) waveSession() string {
+	if r.genID && r.st.ActiveWave != nil {
+		return r.st.ActiveWave.SessionID
+	}
+	return r.session
+}
+
 // transition records a phase change and commits it (spec §5.3 rows 7, 19).
 func (r *nextRun) transition(ctx context.Context, to string) int {
 	from := r.st.Phase
@@ -160,7 +174,7 @@ func (r *nextRun) clearWave(n int) int {
 	if err := bundle.SaveState(r.bdir, r.st); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
-	_ = bundle.AppendEvent(r.bdir, "wave_cleared", map[string]any{"wave": n})
+	_ = bundle.AppendEvent(r.bdir, "wave_cleared", map[string]any{keyWave: n})
 	return 0
 }
 
@@ -327,16 +341,6 @@ func (r *nextRun) run(o op.Op) int {
 const plannerSchema = `{ "schema": 1, "spec_hash": "sha256:<sha256 of spec.md>", "tasks": [ { "id": 1, ` +
 	`"title": "…", "description": "…", "files": ["path/relative/to/repo"], "verify": ["go test ./pkg/..."], ` +
 	`"depends_on": [], "goals": ["G1"], "class": "implement" } ] }`
-
-// launchWave dispatches a wave's implementers; wired in Task 7.
-func launchWave(_ context.Context, r *nextRun, _ decide.Decision) int {
-	return fail(r.env.Stderr, exitError, "execute phase is wired in Task 7", "")
-}
-
-// recoverWave resets and re-dispatches a crashed wave; wired in Task 7.
-func recoverWave(_ context.Context, r *nextRun, _ decide.Decision) int {
-	return fail(r.env.Stderr, exitError, "execute phase is wired in Task 7", "")
-}
 
 // reviewerFor selects the configured reviewer and its backend settings.
 func reviewerFor(ws *workspace, env Env) (backend.Reviewer, config.Backend, error) {

@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"flag"
 	"io"
 	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
@@ -37,7 +41,10 @@ func cmdRecord(env Env) int {
 		return code
 	}
 	if *task > 0 {
-		return recordTask(env, tgt.ws, tgt.bdir, tgt.slug, tgt.st, *task, *attempt, *from, *status, *summary, *blockers)
+		return recordTask(env, tgt.ws, tgt.bdir, tgt.st, digestInput{
+			task: *task, attempt: *attempt, from: *from,
+			status: *status, summary: *summary, blockers: *blockers,
+		})
 	}
 	switch *agent {
 	case "planner":
@@ -129,7 +136,95 @@ func applyVerdicts(env Env, bdir string, a *alignmentFile, js []byte) int {
 	return 0
 }
 
-// recordTask records an implementer digest; wired in Task 7.
-func recordTask(env Env, _ *workspace, _, _ string, _ *bundle.State, _, _ int, _, _, _, _ string) int {
-	return fail(env.Stderr, exitError, "task digests are wired in Task 7", "")
+// digestInput is the `--task` half of `takt record`'s command line: the
+// agent's report file and the explicit overrides for what it should have
+// said.
+type digestInput struct {
+	task     int
+	attempt  int
+	from     string
+	status   string
+	summary  string
+	blockers string
+}
+
+// parseReport extracts the trailing STATUS / SUMMARY / BLOCKERS lines of an
+// agent's final message and returns them in that order; the last occurrence
+// of each wins, so an agent that quoted the template earlier in its message
+// does not fool the parser.
+func parseReport(text string) (string, string, string) {
+	var status, summary, blockers string
+	for raw := range strings.SplitSeq(text, "\n") {
+		ln := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(ln, "STATUS:"):
+			status = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(ln, "STATUS:")))
+		case strings.HasPrefix(ln, "SUMMARY:"):
+			summary = strings.TrimSpace(strings.TrimPrefix(ln, "SUMMARY:"))
+		case strings.HasPrefix(ln, "BLOCKERS:"):
+			blockers = strings.TrimSpace(strings.TrimPrefix(ln, "BLOCKERS:"))
+		}
+	}
+	return status, summary, blockers
+}
+
+// recordTask writes one implementer's digest (spec §7.4 step 3). A digest
+// that does not belong to the active wave's current attempt is ignored, not
+// an error: a crashed agent that reports late must never overwrite the
+// result of the attempt that replaced it.
+func recordTask(env Env, ws *workspace, bdir string, st *bundle.State, in digestInput) int {
+	if in.from != "" {
+		b, err := os.ReadFile(in.from)
+		if err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
+		s, sm, bl := parseReport(string(b))
+		in.status, in.summary, in.blockers = cmp.Or(in.status, s), cmp.Or(in.summary, sm), cmp.Or(in.blockers, bl)
+	}
+	switch in.status {
+	case bundle.StatusDone, bundle.StatusFailed, bundle.StatusBlocked:
+	default:
+		return fail(env.Stderr, exitError, "digest status must be done, failed or blocked",
+			"the agent's final message must end with STATUS: / SUMMARY: / BLOCKERS: lines")
+	}
+	aw := st.ActiveWave
+	t := st.Task(in.task)
+	if aw == nil || aw.Attempt != in.attempt || !slices.Contains(aw.Tasks, in.task) || t == nil {
+		_ = bundle.AppendEvent(bdir, "digest_ignored", map[string]any{keyTask: in.task, keyAttempt: in.attempt})
+		return printJSON(env, map[string]any{"ignored": true, keyReason: "not the active wave attempt"})
+	}
+	if code := writeDigest(env, ws, bdir, aw.N, t, in); code != 0 {
+		return code
+	}
+	if err := bundle.SaveState(bdir, st); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	_ = bundle.AppendEvent(bdir, "task_recorded", map[string]any{
+		keyTask: in.task, keyAttempt: in.attempt, keyStatus: in.status,
+	})
+	return printJSON(env, map[string]any{
+		keyTask: in.task, keyAttempt: in.attempt, keyStatus: in.status, "recorded": true,
+	})
+}
+
+// writeDigest persists the digest file and hangs the same bytes on the task
+// so `takt status` can show the last result without re-reading the wave.
+func writeDigest(env Env, ws *workspace, bdir string, waveN int, t *bundle.Task, in digestInput) int {
+	d := digest{
+		Task: in.task, Attempt: in.attempt, Status: in.status, Summary: in.summary,
+		Blockers: in.blockers, Model: digestModel(ws.Cfg, bdir, waveN, t), RecordedAt: timeNow(),
+	}
+	b, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	p := digestPath(bdir, waveN, in.task, in.attempt)
+	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	if err = os.WriteFile(p, append(b, '\n'), 0o600); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	t.LastDigest = b
+	return 0
 }

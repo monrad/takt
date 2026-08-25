@@ -56,21 +56,36 @@ const (
 	keyFindings      = "findings"
 	keyWaves         = "waves"
 	keyVerdict       = "verdict"
+	keyTask          = "task"
+	keyAttempt       = "attempt"
+	keyWave          = "wave"
+	keyStatus        = "status"
+	keyCommitted     = "committed"
+)
+
+// Task statuses a close record can hold that state.json cannot: a reviewed
+// task sent back for rework is still pending, and a task whose review could
+// not be run at all is neither passed nor failed (spec §7.4 step 4).
+const (
+	statusRework      = "rework"
+	statusReviewError = "review_error"
 )
 
 var commands = map[string]command{
-	"version": cmdVersion,
-	"init":    cmdInit,
-	"status":  cmdStatus,
-	"plan":    cmdPlan,
-	"doctor":  cmdDoctor,
-	"next":    cmdNext,
-	"done":    cmdDone,
-	"review":  cmdReview,
-	"record":  cmdRecord,
-	"answer":  cmdAnswer,
-	"goals":   cmdGoals,
-	"unlock":  cmdUnlock,
+	"version":    cmdVersion,
+	"init":       cmdInit,
+	"status":     cmdStatus,
+	"plan":       cmdPlan,
+	"doctor":     cmdDoctor,
+	"next":       cmdNext,
+	"done":       cmdDone,
+	"review":     cmdReview,
+	"record":     cmdRecord,
+	"answer":     cmdAnswer,
+	"goals":      cmdGoals,
+	"unlock":     cmdUnlock,
+	"close-wave": cmdCloseWave,
+	"waive":      cmdWaive,
 }
 
 // Main dispatches args[0] to a subcommand and returns the process exit code.

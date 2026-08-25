@@ -192,9 +192,13 @@ func TestNextWalksBrainstormAndPlan(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	// Load: next materialises the tasks and moves to execute. (Until Task 7
-	// wires the launch, the loop then fails loudly — the state is what we assert.)
-	next(t, root, nil)
+	// Load: next materialises the tasks, moves to execute, and — in the same
+	// call — launches wave 0, because the load is a side effect the loop
+	// decides past rather than an op of its own (spec §5.3 row 17).
+	code, o, errb = next(t, root, nil)
+	if code != 0 || o["op"] != "dispatch" || o["wave"] != float64(0) {
+		t.Fatalf("load must fall through to the wave-0 dispatch: %d %v %s", code, o, errb)
+	}
 	st, _ = bundle.LoadState(bdir)
 	if st.Phase != bundle.PhaseExecute || len(st.Tasks) != 2 || st.Tasks[1].Wave != 1 ||
 		st.Tasks[0].Class != "bounded" {

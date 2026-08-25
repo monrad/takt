@@ -7,17 +7,52 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/op"
 	"github.com/monrad/takt/internal/plan"
+	"github.com/monrad/takt/internal/wave"
 )
 
 // digestPath is waves/<n>/task-<id>.a<attempt>.digest.json.
-func digestPath(bdir string, wave, task, attempt int) string {
-	return filepath.Join(bdir, "waves", strconv.Itoa(wave), fmt.Sprintf("task-%d.a%d.digest.json", task, attempt))
+func digestPath(bdir string, waveN, task, attempt int) string {
+	return filepath.Join(waveDir(bdir, waveN), fmt.Sprintf("task-%d.a%d.digest.json", task, attempt))
+}
+
+// bundleTreeRel is takt's own directory, repo-relative, or "" when the
+// bundle lives outside the repository. Everything under it — state, events,
+// digests, briefs, close records, review logs — is takt's bookkeeping, which
+// the wave commit stages wholesale and which no task may declare. It is
+// therefore excluded from the wave baseline and from scope verification:
+// without that, takt's own writes during a wave look like out-of-scope edits
+// and the close would revert the very records it is writing.
+func bundleTreeRel(ws *workspace) string {
+	if !ws.Dir.InRepo {
+		return ""
+	}
+	rel, err := ws.Dir.RelToRepo(ws.Dir.Base)
+	if err != nil {
+		return ""
+	}
+	return rel
+}
+
+// underBundle reports whether the repo-relative path p is inside the bundle
+// tree rooted at rel. An empty rel matches nothing, so an external bundle
+// excludes no path at all.
+func underBundle(rel, p string) bool {
+	return rel != "" && (p == rel || strings.HasPrefix(p, rel+"/"))
+}
+
+// dropClose deletes a wave's close record so the next `takt next` runs
+// close-wave again; a record that is already gone is not an error.
+func dropClose(bdir string, waveN int) error {
+	if err := os.Remove(wave.ClosePath(bdir, waveN)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // briefPath is briefs/<name> (non-task briefs) — waves/<n>/… holds task briefs.
@@ -117,7 +152,54 @@ func timeNow() time.Time { return time.Now().UTC() }
 // errorf builds an error the command layer turns into the JSON error contract.
 func errorf(format string, a ...any) error { return fmt.Errorf(format, a...) }
 
-// answerWaveGate resolves the execute-phase gates; wired in Task 7.
-func answerWaveGate(_ context.Context, _ *workspace, _ string, _ *bundle.State, _, _, _ string) (bool, error) {
-	return false, errors.New("wave gates are wired in Task 7")
+// answerWaveGate applies a wave_failures / review_error choice (spec §7.4
+// step 5). It reports whether the gate must stay open — only `stop` does.
+func answerWaveGate(
+	_ context.Context, _ *workspace, bdir string, st *bundle.State, gate, choice, reason string,
+) (bool, error) {
+	aw := st.ActiveWave
+	switch gate + "/" + choice {
+	case "wave_failures/retry":
+		for i := range st.Tasks {
+			if st.Tasks[i].Status == bundle.StatusFailed || st.Tasks[i].Status == bundle.StatusBlocked {
+				st.Tasks[i].Status = bundle.StatusPending
+			}
+		}
+		st.ActiveWave = nil // the next launch captures a fresh baseline
+		return false, bundle.SaveState(bdir, st)
+	case "wave_failures/waive":
+		st.ActiveWave = nil
+		return false, bundle.SaveState(bdir, st)
+	case "review_error/retry":
+		if aw == nil {
+			return false, nil
+		}
+		return false, dropClose(bdir, aw.N)
+	case "review_error/skip":
+		return false, skipTaskReviews(bdir, aw, reason)
+	case "wave_failures/stop", "review_error/stop":
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for %s", choice, gate)
+}
+
+// skipTaskReviews records the evidenced skip that suppresses review for the
+// tasks whose reviewer errored, and drops the close record so the wave is
+// closed again — this time without asking the reviewer (spec §9: a skip is
+// an outage the user can point at, never a convenience).
+func skipTaskReviews(bdir string, aw *bundle.ActiveWave, reason string) error {
+	if strings.TrimSpace(reason) == "" || aw == nil {
+		return errors.New("skipping reviews needs --reason and an active wave")
+	}
+	tasks := []int{}
+	if c, _ := wave.ReadClose(bdir, aw.N); c != nil {
+		tasks = c.ReviewErrors
+	}
+	err := bundle.AppendEvent(bdir, "review_skipped", map[string]any{
+		keyWave: aw.N, keyAttempt: aw.Attempt, keyTasks: tasks, keyReason: reason,
+	})
+	if err != nil {
+		return err
+	}
+	return dropClose(bdir, aw.N)
 }

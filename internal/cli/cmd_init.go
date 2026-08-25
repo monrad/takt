@@ -111,7 +111,7 @@ func cmdInit(env Env) int {
 
 	err = writeJSON(env.Stdout, map[string]any{
 		keySlug: opts.slug, "bundle": bundleOut, keyBranch: bi.branch, keyBranchAdopted: bi.adopted,
-		keyBase: bi.def, keyBaseSHA: baseSHA, "committed": committed,
+		keyBase: bi.def, keyBaseSHA: baseSHA, keyCommitted: committed,
 	})
 	if err != nil {
 		return 1
