@@ -167,6 +167,8 @@ func SaveBaseline(bundleDir string, wave, slice int, entries []bundle.BaselineEn
 // ReadBaseline returns the parked baseline and the slice it was captured
 // for, or nil, 0 when none was parked. Absence is the normal case — only a
 // retry parks one — so it is not an error, the same contract as [ReadClose].
+// A record from before the slice travelled with the entries (a bare JSON
+// array) is accepted and reported as slice 1.
 func ReadBaseline(bundleDir string, wave int) ([]bundle.BaselineEntry, int, error) {
 	b, err := os.ReadFile(BaselinePath(bundleDir, wave))
 	if errors.Is(err, os.ErrNotExist) {
@@ -177,7 +179,20 @@ func ReadBaseline(bundleDir string, wave int) ([]bundle.BaselineEntry, int, erro
 	}
 	var p parked
 	if uerr := json.Unmarshal(b, &p); uerr != nil {
-		return nil, 0, fmt.Errorf("baseline.json: %w", uerr)
+		// A baseline parked before the slice travelled with it is a bare
+		// array of entries. Only a retry parks one, and a retry is of a
+		// slice that has not committed, so slice 1 is the only number it
+		// can have — the alternative is a bundle upgraded between the
+		// `retry` answer and the relaunch failing every `takt next` on a
+		// decode error it can do nothing about.
+		var legacy []bundle.BaselineEntry
+		if lerr := json.Unmarshal(b, &legacy); lerr != nil {
+			return nil, 0, fmt.Errorf("baseline.json: %w", uerr)
+		}
+		if legacy == nil {
+			legacy = []bundle.BaselineEntry{}
+		}
+		return legacy, 1, nil
 	}
 	if p.Entries == nil {
 		p.Entries = []bundle.BaselineEntry{}

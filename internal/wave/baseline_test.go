@@ -150,3 +150,26 @@ func TestTouchedSinceIgnoresRenameOriginsWithoutContent(t *testing.T) {
 		t.Fatalf("a rename origin that is still absent is not a deletion: %v %+v", err, touched)
 	}
 }
+
+// TestReadBaselineAcceptsALegacyBareArray covers the upgrade path into the
+// {slice, entries} record: a baseline parked by an older build is a bare
+// JSON array. A bundle that answered wave_failures with `retry` under that
+// build and is relaunched under this one would otherwise wedge — waveBaseline
+// returns the decode error and every `takt next` fails on it. The array is
+// read as slice 1, which is the only slice it can belong to: nothing had
+// committed under a wave whose retry parked a baseline.
+func TestReadBaselineAcceptsALegacyBareArray(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := wave.BaselinePath(dir, 0)
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`[{"path":"a.go","hash":"sha256:x"}]`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, slice, err := wave.ReadBaseline(dir, 0)
+	if err != nil || slice != 1 || len(got) != 1 || got[0].Path != "a.go" || got[0].Hash != "sha256:x" {
+		t.Fatalf("a pre-slice baseline must read as slice 1: %v %d %+v", err, slice, got)
+	}
+}
