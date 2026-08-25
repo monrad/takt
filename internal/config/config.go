@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -31,9 +32,25 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// MarshalJSON renders the duration as a string.
+// MarshalJSON renders the duration in the short form a user would have
+// typed: [time.Duration.String] always spells its zero tail out, so a config
+// takt writes back would read "30m0s" where the file said "30m".
 func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Duration(d).String())
+	return json.Marshal(shortDuration(time.Duration(d)))
+}
+
+// shortDuration trims the zero tail [time.Duration.String] appends: "30m0s"
+// → "30m", "1h0m0s" → "1h". A non-zero component is never trimmed, so
+// "1m30s" and "1h30m0s" → "1h30m" keep everything that carries information.
+func shortDuration(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 // Review toggles the three review gates.
@@ -201,6 +218,22 @@ func (c Config) Validate() error {
 	}
 	if c.MaxParallel < 1 || c.MaxRework < 0 || c.MaxFilesPerTask < 1 {
 		return errors.New("max_parallel and max_files_per_task must be ≥ 1, max_rework ≥ 0")
+	}
+	// A zero duration is not a smaller budget, it is a broken run: a lock
+	// that has expired the moment it is taken, a wave stale before its
+	// agents start, a verify command killed before it runs. Each is named,
+	// because the user has to find the key that says it.
+	for _, d := range []struct {
+		field string
+		value Duration
+	}{
+		{field: "lock_ttl", value: c.LockTTL},
+		{field: "wave_stale_after", value: c.WaveStaleAfter},
+		{field: "verify_timeout", value: c.VerifyTimeout},
+	} {
+		if d.value <= 0 {
+			return fmt.Errorf("%s must be greater than zero, got %s", d.field, shortDuration(time.Duration(d.value)))
+		}
 	}
 	return nil
 }

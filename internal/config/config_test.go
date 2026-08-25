@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,5 +162,47 @@ func TestLoadAllowsMissingImplicitLayers(t *testing.T) {
 	}
 	if len(sources) != 0 || cfg.MaxParallel != 8 {
 		t.Fatalf("sources = %v, cfg = %+v", sources, cfg)
+	}
+}
+
+// TestValidateRejectsNonPositiveDurations covers the three durations a run
+// divides by zero on: a lock that expires the instant it is taken, a wave
+// stale before it is dispatched, a verify command with no time to run. Each
+// is rejected by name, so the user is told which key in which file is wrong.
+func TestValidateRejectsNonPositiveDurations(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"lock_ttl", "wave_stale_after", "verify_timeout"} {
+		c := config.Defaults()
+		js := fmt.Sprintf(`{"%s":"0s"}`, field)
+		if err := json.Unmarshal([]byte(js), &c); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), field) {
+			t.Fatalf("%s = 0 must be rejected by name: %v", field, err)
+		}
+	}
+}
+
+// TestDurationMarshalsShortForm keeps a config takt writes back readable:
+// [time.Duration.String] always spells the zero tail out ("30m0s"), which is
+// not what anyone types into .takt.json.
+func TestDurationMarshalsShortForm(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{d: 30 * time.Minute, want: `"30m"`},
+		{d: time.Hour, want: `"1h"`},
+		{d: 90 * time.Second, want: `"1m30s"`},
+		{d: 90 * time.Minute, want: `"1h30m"`},
+	} {
+		b, err := json.Marshal(config.Duration(tc.d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(b) != tc.want {
+			t.Fatalf("%s marshalled as %s, want %s", tc.d, b, tc.want)
+		}
 	}
 }
