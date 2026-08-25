@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/config"
@@ -53,27 +52,26 @@ func addDirFlag(fs *flag.FlagSet) *string {
 const sessionIDBytes = 8
 
 // generatedSessionPrefix marks a session id takt invented because neither
-// CLAUDE_CODE_SESSION_ID nor TAKT_SESSION was set.
+// CLAUDE_CODE_SESSION_ID nor TAKT_SESSION was set. It is a readability aid
+// in logs only: liveness is never inferred from it, because spec §4.6 asks
+// a generated id to be persisted in TAKT_SESSION, which makes a live
+// session's id look exactly the same (review finding 1). What matters is
+// recorded on the holder as [bundle.Session].Generated.
 const generatedSessionPrefix = "takt-"
 
-// sessionID identifies the driving session for the advisory lock (spec §4.6).
-func sessionID(getenv func(string) string) string {
+// sessionID identifies the driving session for the advisory lock (spec
+// §4.6) and reports whether takt had to invent the id. An invented id lives
+// for exactly one process unless the caller persists it in TAKT_SESSION, so
+// a holder that recorded generated=true can never come back to claim its
+// run and must not lock it for a whole lock_ttl.
+func sessionID(getenv func(string) string) (string, bool) {
 	if s := getenv("CLAUDE_CODE_SESSION_ID"); s != "" {
-		return s
+		return s, false
 	}
 	if s := getenv("TAKT_SESSION"); s != "" {
-		return s
+		return s, false
 	}
 	var b [sessionIDBytes]byte
 	_, _ = rand.Read(b[:])
-	return generatedSessionPrefix + hex.EncodeToString(b[:])
+	return generatedSessionPrefix + hex.EncodeToString(b[:]), true
 }
-
-// generatedSession reports whether id was invented by sessionID rather than
-// supplied by the environment. Spec §4.6 asks such an id to be persisted in
-// TAKT_SESSION for the process tree; when nothing persisted it, it lived for
-// exactly one process and no later invocation can present it again. Holding
-// the advisory lock in that name would block the run's own next command for
-// a whole lock_ttl behind an owner gate no one can answer, so a generated
-// holder is taken over instead of asked about.
-func generatedSession(id string) bool { return strings.HasPrefix(id, generatedSessionPrefix) }

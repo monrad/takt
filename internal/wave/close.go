@@ -103,15 +103,16 @@ func WriteClose(bundleDir string, c CloseResult) error {
 }
 
 // CommitWave stages exactly the task files (modifications, additions,
-// deletions) plus the bundle directory when it is in-repo, and commits.
+// deletions) plus the bundle directory when it is in-repo, and commits those
+// paths and nothing else — a file the user staged themselves is neither
+// committed nor unstaged (spec §4.7, review finding 2).
 func CommitWave(ctx context.Context, repo *gitx.Repo, files []string, bundleRel, msg string) (string, error) {
-	if err := repo.AddPathspec(ctx, files...); err != nil {
+	paths := append([]string{}, files...)
+	if bundleRel != "" {
+		paths = append(paths, bundleRel)
+	}
+	if err := repo.AddPathspec(ctx, paths...); err != nil {
 		return "", err
 	}
-	if bundleRel != "" {
-		if err := repo.AddPathspec(ctx, bundleRel); err != nil {
-			return "", err
-		}
-	}
-	return repo.Commit(ctx, msg)
+	return repo.CommitPaths(ctx, msg, paths...)
 }

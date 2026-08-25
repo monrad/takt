@@ -51,6 +51,7 @@ func gatherFacts(
 			ClausesPresent:   len(a.Clauses) > 0 || a.Skipped,
 			ClausesConfirmed: a.Confirmed || a.Skipped,
 			VerdictsPresent:  len(a.Verdicts) > 0 || a.Skipped,
+			ClauseCount:      len(a.Clauses),
 		}
 	}
 	err = gatherWaveFacts(&f, bdir, st)

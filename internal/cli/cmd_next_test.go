@@ -170,6 +170,9 @@ func TestNextWalksBrainstormAndPlan(t *testing.T) {
 	if _, o, _ = next(t, root, nil); o["op"] != "ask" || o["gate"] != "alignment_confirm" {
 		t.Fatalf("expected ask alignment_confirm, got %v", o)
 	}
+	if q, _ := o["question"].(string); !strings.Contains(q, "A1..A1") {
+		t.Fatalf("the gate must name the real clause count, got %q", q)
+	}
 	if _, o2, _ := next(t, root, nil); o2["gate"] != "alignment_confirm" {
 		t.Fatal("a pending gate must be re-rendered identically")
 	}
@@ -264,6 +267,66 @@ func TestReviewSkipNeedsEvidence(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(bdir, "gates", "spec.json")); err != nil {
 		t.Fatal(err)
+	}
+	// The evidence is copied into the bundle and recorded by its
+	// bundle-relative path, like `findings` (spec §4.5).
+	copied, err := os.ReadFile(filepath.Join(bdir, "gates", "spec.evidence.txt"))
+	if err != nil || !strings.Contains(string(copied), "connection refused") {
+		t.Fatalf("evidence must be preserved in the bundle: %v %q", err, copied)
+	}
+	var rc struct {
+		Skipped struct {
+			EvidencePath string `json:"evidence_path"`
+		} `json:"skipped"`
+	}
+	b, _ := os.ReadFile(filepath.Join(bdir, "gates", "spec.json"))
+	if err = json.Unmarshal(b, &rc); err != nil {
+		t.Fatal(err)
+	}
+	if rc.Skipped.EvidencePath != "gates/spec.evidence.txt" {
+		t.Fatalf("evidence_path = %q, want a bundle-relative path", rc.Skipped.EvidencePath)
+	}
+}
+
+// TestNextOwnerGateProtectsAnEnvNamedSession covers review finding 1: a
+// session id supplied through TAKT_SESSION is a live session even when it
+// looks like one takt generated, so a second session must be asked before
+// taking the run over.
+func TestNextOwnerGateProtectsAnEnvNamedSession(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	live := map[string]string{"TAKT_SESSION": "takt-deadbeefdeadbeef"}
+	if code, o, errb := next(t, root, live); code != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	code, o, _ := next(t, root, map[string]string{"TAKT_SESSION": "B"})
+	if code != 0 || o["op"] != "ask" || o["gate"] != "owner" {
+		t.Fatalf("an env-named holder must raise the owner gate: %d %v", code, o)
+	}
+	// The generated holder init left behind is still taken over silently.
+	root2, _ := setupRun(t)
+	if _, o2, _ := next(t, root2, live); o2["op"] != "run" {
+		t.Fatalf("a generated holder must not block: %v", o2)
+	}
+}
+
+// TestDoneLeavesUnrelatedStagedFilesAlone covers review finding 2: takt
+// commits only the bundle, never whatever the user happened to stage
+// (spec §4.7).
+func TestDoneLeavesUnrelatedStagedFilesAlone(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	testutil.WriteFile(t, root, "user_wip.txt", "mine\n")
+	testutil.Git(t, root, "add", "user_wip.txt")
+	if code, _, errb := runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); strings.Contains(files, "user_wip") {
+		t.Fatalf("takt committed the user's staged file: %q", files)
+	}
+	if st := testutil.Git(t, root, "status", "--porcelain"); st != "A  user_wip.txt" {
+		t.Fatalf("the user's staged file must stay staged: %q", st)
 	}
 }
 

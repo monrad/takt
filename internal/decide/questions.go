@@ -92,7 +92,7 @@ func questionAlignmentConfirm(q *op.Op, ctx map[string]any) {
 	q.Narration = "confirm the request's clauses"
 	q.Question = fmt.Sprintf(
 		"The auditor decomposed your original request into clauses A1..A%v (see alignment.json). Confirm or correct them.",
-		ctx["count"],
+		ctx[ctxCount],
 	)
 	q.Options = []op.Option{
 		{Choice: "confirm", Label: "Confirm (Recommended)", Description: "Use the clauses as written."},

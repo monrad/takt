@@ -31,6 +31,7 @@ type nextRun struct {
 	st      *bundle.State
 	now     time.Time
 	session string
+	genID   bool // takt invented r.session; nothing persisted it
 	force   bool
 	recover bool
 }
@@ -54,9 +55,10 @@ func cmdNext(env Env) int {
 	if code != 0 {
 		return code
 	}
+	id, generated := sessionID(env.Getenv)
 	r := &nextRun{
 		env: env, ws: tgt.ws, slug: tgt.slug, bdir: tgt.bdir, st: tgt.st, now: timeNow(),
-		session: sessionID(env.Getenv), force: *force, recover: *recoverFlag,
+		session: id, genID: generated, force: *force, recover: *recoverFlag,
 	}
 	if lockCode, done := r.acquireLock(); done {
 		return lockCode
@@ -65,13 +67,17 @@ func cmdNext(env Env) int {
 }
 
 // acquireLock refreshes or takes the advisory lock; a live other session
-// yields the owner ask (not persisted — it is transient). A holder takt
-// generated an id for is not a live session (see generatedSession), so it is
-// taken over silently rather than asked about.
+// yields the owner ask (not persisted — it is transient). A holder that
+// recorded generated=true is not a live session: nothing persisted its id,
+// so it can never present it again and must not hold the run for a whole
+// lock_ttl. That is read off the holder's own record, never guessed from
+// the shape of its id (spec §4.6, review finding 1).
 func (r *nextRun) acquireLock() (int, bool) {
 	host, _ := os.Hostname()
-	stale := r.st.Session != nil && r.st.Session.ID != r.session && generatedSession(r.st.Session.ID)
-	outcome := bundle.Acquire(r.st, r.session, host, r.now, time.Duration(r.ws.Cfg.LockTTL), r.force || stale)
+	who := bundle.Identity{ID: r.session, Host: host, Generated: r.genID}
+	prev := r.st.Session
+	orphaned := prev != nil && prev.ID != r.session && prev.Generated
+	outcome := bundle.Acquire(r.st, who, r.now, time.Duration(r.ws.Cfg.LockTTL), r.force || orphaned)
 	if outcome == bundle.LockBlocked {
 		q := decide.Question("owner", map[string]any{
 			keySlug: r.slug, "holder": r.st.Session.ID, "host": r.st.Session.Host,

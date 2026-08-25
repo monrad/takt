@@ -42,9 +42,12 @@ func writeIndex(bdir string, idx plan.Index) error {
 	return os.Rename(tmp, indexPath(bdir))
 }
 
-// commitBundle stages the bundle directory when it is in-repo and commits;
-// a clean index or an external bundle is a no-op (committed=false). The
-// commit sha is part of the interface Tasks 7–9 build on.
+// commitBundle stages the bundle directory when it is in-repo and commits
+// exactly that directory; a bundle with nothing to commit or an external
+// bundle is a no-op (committed=false). Both the "is there anything to do"
+// question and the commit are scoped to the bundle, so a file the user
+// staged themselves is never swept in (spec §4.7). The commit sha is part
+// of the interface Tasks 7–9 build on.
 //
 //nolint:unparam // sha is the documented first result; no caller needs it yet
 func commitBundle(ctx context.Context, ws *workspace, bdir, slug, msg string) (string, bool, error) {
@@ -58,11 +61,11 @@ func commitBundle(ctx context.Context, ws *workspace, bdir, slug, msg string) (s
 	if err = ws.Repo.AddPathspec(ctx, rel); err != nil {
 		return "", false, err
 	}
-	staged, err := ws.Repo.HasStaged(ctx)
+	staged, err := ws.Repo.HasStagedIn(ctx, rel)
 	if err != nil || !staged {
 		return "", false, err
 	}
-	sha, err := ws.Repo.Commit(ctx, "takt("+slug+"): "+msg)
+	sha, err := ws.Repo.CommitPaths(ctx, "takt("+slug+"): "+msg, rel)
 	return sha, err == nil, err
 }
 

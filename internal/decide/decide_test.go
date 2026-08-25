@@ -2,6 +2,7 @@ package decide_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,6 +143,9 @@ func TestBrainstormWithGoalsAndReviewOff(t *testing.T) {
 	}
 }
 
+// complexity is the table's, not a function's.
+//
+//nolint:gocognit // one precedence table for spec §5.3's plan rows; the
 func TestPlanRows(t *testing.T) {
 	t.Parallel()
 	base := func(f *decide.Facts) {
@@ -194,9 +198,19 @@ func TestPlanRows(t *testing.T) {
 			f.HasIndex, f.IndexValid = true, true
 			f.PlanGate = decide.GateStatus{Satisfied: true}
 			f.Alignment.ClausesPresent = true
+			f.Alignment.ClauseCount = 3
 		}, decide.ActAsk, func(t *testing.T, d decide.Decision) {
 			if d.Op.Gate != "alignment_confirm" {
 				t.Fatal(d.Op.Gate)
+			}
+			// Review finding 4: the question interpolates the count, and the
+			// op is persisted as the gate payload, so a missing count is a
+			// durable "A1..A<nil>".
+			if d.Op.Context["count"] != 3 {
+				t.Fatalf("count = %v, want 3", d.Op.Context["count"])
+			}
+			if !strings.Contains(d.Op.Question, "A1..A3") {
+				t.Fatalf("question = %q", d.Op.Question)
 			}
 		}},
 		{"confirmed, no verdicts → dispatch auditor verdicts", func(f *decide.Facts) {

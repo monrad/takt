@@ -130,21 +130,48 @@ func recordSkip(env Env, tgt *runTarget, o reviewOpts, hash string) int {
 	if !fileNonEmpty(o.evidence) {
 		return fail(env.Stderr, exitError, "evidence file is missing or empty: "+o.evidence, "")
 	}
-	rel := o.evidence
-	if r, err := tgt.ws.Dir.RelToRepo(o.evidence); err == nil {
-		rel = r
+	rel, err := preserveEvidence(tgt.bdir, o.gate, o.evidence)
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	rc := gate.Receipt{
 		Gate: o.gate, Hash: hash, Verdict: gate.VerdictError, TS: timeNow(),
 		Skipped: &gate.Skipped{Reason: o.reason, EvidencePath: rel},
 	}
-	if err := gate.WriteReceipt(tgt.bdir, rc); err != nil {
+	if err = gate.WriteReceipt(tgt.bdir, rc); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	_ = bundle.AppendEvent(tgt.bdir, "gate_skipped", map[string]any{
 		keyGate: o.gate, keyHash: hash, keyReason: o.reason,
 	})
 	return printJSON(env, map[string]any{keyGate: o.gate, keyVerdict: "skipped", keyReason: o.reason})
+}
+
+// preserveEvidence copies the backend's error output into the bundle as
+// gates/<gate>.evidence.txt and returns that bundle-relative path. The file
+// the user pointed at is usually a scratch file outside the repo, so
+// recording its absolute path would leave the receipt citing evidence that
+// is unreadable on any other machine and gone by the next reboot; every
+// path in a receipt is bundle-relative (spec §4.5), the same convention
+// `findings: reviews/<gate>.md` already follows.
+func preserveEvidence(bdir, g, src string) (string, error) {
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return "", err
+	}
+	rel := "gates/" + g + ".evidence.txt"
+	dest := filepath.Join(bdir, filepath.FromSlash(rel))
+	if err = os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
+		return "", err
+	}
+	//nolint:gosec // G703: dest is inside the run's bundle dir under a fixed
+	// gates/<gate>.evidence.txt name; the slug it comes from is validated by
+	// bundle.ValidSlug (see selectSlug) and gate is spec|plan, so no caller
+	// can steer this write.
+	if err = os.WriteFile(dest, b, 0o600); err != nil {
+		return "", err
+	}
+	return rel, nil
 }
 
 // writeFindings renders a reviewer result as markdown for humans.

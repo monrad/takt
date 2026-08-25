@@ -19,8 +19,9 @@ import (
 // out as constants because goconst flags the repeated literals, not because
 // callers reference them (they still describe the JSON key in op.Op.Context).
 const (
-	ctxSlug = "slug"
-	ctxWave = "wave"
+	ctxSlug  = "slug"
+	ctxWave  = "wave"
+	ctxCount = "count"
 )
 
 // Action is what `takt next` must do with a Decision.
@@ -47,11 +48,15 @@ type GateStatus struct {
 	Verdict   string // "", approve, rework, reject, error, skipped, overridden
 }
 
-// AlignmentFacts summarises alignment.json.
+// AlignmentFacts summarises alignment.json. ClauseCount is how many clauses
+// are on disk: the alignment_confirm question names the range A1..An, and
+// `takt next` persists that op as the gate payload, so a missing count is a
+// durable "A1..A<nil>" in the user's face (review finding 4).
 type AlignmentFacts struct {
 	ClausesPresent   bool
 	ClausesConfirmed bool
 	VerdictsPresent  bool
+	ClauseCount      int
 }
 
 // CloseFacts summarises waves/<n>/close.json for the active attempt.
@@ -224,7 +229,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 				Agent:  &op.Agent{Agent: "alignment-auditor", Mode: "clauses", Label: "decompose the request"},
 			}
 		case !f.Alignment.ClausesConfirmed:
-			return ask("alignment_confirm", map[string]any{ctxSlug: st.Slug})
+			return ask("alignment_confirm", map[string]any{ctxSlug: st.Slug, ctxCount: f.Alignment.ClauseCount})
 		case !f.Alignment.VerdictsPresent:
 			return Decision{
 				Action: ActDispatch,

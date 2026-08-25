@@ -91,11 +91,17 @@ type PendingGate struct {
 	Payload  json.RawMessage `json:"payload,omitempty"`
 }
 
-// Session is the advisory lock holder (spec §4.6).
+// Session is the advisory lock holder (spec §4.6). Generated records how
+// the id was obtained: false when the environment supplied it
+// (CLAUDE_CODE_SESSION_ID / TAKT_SESSION), true when takt invented one
+// because neither was set. Only the holder's own record can answer that —
+// a takt-invented id and an environment-supplied one are indistinguishable
+// as strings (review finding 1).
 type Session struct {
 	ID        string    `json:"id"`
 	Host      string    `json:"host"`
 	Heartbeat time.Time `json:"heartbeat"`
+	Generated bool      `json:"generated,omitempty"`
 }
 
 // State is state.json. Field order is the on-disk key order.

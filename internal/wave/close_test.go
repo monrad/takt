@@ -45,14 +45,18 @@ func TestCommitWaveStagesOnlyTaskFilesAndBundle(t *testing.T) {
 	ctx := context.Background()
 	root, r := repo(t)
 	testutil.WriteFile(t, root, "user.txt", "mine\n")
+	// Review finding 2: a file the user staged themselves must not be swept
+	// into the wave commit.
+	testutil.WriteFile(t, root, "user_staged.txt", "wip\n")
+	testutil.Git(t, root, "add", "user_staged.txt")
 	testutil.WriteFile(t, root, "a.go", "a\n")
 	testutil.WriteFile(t, root, "docs/takt/demo/state.json", "{}\n")
 	sha, err := wave.CommitWave(ctx, r, []string{"a.go"}, "docs/takt/demo", "takt(demo): wave 0 — tasks 1")
 	if err != nil || len(sha) != 40 {
 		t.Fatalf("%q %v", sha, err)
 	}
-	if st := testutil.Git(t, root, "status", "--porcelain"); st != "?? user.txt" {
-		t.Fatalf("user file must stay untracked and uncommitted: %q", st)
+	if st := testutil.Git(t, root, "status", "--porcelain"); st != "A  user_staged.txt\n?? user.txt" {
+		t.Fatalf("user files must stay untracked / staged and uncommitted: %q", st)
 	}
 	if files := testutil.Git(
 		t,
@@ -62,7 +66,8 @@ func TestCommitWaveStagesOnlyTaskFilesAndBundle(t *testing.T) {
 		"--format=",
 		"HEAD",
 	); !strings.Contains(files, "a.go") ||
-		!strings.Contains(files, "docs/takt/demo/state.json") {
+		!strings.Contains(files, "docs/takt/demo/state.json") ||
+		strings.Contains(files, "user_staged.txt") {
 		t.Fatalf("commit content: %q", files)
 	}
 }

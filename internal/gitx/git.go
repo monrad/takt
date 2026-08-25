@@ -118,6 +118,51 @@ func (r *Repo) HasStaged(ctx context.Context) (bool, error) {
 	return false, err
 }
 
+// HasStagedIn reports whether the index differs from HEAD *under the given
+// paths only*. [Repo.HasStaged] answers for the whole index, which is the
+// wrong question for takt: whatever the user staged themselves must neither
+// make takt think it has work to commit nor be swept into takt's commit
+// (spec §4.7). Called without paths it reports false: an empty pathspec
+// would silently widen to the whole tree.
+func (r *Repo) HasStagedIn(ctx context.Context, paths ...string) (bool, error) {
+	if len(paths) == 0 {
+		return false, nil
+	}
+	_, err := r.Run(ctx, append([]string{"diff", "--cached", "--quiet", "--"}, paths...)...)
+	if err == nil {
+		return false, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return true, nil
+	}
+	return false, err
+}
+
+// CommitPaths commits exactly the given paths and returns the new HEAD sha.
+// Unlike [Repo.Commit] it never records the rest of the index, so a file the
+// user staged for their own reasons stays staged and out of takt's history
+// (spec §4.7). The paths must already be known to git — stage new files with
+// [Repo.AddPathspec] first — and the caller must know there is something to
+// commit ([Repo.HasStagedIn]); git exits non-zero on an empty commit.
+//
+// One caveat: a pathspec commit is git's "--only" mode, which builds a
+// temporary index and therefore holds .git/index.lock for the whole run,
+// hooks included — a plain commit does not. If the deadline kills it
+// mid-hook, the stale lock blocks the next git command in that repository.
+// Callers that must be able to clean up after their own killed commit use
+// [Repo.Commit] instead (see commitInitBundle).
+func (r *Repo) CommitPaths(ctx context.Context, msg string, paths ...string) (string, error) {
+	if len(paths) == 0 {
+		return "", errors.New("gitx: CommitPaths needs at least one path")
+	}
+	args := append([]string{"commit", "-q", "-m", msg, "--"}, paths...)
+	if _, err := r.Run(ctx, args...); err != nil {
+		return "", err
+	}
+	return r.HeadSHA(ctx)
+}
+
 // Porcelain returns the parsed `git status --porcelain=v1 -z` entries.
 func (r *Repo) Porcelain(ctx context.Context) ([]Entry, error) {
 	//nolint:gosec // G204: fixed "git status" invocation, no caller-supplied arguments

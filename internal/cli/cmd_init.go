@@ -244,6 +244,7 @@ func resolveBase(ctx context.Context, env Env, run *initRun) (string, int) {
 func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, baseSHA string) *bundle.State {
 	now := time.Now().UTC()
 	host, _ := os.Hostname()
+	id, generated := sessionID(env.Getenv)
 	return &bundle.State{
 		Schema: bundle.SchemaVersion, TaktVersion: version.Version,
 		Slug: opts.slug, Topic: opts.topic, Phase: bundle.PhaseBrainstorm, CreatedAt: now,
@@ -262,7 +263,7 @@ func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, 
 		},
 		Gates:   map[string]string{"spec": "pending", "plan": "pending"},
 		Tasks:   []bundle.Task{},
-		Session: &bundle.Session{ID: sessionID(env.Getenv), Host: host, Heartbeat: now},
+		Session: &bundle.Session{ID: id, Host: host, Heartbeat: now, Generated: generated},
 	}
 }
 
@@ -285,7 +286,13 @@ func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, 
 
 // commitInitBundle stages and commits only the bundle directory when it lives
 // inside the repo (spec §4.1); an external bundle dir is never committed,
-// and nothing outside the bundle directory is ever staged. Recording the
+// and nothing outside the bundle directory is ever staged or committed
+// (spec §4.7, review finding 2): checkPreconditions has already refused to
+// run with anything staged, so the index holds exactly init's own writes
+// and the plain commit below is scoped by construction. It deliberately
+// does not use [gitx.Repo.CommitPaths] — a pathspec commit holds
+// .git/index.lock across hooks, and a deadline-killed init must still be
+// able to roll itself back (see rollbackInit). Recording the
 // staged path on run is what lets a later failure — a rejected commit hook,
 // a signing failure — take it back out of the index (review finding 3).
 func commitInitBundle(ctx context.Context, env Env, run *initRun, slug string) (bool, string, int) {

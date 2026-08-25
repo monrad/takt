@@ -249,3 +249,42 @@ func TestAddPathspecRestoreAndInHead(t *testing.T) {
 		t.Fatalf("deletion must be staged: %q", st)
 	}
 }
+
+// TestCommitPathsAndHasStagedInAreScoped covers review finding 2: takt must
+// commit exactly the paths it owns. A user's unrelated staged file has to
+// stay staged and out of the commit, and HasStagedIn must not see it.
+func TestCommitPathsAndHasStagedInAreScoped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, _ := gitx.Open(ctx, root)
+
+	testutil.WriteFile(t, root, "user_wip.txt", "mine\n")
+	testutil.Git(t, root, "add", "user_wip.txt")
+	if staged, err := r.HasStagedIn(ctx, "bundle"); err != nil || staged {
+		t.Fatalf("HasStagedIn must ignore paths outside the pathspec: %v %v", staged, err)
+	}
+
+	testutil.WriteFile(t, root, "bundle/state.json", "{}\n")
+	if err := r.AddPathspec(ctx, "bundle"); err != nil {
+		t.Fatal(err)
+	}
+	staged, err := r.HasStagedIn(ctx, "bundle")
+	if err != nil || !staged {
+		t.Fatalf("HasStagedIn = %v, %v; want true", staged, err)
+	}
+	sha, err := r.CommitPaths(ctx, "takt(demo): scoped", "bundle")
+	if err != nil || len(sha) != 40 {
+		t.Fatalf("CommitPaths = %q, %v", sha, err)
+	}
+	files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(files, "bundle/state.json") || strings.Contains(files, "user_wip.txt") {
+		t.Fatalf("commit content = %q", files)
+	}
+	if st := testutil.Git(t, root, "status", "--porcelain"); st != "A  user_wip.txt" {
+		t.Fatalf("the user's staged file must survive untouched: %q", st)
+	}
+	if staged, err = r.HasStagedIn(ctx, "bundle"); err != nil || staged {
+		t.Fatalf("nothing left staged under the pathspec: %v %v", staged, err)
+	}
+}
