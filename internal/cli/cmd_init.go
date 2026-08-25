@@ -104,7 +104,7 @@ func cmdInit(env Env) int {
 		return code
 	}
 
-	committed, bundleOut, code := commitBundle(ctx, env, run, opts.slug)
+	committed, bundleOut, code := commitInitBundle(ctx, env, run, opts.slug)
 	if code != 0 {
 		return code
 	}
@@ -283,12 +283,12 @@ func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, 
 	return 0
 }
 
-// commitBundle stages and commits only the bundle directory when it lives
+// commitInitBundle stages and commits only the bundle directory when it lives
 // inside the repo (spec §4.1); an external bundle dir is never committed,
 // and nothing outside the bundle directory is ever staged. Recording the
 // staged path on run is what lets a later failure — a rejected commit hook,
 // a signing failure — take it back out of the index (review finding 3).
-func commitBundle(ctx context.Context, env Env, run *initRun, slug string) (bool, string, int) {
+func commitInitBundle(ctx context.Context, env Env, run *initRun, slug string) (bool, string, int) {
 	ws := run.ws
 	if !ws.Dir.InRepo {
 		return false, run.bdir, 0

@@ -64,14 +64,14 @@ func runPlanValidate(env Env, ws *workspace, bdir, path string) int {
 	idx, err := plan.ParseIndex(raw)
 	if err != nil {
 		_ = writeJSON(env.Stdout, map[string]any{
-			"valid": false, "problems": []string{err.Error()}, keyTasks: 0, "waves": map[string]int{},
+			keyValid: false, keyProblems: []string{err.Error()}, keyTasks: 0, keyWaves: map[string]int{},
 		})
 		return 1
 	}
 	problems := plan.Validate(idx, validateOpts(ws, bdir))
 	doc := map[string]any{
-		"valid": len(problems) == 0, "problems": problemStrings(problems),
-		keyTasks: len(idx.Tasks), "waves": planWaves(idx),
+		keyValid: len(problems) == 0, keyProblems: problemStrings(problems),
+		keyTasks: len(idx.Tasks), keyWaves: planWaves(idx),
 	}
 	if werr := writeJSON(env.Stdout, doc); werr != nil {
 		return 1

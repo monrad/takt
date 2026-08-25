@@ -137,7 +137,7 @@ func statusJSON(info statusInfo) map[string]any {
 		"gates":        info.Gates,
 		"active_wave":  info.ActiveWave,
 		"pending_gate": info.PendingGate,
-		"goals":        goalsOut,
+		keyGoals:       goalsOut,
 		"goals_frozen": info.GoalsFrozen,
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/config"
@@ -51,6 +52,10 @@ func addDirFlag(fs *flag.FlagSet) *string {
 // sessionIDBytes is the amount of randomness in a generated session id.
 const sessionIDBytes = 8
 
+// generatedSessionPrefix marks a session id takt invented because neither
+// CLAUDE_CODE_SESSION_ID nor TAKT_SESSION was set.
+const generatedSessionPrefix = "takt-"
+
 // sessionID identifies the driving session for the advisory lock (spec §4.6).
 func sessionID(getenv func(string) string) string {
 	if s := getenv("CLAUDE_CODE_SESSION_ID"); s != "" {
@@ -61,5 +66,14 @@ func sessionID(getenv func(string) string) string {
 	}
 	var b [sessionIDBytes]byte
 	_, _ = rand.Read(b[:])
-	return "takt-" + hex.EncodeToString(b[:])
+	return generatedSessionPrefix + hex.EncodeToString(b[:])
 }
+
+// generatedSession reports whether id was invented by sessionID rather than
+// supplied by the environment. Spec §4.6 asks such an id to be persisted in
+// TAKT_SESSION for the process tree; when nothing persisted it, it lived for
+// exactly one process and no later invocation can present it again. Holding
+// the advisory lock in that name would block the run's own next command for
+// a whole lock_ttl behind an owner gate no one can answer, so a generated
+// holder is taken over instead of asked about.
+func generatedSession(id string) bool { return strings.HasPrefix(id, generatedSessionPrefix) }

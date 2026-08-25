@@ -31,9 +31,13 @@ type command func(Env) int
 // unknown command, or bad flags (spec §5.1).
 const exitUsage = 2
 
-// JSON document keys shared by more than one command's output — named so
-// goconst does not flag the repeated literals across cmd_init.go,
-// cmd_status.go, and cmd_plan.go.
+// exitError is the process exit code for a runtime failure: the command was
+// understood but could not be carried out (spec §5.1).
+const exitError = 1
+
+// JSON document and event-data keys shared by more than one command —
+// named so goconst does not flag the repeated literals across the command
+// files. The values are the wire format and must not change.
 const (
 	keySlug          = "slug"
 	keyBranch        = "branch"
@@ -41,6 +45,17 @@ const (
 	keyBase          = "base"
 	keyBaseSHA       = "base_sha"
 	keyTasks         = "tasks"
+	keyGate          = "gate"
+	keyChoice        = "choice"
+	keyReason        = "reason"
+	keyHash          = "hash"
+	keyCount         = "count"
+	keyGoals         = "goals"
+	keyProblems      = "problems"
+	keyValid         = "valid"
+	keyFindings      = "findings"
+	keyWaves         = "waves"
+	keyVerdict       = "verdict"
 )
 
 var commands = map[string]command{
@@ -49,6 +64,13 @@ var commands = map[string]command{
 	"status":  cmdStatus,
 	"plan":    cmdPlan,
 	"doctor":  cmdDoctor,
+	"next":    cmdNext,
+	"done":    cmdDone,
+	"review":  cmdReview,
+	"record":  cmdRecord,
+	"answer":  cmdAnswer,
+	"goals":   cmdGoals,
+	"unlock":  cmdUnlock,
 }
 
 // Main dispatches args[0] to a subcommand and returns the process exit code.

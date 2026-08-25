@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -72,4 +73,32 @@ func failSelectSlug(env Env, err error) int {
 		return fail(env.Stderr, exitUsage, err.Error(), slugHint)
 	}
 	return fail(env.Stderr, 1, err.Error(), "use --slug <name>")
+}
+
+// runTarget is the workspace and the one run a bundle command operates on.
+type runTarget struct {
+	ws   *workspace
+	slug string
+	bdir string
+	st   *bundle.State
+}
+
+// openTarget resolves the workspace, the run --slug selects, and that run's
+// state, reporting each failure through the JSON error contract. Every
+// bundle command opens the same way, so sharing this keeps their messages
+// and exit codes identical instead of six near-copies drifting apart.
+func openTarget(ctx context.Context, env Env, dirFlag, slugFlag string) (*runTarget, int) {
+	ws, err := openWorkspace(ctx, env, dirFlag)
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, err.Error(), workspaceHint)
+	}
+	slug, err := selectSlug(ws, slugFlag)
+	if err != nil {
+		return nil, failSelectSlug(env, err)
+	}
+	bdir, st, err := loadBundle(ws, slug)
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, err.Error(), "")
+	}
+	return &runTarget{ws: ws, slug: slug, bdir: bdir, st: st}, 0
 }

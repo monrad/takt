@@ -1,0 +1,165 @@
+package cli
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/monrad/takt/internal/backend"
+	"github.com/monrad/takt/internal/brief"
+	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gate"
+)
+
+// reviewOpts is `takt review`'s parsed command line.
+type reviewOpts struct {
+	dir      string
+	slug     string
+	gate     string
+	skip     bool
+	reason   string
+	evidence string
+}
+
+// cmdReview runs a gate review headless and writes the hash-bound receipt,
+// or records an evidenced skip instead (spec §9).
+func cmdReview(env Env) int {
+	o, code := reviewFlags(env)
+	if code != 0 {
+		return code
+	}
+	ctx, cancel := commandContext(env)
+	defer cancel()
+	tgt, code := openTarget(ctx, env, o.dir, o.slug)
+	if code != 0 {
+		return code
+	}
+	hash, present, err := gate.Hash(o.gate, tgt.bdir)
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	if o.skip {
+		return recordSkip(env, tgt, o, hash)
+	}
+	return runReview(ctx, env, tgt, o.gate, hash, present)
+}
+
+// reviewFlags parses `takt review spec|plan`'s positional gate and flags.
+func reviewFlags(env Env) (reviewOpts, int) {
+	fs := flag.NewFlagSet("review", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	dirFlag := addDirFlag(fs)
+	slugFlag := fs.String("slug", "", "run")
+	skip := fs.Bool("skip", false, "record an evidenced skip instead of reviewing")
+	reason := fs.String("reason", "", "why the review was skipped")
+	evidence := fs.String("evidence", "", "file holding the backend's error output")
+	positional, err := parseInterspersed(fs, env.Args)
+	if err != nil {
+		return reviewOpts{}, usageError(env, fs, err)
+	}
+	if len(positional) != 1 || (positional[0] != gate.Spec && positional[0] != gate.Plan) {
+		return reviewOpts{}, fail(env.Stderr, exitUsage, "usage: takt review spec|plan", "")
+	}
+	return reviewOpts{
+		dir: *dirFlag, slug: *slugFlag, gate: positional[0],
+		skip: *skip, reason: *reason, evidence: *evidence,
+	}, 0
+}
+
+// runReview asks the configured reviewer for a verdict and records it.
+func runReview(ctx context.Context, env Env, tgt *runTarget, g, hash string, present []string) int {
+	reviewer, be, err := reviewerFor(tgt.ws, env)
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(),
+			"install copilot or claude, or record an evidenced skip with --skip --reason … --evidence …")
+	}
+	tok, _ := brief.Token()
+	files := map[string]string{}
+	for _, name := range present {
+		files[name] = readArtifact(tgt.bdir, name)
+	}
+	prompt, err := brief.Render("review-"+g, brief.ReviewData{
+		Gate: g, Title: tgt.slug + " " + g, Token: tok, Schema: backend.ResultSchema, Files: files,
+	})
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	res, err := reviewer.Review(ctx, backend.ReviewRequest{
+		Rubric: g, Title: tgt.slug, Prompt: prompt, RepoRoot: tgt.ws.Repo.Root,
+		Model: be.Model, Effort: be.Effort, Timeout: time.Duration(be.Timeout),
+		LogDir: filepath.Join(tgt.bdir, "logs"), LogID: fmt.Sprintf("review-%s-%d", g, time.Now().Unix()),
+	})
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	if err = writeFindings(filepath.Join(tgt.bdir, "reviews", g+".md"), g, res); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	rc := gate.Receipt{
+		Gate: g, Hash: hash, Verdict: res.Verdict,
+		Reviewer: gate.Reviewer{Provider: res.Provider, Model: res.Model},
+		Findings: "reviews/" + g + ".md", TS: timeNow(),
+	}
+	if err = gate.WriteReceipt(tgt.bdir, rc); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	_ = bundle.AppendEvent(tgt.bdir, "gate_reviewed", map[string]any{
+		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, "provider": res.Provider, keyFindings: len(res.Findings),
+	})
+	if _, _, err = commitBundle(ctx, tgt.ws, tgt.bdir, tgt.slug, g+" reviewed: "+res.Verdict); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	return printJSON(env, map[string]any{
+		keyGate: g, keyVerdict: res.Verdict, keyFindings: len(res.Findings),
+		"provider": res.Provider, keyReason: res.Reason,
+	})
+}
+
+// recordSkip writes an evidenced skip receipt: a skip is a backend outage
+// the user can point at, never a convenience (spec §9).
+func recordSkip(env Env, tgt *runTarget, o reviewOpts, hash string) int {
+	if strings.TrimSpace(o.reason) == "" || o.evidence == "" {
+		return fail(env.Stderr, exitUsage, "--skip needs both --reason and --evidence",
+			"a skip is an evidenced backend outage, never a convenience")
+	}
+	if !fileNonEmpty(o.evidence) {
+		return fail(env.Stderr, exitError, "evidence file is missing or empty: "+o.evidence, "")
+	}
+	rel := o.evidence
+	if r, err := tgt.ws.Dir.RelToRepo(o.evidence); err == nil {
+		rel = r
+	}
+	rc := gate.Receipt{
+		Gate: o.gate, Hash: hash, Verdict: gate.VerdictError, TS: timeNow(),
+		Skipped: &gate.Skipped{Reason: o.reason, EvidencePath: rel},
+	}
+	if err := gate.WriteReceipt(tgt.bdir, rc); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	_ = bundle.AppendEvent(tgt.bdir, "gate_skipped", map[string]any{
+		keyGate: o.gate, keyHash: hash, keyReason: o.reason,
+	})
+	return printJSON(env, map[string]any{keyGate: o.gate, keyVerdict: "skipped", keyReason: o.reason})
+}
+
+// writeFindings renders a reviewer result as markdown for humans.
+func writeFindings(path, title string, res backend.ReviewResult) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Review: %s — %s\n\n%s\n\n", title, res.Verdict, res.Summary)
+	if res.Reason != "" {
+		fmt.Fprintf(&b, "Reason: %s\n\n", res.Reason)
+	}
+	for _, f := range res.Findings {
+		fmt.Fprintf(&b, "- **%s** %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, f.Detail)
+	}
+	fmt.Fprintf(&b, "\n_%s / %s_\n", res.Provider, res.Model)
+	return os.WriteFile(path, []byte(b.String()), 0o600)
+}

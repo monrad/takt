@@ -1,0 +1,349 @@
+package cli
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/monrad/takt/internal/backend"
+	"github.com/monrad/takt/internal/brief"
+	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/config"
+	"github.com/monrad/takt/internal/decide"
+	"github.com/monrad/takt/internal/op"
+	"github.com/monrad/takt/internal/plan"
+)
+
+// maxDecideIterations bounds the transition loop inside one `takt next`.
+const maxDecideIterations = 8
+
+// nextRun is one `takt next` invocation: the run it drives and the facts
+// about this call that Decide needs.
+type nextRun struct {
+	env     Env
+	ws      *workspace
+	slug    string
+	bdir    string
+	st      *bundle.State
+	now     time.Time
+	session string
+	force   bool
+	recover bool
+}
+
+// cmdNext implements the op trampoline (spec §5.1): take the session lock,
+// then decide, perform any side effect whose preconditions are now met, and
+// return the first real op.
+func cmdNext(env Env) int {
+	fs := flag.NewFlagSet("next", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	dirFlag := addDirFlag(fs)
+	slugFlag := fs.String("slug", "", "run to drive")
+	force := fs.Bool("force", false, "take over the session lock")
+	recoverFlag := fs.Bool("recover", false, "treat an unrecorded wave as crashed")
+	if _, err := parseInterspersed(fs, env.Args); err != nil {
+		return usageError(env, fs, err)
+	}
+	ctx, cancel := commandContext(env)
+	defer cancel()
+	tgt, code := openTarget(ctx, env, *dirFlag, *slugFlag)
+	if code != 0 {
+		return code
+	}
+	r := &nextRun{
+		env: env, ws: tgt.ws, slug: tgt.slug, bdir: tgt.bdir, st: tgt.st, now: timeNow(),
+		session: sessionID(env.Getenv), force: *force, recover: *recoverFlag,
+	}
+	if lockCode, done := r.acquireLock(); done {
+		return lockCode
+	}
+	return r.loop(ctx)
+}
+
+// acquireLock refreshes or takes the advisory lock; a live other session
+// yields the owner ask (not persisted — it is transient). A holder takt
+// generated an id for is not a live session (see generatedSession), so it is
+// taken over silently rather than asked about.
+func (r *nextRun) acquireLock() (int, bool) {
+	host, _ := os.Hostname()
+	stale := r.st.Session != nil && r.st.Session.ID != r.session && generatedSession(r.st.Session.ID)
+	outcome := bundle.Acquire(r.st, r.session, host, r.now, time.Duration(r.ws.Cfg.LockTTL), r.force || stale)
+	if outcome == bundle.LockBlocked {
+		q := decide.Question("owner", map[string]any{
+			keySlug: r.slug, "holder": r.st.Session.ID, "host": r.st.Session.Host,
+			"heartbeat": r.st.Session.Heartbeat.Format(time.RFC3339),
+		})
+		return printOp(r.env, q), true
+	}
+	if err := bundle.SaveState(r.bdir, r.st); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), ""), true
+	}
+	if outcome == bundle.LockStolen || (outcome == bundle.LockForced && r.force) {
+		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
+			"session": r.session, "outcome": string(outcome),
+		})
+	}
+	return 0, false
+}
+
+// loop decides, performs the side effects whose preconditions are met, and
+// returns as soon as one op is printed (spec §5.3 rows 7, 12, 19).
+func (r *nextRun) loop(ctx context.Context) int {
+	for range maxDecideIterations {
+		facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, r.force, r.recover, r.now, r.session)
+		if err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+		d, err := decide.Decide(r.st, facts)
+		if err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "run `takt doctor`")
+		}
+		switch d.Action {
+		case decide.ActTransition:
+			if code := r.transition(ctx, d.Phase); code != 0 {
+				return code
+			}
+		case decide.ActLoadPlan:
+			if code := r.loadPlan(ctx); code != 0 {
+				return code
+			}
+		case decide.ActClearWave:
+			if code := r.clearWave(d.Wave); code != 0 {
+				return code
+			}
+		case decide.ActLaunch:
+			return launchWave(ctx, r, d)
+		case decide.ActRecover:
+			return recoverWave(ctx, r, d)
+		case decide.ActDispatch:
+			return r.dispatchAgent(ctx, d)
+		case decide.ActAsk:
+			return r.ask(*d.Op)
+		case decide.ActRun:
+			return r.run(*d.Op)
+		case decide.ActExec, decide.ActStop:
+			return printOp(r.env, *d.Op)
+		default:
+			return fail(r.env.Stderr, exitError, "unknown decision "+string(d.Action), "")
+		}
+	}
+	return fail(r.env.Stderr, exitError, "decide loop did not converge", "run `takt doctor`")
+}
+
+// transition records a phase change and commits it (spec §5.3 rows 7, 19).
+func (r *nextRun) transition(ctx context.Context, to string) int {
+	from := r.st.Phase
+	r.st.Phase = to
+	if err := bundle.SaveState(r.bdir, r.st); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	_ = bundle.AppendEvent(r.bdir, "phase", map[string]any{"from": from, "to": to})
+	if _, _, err := commitBundle(ctx, r.ws, r.bdir, r.slug, from+" → "+to); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	return 0
+}
+
+// clearWave drops a wave whose close record says it was committed.
+func (r *nextRun) clearWave(n int) int {
+	r.st.ActiveWave = nil
+	if err := bundle.SaveState(r.bdir, r.st); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	_ = bundle.AppendEvent(r.bdir, "wave_cleared", map[string]any{"wave": n})
+	return 0
+}
+
+// loadPlan materialises state.tasks from the validated index, writes the
+// waves back for display, and moves to execute (spec §7.3 Load).
+func (r *nextRun) loadPlan(ctx context.Context) int {
+	raw, err := os.ReadFile(filepath.Join(r.bdir, "plan.index.json"))
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	idx, err := plan.ParseIndex(raw)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	if len(idx.Tasks) == 0 {
+		return fail(r.env.Stderr, exitError, "plan.index.json has no tasks", "re-run the planner")
+	}
+	waves, err := plan.AssignWaves(idx)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	maxWave := r.materialiseTasks(idx, waves)
+	if err = writeIndex(r.bdir, idx); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	r.st.Phase = bundle.PhaseExecute
+	if err = bundle.SaveState(r.bdir, r.st); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	_ = bundle.AppendEvent(r.bdir, "plan_loaded", map[string]any{"tasks": len(idx.Tasks), keyWaves: maxWave + 1})
+	_ = bundle.AppendEvent(r.bdir, "phase", map[string]any{"from": bundle.PhasePlan, "to": bundle.PhaseExecute})
+	msg := fmt.Sprintf("plan → execute (%d tasks, %d waves)", len(idx.Tasks), maxWave+1)
+	if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, msg); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	return 0
+}
+
+// materialiseTasks replaces state.tasks with the index's tasks, stamps each
+// index task with its computed wave for display, and returns the last wave.
+func (r *nextRun) materialiseTasks(idx plan.Index, waves map[int]int) int {
+	r.st.Tasks = r.st.Tasks[:0]
+	maxWave := 0
+	for i := range idx.Tasks {
+		t := &idx.Tasks[i]
+		w := waves[t.ID]
+		t.Wave = new(w)
+		if w > maxWave {
+			maxWave = w
+		}
+		r.st.Tasks = append(r.st.Tasks, bundle.Task{
+			ID: t.ID, Wave: w, Status: bundle.StatusPending,
+			Files: append([]string{}, t.Files...), Class: t.Class,
+		})
+	}
+	return maxWave
+}
+
+// dispatchAgent renders the planner / auditor brief and prints the op.
+func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
+	tok, err := brief.Token()
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	ag := *d.Agent
+	ag.Cwd = r.ws.Repo.Root
+	var text, name string
+	switch ag.Agent {
+	case "planner":
+		text, name, err = r.plannerBrief(ctx, &ag, tok)
+	case "alignment-auditor":
+		text, name, err = r.auditorBrief(&ag, tok)
+	default:
+		return fail(r.env.Stderr, exitError, "unknown agent "+ag.Agent, "")
+	}
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	p := briefPath(r.bdir, name)
+	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	if err = os.WriteFile(p, []byte(text), 0o600); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	ag.Brief = p
+	record := fmt.Sprintf("takt record --agent %s --from <file> --slug %s", ag.Agent, r.slug)
+	if ag.Mode != "" {
+		record += " --mode " + ag.Mode
+	}
+	return printOp(r.env, op.Op{Op: op.Dispatch, Narration: ag.Label, Agents: []op.Agent{ag}, Record: record})
+}
+
+// plannerBrief pins the planner's model and renders its brief, appending the
+// problems of the previous attempt when there was one (spec §5.3 row 8).
+func (r *nextRun) plannerBrief(ctx context.Context, ag *op.Agent, tok string) (string, string, error) {
+	ag.Model = r.ws.Cfg.Agents.Planner.Model
+	ag.Label = "plan the run"
+	facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, false, false, r.now, r.session)
+	if err != nil {
+		return "", "", err
+	}
+	attempt := facts.PlanAttempts + 1
+	text, err := brief.Render("planner", brief.PlannerData{
+		Slug: r.slug, Topic: r.st.Topic, SpecText: readArtifact(r.bdir, "spec.md"),
+		GoalsText: readArtifact(r.bdir, "goals.md"), Schema: plannerSchema, RepoRoot: r.ws.Repo.Root,
+		Token: tok, MaxFiles: r.ws.Cfg.MaxFilesPerTask, Problems: facts.IndexProblems, Attempt: attempt,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return text, fmt.Sprintf("planner.a%d.md", attempt), nil
+}
+
+// auditorBrief pins the auditor's model and renders the brief for its mode;
+// the verdicts pass also carries the confirmed clauses and the plan.
+func (r *nextRun) auditorBrief(ag *op.Agent, tok string) (string, string, error) {
+	ag.Model = r.ws.Cfg.Agents.AlignmentAuditor.Model
+	data := brief.AlignmentData{Mode: ag.Mode, Anchor: r.st.Topic, Token: tok}
+	if ag.Mode == "verdicts" {
+		if a, err := readAlignment(r.bdir); err == nil && a != nil {
+			data.Clauses = a.Clauses
+		}
+		data.SpecText = readArtifact(r.bdir, "spec.md")
+		data.PlanText = readArtifact(r.bdir, "plan.md")
+		data.IndexText = readArtifact(r.bdir, "plan.index.json")
+	}
+	text, err := brief.Render("alignment-"+ag.Mode, data)
+	if err != nil {
+		return "", "", err
+	}
+	return text, "alignment-" + ag.Mode + ".md", nil
+}
+
+// ask persists the gate on first rendering, then prints it; a re-rendered
+// gate comes from the stored payload and is byte-identical (spec §4.3).
+func (r *nextRun) ask(o op.Op) int {
+	if r.st.PendingGate == nil || r.st.PendingGate.ID != o.Gate {
+		if err := openGate(r.bdir, r.st, o, r.now); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+	}
+	return printOp(r.env, o)
+}
+
+// run fills a run op's instructions from the step's template (spec §5.2).
+func (r *nextRun) run(o op.Op) int {
+	data := brief.RunData{
+		Slug: r.slug, Topic: r.st.Topic,
+		SpecPath: filepath.Join(r.bdir, "spec.md"), GoalsPath: filepath.Join(r.bdir, "goals.md"),
+	}
+	text, err := brief.Render("run-"+o.Step, data)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	o.Instructions = text
+	o.Inputs = map[string]any{
+		keySlug: r.slug, "topic": r.st.Topic, "spec_path": data.SpecPath, "goals_path": data.GoalsPath,
+	}
+	return printOp(r.env, o)
+}
+
+// plannerSchema is quoted into the planner brief (spec §7.3).
+const plannerSchema = `{ "schema": 1, "spec_hash": "sha256:<sha256 of spec.md>", "tasks": [ { "id": 1, ` +
+	`"title": "…", "description": "…", "files": ["path/relative/to/repo"], "verify": ["go test ./pkg/..."], ` +
+	`"depends_on": [], "goals": ["G1"], "class": "implement" } ] }`
+
+// launchWave dispatches a wave's implementers; wired in Task 7.
+func launchWave(_ context.Context, r *nextRun, _ decide.Decision) int {
+	return fail(r.env.Stderr, exitError, "execute phase is wired in Task 7", "")
+}
+
+// recoverWave resets and re-dispatches a crashed wave; wired in Task 7.
+func recoverWave(_ context.Context, r *nextRun, _ decide.Decision) int {
+	return fail(r.env.Stderr, exitError, "execute phase is wired in Task 7", "")
+}
+
+// reviewerFor selects the configured reviewer and its backend settings.
+func reviewerFor(ws *workspace, env Env) (backend.Reviewer, config.Backend, error) {
+	reg := backend.Registry(env.Getenv)
+	r, err := backend.Select(context.Background(), ws.Cfg.Backends.Reviewer, reg)
+	if err != nil {
+		return nil, config.Backend{}, err
+	}
+	switch r.Name() {
+	case "copilot":
+		return r, ws.Cfg.Backends.Copilot, nil
+	case "claude":
+		return r, ws.Cfg.Backends.Claude, nil
+	}
+	return r, config.Backend{Model: "fake", Effort: "low", Timeout: config.Duration(time.Minute)}, nil
+}

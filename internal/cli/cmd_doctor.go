@@ -28,7 +28,7 @@ func cmdDoctor(env Env) int {
 		func(bdir string) plan.ValidateOpts { return validateOpts(ws, bdir) })
 	errs := countErrors(findings)
 	if *asJSON {
-		if werr := writeJSON(env.Stdout, map[string]any{"findings": findings, "errors": errs}); werr != nil {
+		if werr := writeJSON(env.Stdout, map[string]any{keyFindings: findings, "errors": errs}); werr != nil {
 			return 1
 		}
 	} else {
