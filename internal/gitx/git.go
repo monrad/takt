@@ -10,10 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // ErrNotRepo is returned by Open when cwd is not inside a git work tree.
 var ErrNotRepo = errors.New("gitx: not inside a git repository")
+
+// WaitDelay bounds how long a git child (and anything holding its stdout,
+// such as a hook) may outlive a cancelled context before it is killed
+// (spec §13). Shared with the verify runner.
+const WaitDelay = 5 * time.Second
 
 // Repo is a handle on one work tree (linked or primary).
 type Repo struct {
@@ -37,6 +43,7 @@ func (r *Repo) Run(ctx context.Context, args ...string) (string, error) {
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	//nolint:gosec // G204: gitx's whole purpose is to run "git" with caller-supplied args; the binary name is fixed
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.WaitDelay = WaitDelay
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -115,6 +122,7 @@ func (r *Repo) HasStaged(ctx context.Context) (bool, error) {
 func (r *Repo) Porcelain(ctx context.Context) ([]Entry, error) {
 	//nolint:gosec // G204: fixed "git status" invocation, no caller-supplied arguments
 	cmd := exec.CommandContext(ctx, "git", "-C", r.Root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	cmd.WaitDelay = WaitDelay
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.Output()
 	if err != nil {

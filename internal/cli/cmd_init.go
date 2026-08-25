@@ -349,10 +349,21 @@ func removeInitWrites(run *initRun) {
 	_ = os.Remove(bundle.EventsPath(run.bdir))
 }
 
+// rollbackTimeout bounds the cleanup after a failed init. It is derived
+// without the command's cancellation so a rollback still runs when the
+// deadline itself caused the failure (plan-1 final re-review).
+const rollbackTimeout = 30 * time.Second
+
 // failInit fails init with msg after rolling back everything init did, and
 // attaches the hint for whatever could not be rolled back (review finding
 // 3): the user must never be left on a half-initialised branch, with takt's
-// files staged, or with a retry-blocking bundle on disk.
+// files staged, or with a retry-blocking bundle on disk. The rollback runs
+// under its own deadline, derived without ctx's cancellation, so a rollback
+// caused by ctx's own deadline expiring is not itself a no-op (plan-1 final
+// re-review).
 func failInit(ctx context.Context, env Env, run *initRun, msg string) int {
-	return fail(env.Stderr, 1, msg, rollbackInit(ctx, run))
+	rbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	hint := rollbackInit(rbCtx, run)
+	return fail(env.Stderr, 1, msg, hint)
 }

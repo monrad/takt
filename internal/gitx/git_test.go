@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/monrad/takt/internal/gitx"
 	"github.com/monrad/takt/internal/testutil"
@@ -172,5 +173,34 @@ func TestUnstage(t *testing.T) {
 	}
 	if uerr := r.Unstage(ctx); uerr != nil {
 		t.Fatalf("Unstage with no paths must be a no-op: %v", uerr)
+	}
+}
+
+func TestRunGitDeadlineKillsHookHoldingStdout(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	// A pre-commit hook that outlives any reasonable deadline while holding git's stdout.
+	hook := filepath.Join(root, ".git", "hooks", "pre-commit")
+	script := []byte("#!/bin/sh\nsleep 30\n")
+	if err := os.WriteFile(hook, script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, err := gitx.Open(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "x.txt", "x\n")
+	if err = r.Add(context.Background(), "x.txt"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = r.Commit(ctx, "hung")
+	if err == nil {
+		t.Fatal("commit must fail under the deadline")
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond+gitx.WaitDelay+2*time.Second {
+		t.Fatalf("commit returned after %v; the hook held git past the deadline", elapsed)
 	}
 }

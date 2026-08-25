@@ -135,16 +135,20 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 	return append(positional, tail...), nil
 }
 
-// gitTimeout bounds one takt command's whole run against git. Every git call
-// goes through a context carrying this deadline, so a hung hook, a
-// credential prompt, or a wedged index lock fails the command instead of
-// hanging takt forever (spec §13). Plan 2 turns this into a config value;
-// commandContext's env parameter is the hook for that.
-const gitTimeout = 2 * time.Minute
+// defaultGitTimeout bounds every command's git work (spec §13). Plan 3 wires
+// it to config; TAKT_GIT_TIMEOUT overrides it (tests shorten it).
+const defaultGitTimeout = 2 * time.Minute
 
-// commandContext returns the deadline-bounded context a command runs under.
-// Callers must defer the returned [context.CancelFunc]. The Env parameter is
-// unused today and is the seam plan 2 reads a configured timeout from.
-func commandContext(_ Env) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), gitTimeout)
+// commandContext returns the deadline every command runs its git under.
+// Callers must defer the returned [context.CancelFunc].
+func commandContext(env Env) (context.Context, context.CancelFunc) {
+	d := defaultGitTimeout
+	if env.Getenv != nil {
+		if v := env.Getenv("TAKT_GIT_TIMEOUT"); v != "" {
+			if parsed, err := time.ParseDuration(v); err == nil && parsed > 0 {
+				d = parsed
+			}
+		}
+	}
+	return context.WithTimeout(context.Background(), d)
 }

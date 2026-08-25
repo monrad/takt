@@ -432,3 +432,28 @@ func TestInitHintNamesOnlyWhatIsLeftBehind(t *testing.T) {
 		t.Fatalf("init left the tree dirty: %q", clean)
 	}
 }
+
+func TestInitRollsBackEvenWhenTheDeadlineCausedTheFailure(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	// pre-commit sleeps past the (test-shortened) command deadline.
+	hook := filepath.Join(root, ".git", "hooks", "pre-commit")
+	script := []byte("#!/bin/sh\nsleep 5\n")
+	if err := os.WriteFile(hook, script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"TAKT_GIT_TIMEOUT": "1s"}
+	code, _, errb := runIn(t, root, env, "init", "--slug", "demo", "topic")
+	if code != 1 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if b := testutil.Git(t, root, "branch", "--show-current"); b != "main" {
+		t.Fatalf("rollback must return to main; on %q", b)
+	}
+	if st := testutil.Git(t, root, "status", "--porcelain"); st != "" {
+		t.Fatalf("rollback must leave a clean tree; got %q", st)
+	}
+	if out := testutil.Git(t, root, "branch", "--list", "takt/demo"); out != "" {
+		t.Fatalf("run branch must be deleted; got %q", out)
+	}
+}
