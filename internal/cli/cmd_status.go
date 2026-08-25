@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/goals"
 )
 
@@ -17,6 +19,29 @@ type statusGoal struct {
 	ID     string
 	Text   string
 	Signal string
+}
+
+// taskLine is one task's status line: identity and progress, plus — once an
+// implementer has reported — the attempt and model that produced its last
+// digest (spec §11).
+type taskLine struct {
+	ID      int    `json:"id"`
+	Wave    int    `json:"wave"`
+	Status  string `json:"status"`
+	Class   string `json:"class"`
+	Attempt int    `json:"attempt"`
+	Model   string `json:"model"`
+}
+
+// alignmentDigest summarises alignment.json for status: how many clauses
+// landed each verdict, and which ones drifted the ask narrower (contraction:
+// narrowed or dropped) or wider (creep: widened) than what was confirmed
+// (spec §11).
+type alignmentDigest struct {
+	Confirmed   bool           `json:"confirmed"`
+	Counts      map[string]int `json:"counts"`
+	Contraction []string       `json:"contraction"`
+	Creep       []string       `json:"creep"`
 }
 
 // statusInfo is a typed view of one bundle's status; statusDoc builds it and
@@ -33,11 +58,14 @@ type statusInfo struct {
 	BaseSHA       string
 	TasksTotal    int
 	TasksByStatus map[string]int
+	Tasks         []taskLine
 	Gates         map[string]string
+	GatesLive     map[string]string
 	ActiveWave    *bundle.ActiveWave
 	PendingGate   *bundle.PendingGate
 	Goals         []statusGoal
 	GoalsFrozen   bool
+	Alignment     *alignmentDigest
 }
 
 func cmdStatus(env Env) int {
@@ -88,9 +116,9 @@ func statusDoc(bdir string, st *bundle.State) statusInfo {
 	info := statusInfo{
 		Slug: st.Slug, Phase: st.Phase, Branch: st.Branch, BranchAdopted: st.BranchAdopted,
 		Base: st.Base, BaseSHA: st.BaseSHA,
-		TasksTotal: len(st.Tasks), TasksByStatus: taskCounts(st.Tasks),
-		Gates: st.Gates, ActiveWave: st.ActiveWave, PendingGate: st.PendingGate,
-		Goals: []statusGoal{},
+		TasksTotal: len(st.Tasks), TasksByStatus: taskCounts(st.Tasks), Tasks: statusTasks(st.Tasks),
+		Gates: st.Gates, GatesLive: liveGates(bdir), ActiveWave: st.ActiveWave, PendingGate: st.PendingGate,
+		Goals: []statusGoal{}, Alignment: statusAlignment(bdir),
 	}
 	b, err := os.ReadFile(filepath.Join(bdir, "goals.md"))
 	if err != nil {
@@ -115,6 +143,77 @@ func taskCounts(tasks []bundle.Task) map[string]int {
 	return counts
 }
 
+// statusTasks builds one line per task, reading the model it last ran on off
+// its last recorded digest (spec §11); "" when there is no digest yet.
+func statusTasks(tasks []bundle.Task) []taskLine {
+	list := make([]taskLine, 0, len(tasks))
+	for _, t := range tasks {
+		list = append(list, taskLine{
+			ID: t.ID, Wave: t.Wave, Status: t.Status, Class: t.Class,
+			Attempt: t.Attempt, Model: digestModelOf(t.LastDigest),
+		})
+	}
+	return list
+}
+
+// digestModelOf reads the model field off a task's last digest (the JSON
+// bundle.Task.LastDigest holds); "" when there is none yet or it is
+// unreadable.
+func digestModelOf(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var d struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return ""
+	}
+	return d.Model
+}
+
+// liveGates computes each review gate's verdict directly from the artifacts
+// and receipts on disk — never the state.gates snapshot, which only records
+// that a transition once passed, not whether it still does (spec §9, §11).
+// A gate whose artifacts are not all present yet is omitted.
+func liveGates(bdir string) map[string]string {
+	events, _ := bundle.ReadEvents(bdir)
+	out := map[string]string{}
+	for _, g := range []string{gate.Spec, gate.Plan} {
+		st, err := gate.Compute(bdir, g, events)
+		if err != nil {
+			continue
+		}
+		v := st.Verdict
+		if v == "" {
+			v = gatePending
+		}
+		out[g] = v
+	}
+	return out
+}
+
+// statusAlignment builds the alignment digest from alignment.json, reusing
+// the same reader facts.go uses — nil when the run has no alignment.json
+// yet, never an error (spec §11).
+func statusAlignment(bdir string) *alignmentDigest {
+	a, err := readAlignment(bdir)
+	if err != nil || a == nil {
+		return nil
+	}
+	d := &alignmentDigest{Confirmed: a.Confirmed, Counts: map[string]int{}}
+	for _, v := range a.Verdicts {
+		d.Counts[v.Verdict]++
+		switch v.Verdict {
+		case "narrowed", "dropped":
+			d.Contraction = append(d.Contraction, v.ID)
+		case "widened":
+			d.Creep = append(d.Creep, v.ID)
+		}
+	}
+	return d
+}
+
 // statusGoals converts parsed goals.md items to the status view's shape.
 func statusGoals(items []goals.Goal) []statusGoal {
 	list := make([]statusGoal, 0, len(items))
@@ -133,12 +232,14 @@ func statusJSON(info statusInfo) map[string]any {
 	return map[string]any{
 		keySlug: info.Slug, "phase": info.Phase, keyBranch: info.Branch, keyBranchAdopted: info.BranchAdopted,
 		keyBase: info.Base, keyBaseSHA: info.BaseSHA,
-		keyTasks:       map[string]any{"total": info.TasksTotal, "by_status": info.TasksByStatus},
+		keyTasks:       map[string]any{"total": info.TasksTotal, "by_status": info.TasksByStatus, "items": info.Tasks},
 		"gates":        info.Gates,
+		"gates_live":   info.GatesLive,
 		"active_wave":  info.ActiveWave,
 		"pending_gate": info.PendingGate,
 		keyGoals:       goalsOut,
 		"goals_frozen": info.GoalsFrozen,
+		"alignment":    info.Alignment,
 	}
 }
 
@@ -150,6 +251,13 @@ func renderStatus(info statusInfo) string {
 	fmt.Fprintf(&b, "tasks: %d total — pending %d, done %d, failed %d, blocked %d, waived %d\n",
 		info.TasksTotal, c[bundle.StatusPending], c[bundle.StatusDone], c[bundle.StatusFailed],
 		c[bundle.StatusBlocked], c[bundle.StatusWaived])
+	for _, t := range info.Tasks {
+		if t.Attempt == 0 {
+			fmt.Fprintf(&b, "  #%d wave %d %s (%s)\n", t.ID, t.Wave, t.Status, t.Class)
+			continue
+		}
+		fmt.Fprintf(&b, "  #%d wave %d %s (%s, attempt %d, %s)\n", t.ID, t.Wave, t.Status, t.Class, t.Attempt, t.Model)
+	}
 	if info.ActiveWave != nil {
 		fmt.Fprintf(&b, "active wave: %d (attempt %d, since %s)\n",
 			info.ActiveWave.N, info.ActiveWave.Attempt, info.ActiveWave.StartedAt.Format("15:04:05"))
@@ -160,11 +268,54 @@ func renderStatus(info statusInfo) string {
 	if info.Gates != nil {
 		fmt.Fprintf(&b, "gates: spec=%s plan=%s\n", info.Gates["spec"], info.Gates["plan"])
 	}
+	renderLiveGates(&b, info.GatesLive)
 	if len(info.Goals) > 0 {
 		b.WriteString("goals:\n")
 		for _, g := range info.Goals {
 			fmt.Fprintf(&b, "  %s — %s (%s)\n", g.ID, g.Text, g.Signal)
 		}
 	}
+	if info.Alignment != nil {
+		fmt.Fprintf(&b, "alignment: %s\n", alignmentLine(info.Alignment))
+	}
 	return b.String()
+}
+
+// renderLiveGates prints the "gates (live): spec=… plan=…" line, spec then
+// plan, skipping a gate whose artifacts are not all present yet.
+func renderLiveGates(b *strings.Builder, live map[string]string) {
+	if len(live) == 0 {
+		return
+	}
+	b.WriteString("gates (live):")
+	for _, g := range []string{gate.Spec, gate.Plan} {
+		if v, ok := live[g]; ok {
+			fmt.Fprintf(b, " %s=%s", g, v)
+		}
+	}
+	b.WriteString("\n")
+}
+
+// alignmentVerdictOrder is the canonical order the alignment summary line
+// lists verdicts in.
+var alignmentVerdictOrder = []string{"covered", "narrowed", "dropped", "widened", "contradicted"}
+
+// alignmentLine renders the alignment digest: verdict counts, then the
+// clause ids that narrowed or dropped the ask (contraction) and the ones
+// that widened it (creep), each only when non-empty.
+func alignmentLine(a *alignmentDigest) string {
+	counts := make([]string, 0, len(a.Counts))
+	for _, v := range alignmentVerdictOrder {
+		if n := a.Counts[v]; n > 0 {
+			counts = append(counts, fmt.Sprintf("%d %s", n, v))
+		}
+	}
+	line := strings.Join(counts, ", ")
+	if len(a.Contraction) > 0 {
+		line += fmt.Sprintf(" (contraction: %s)", strings.Join(a.Contraction, ", "))
+	}
+	if len(a.Creep) > 0 {
+		line += fmt.Sprintf(" (creep: %s)", strings.Join(a.Creep, ", "))
+	}
+	return line
 }

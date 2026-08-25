@@ -261,7 +261,7 @@ func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, 
 			MaxParallel: cfg.MaxParallel,
 			MaxRework:   cfg.MaxRework,
 		},
-		Gates:   map[string]string{"spec": "pending", "plan": "pending"},
+		Gates:   map[string]string{"spec": gatePending, "plan": gatePending},
 		Tasks:   []bundle.Task{},
 		Session: &bundle.Session{ID: id, Host: host, Heartbeat: now, Generated: generated},
 	}

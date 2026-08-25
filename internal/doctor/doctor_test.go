@@ -125,3 +125,62 @@ func TestArchivedSkippedUnlessAll(t *testing.T) {
 		t.Fatal("--all must include archived")
 	}
 }
+
+func TestStaleWaveWarnsOnlyWhenSessionIsDead(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("w")
+	old := time.Now().Add(-2 * time.Hour)
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: old, SessionID: "S", Tasks: []int{1}}
+	st.Session = &bundle.Session{ID: "S", Heartbeat: old}
+	bundle.SaveState(d.Bundle("w"), st)
+	o := doctor.Options{
+		Now: time.Now(), WaveStaleAfter: 30 * time.Minute, LockTTL: 10 * time.Minute,
+		ValidateOpts: noOpts, Resolve: func(string) bool { return true },
+	}
+	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
+	if l := levels(fs, "stale-wave"); len(l) != 1 || l[0] != "WARN" {
+		t.Fatalf("%+v", fs)
+	}
+	st.Session.Heartbeat = time.Now()
+	bundle.SaveState(d.Bundle("w"), st)
+	fs = doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
+	if l := levels(fs, "stale-wave"); l[0] != "PASS" {
+		t.Fatal("a live session's long wave is not stale")
+	}
+}
+
+func TestIndexStalenessAndBranch(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("s")
+	st.Phase = bundle.PhaseExecute
+	st.Gates = map[string]string{"spec": "ok", "plan": "ok"}
+	bundle.SaveState(d.Bundle("s"), st)
+	os.WriteFile(filepath.Join(d.Bundle("s"), "spec.md"), []byte("# spec\n"), 0o600)
+	os.WriteFile(filepath.Join(d.Bundle("s"), "plan.md"), []byte("# plan\n"), 0o600)
+	staleIndex := `{"schema":1,"spec_hash":"sha256:stale","tasks":[` +
+		`{"id":1,"title":"a","description":"d","files":["a.go"],"verify":["true"]}]}`
+	os.WriteFile(filepath.Join(d.Bundle("s"), "plan.index.json"), []byte(staleIndex), 0o600)
+	o := doctor.Options{
+		Now:            time.Now(),
+		WaveStaleAfter: time.Hour,
+		LockTTL:        time.Hour,
+		CurrentBranch:  "other",
+		ValidateOpts:   noOpts,
+		Resolve:        func(ref string) bool { return ref == "takt/s" },
+	}
+	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.IndexStaleness, doctor.Branch})
+	if l := levels(fs, "index-staleness"); len(l) == 0 || l[0] != "ERROR" {
+		t.Fatalf("no receipts in phase execute → ERROR: %+v", fs)
+	}
+	if l := levels(fs, "branch"); len(l) == 0 || l[0] != "ERROR" {
+		t.Fatalf("base_sha unresolvable → ERROR: %+v", fs)
+	}
+	st.BaseSHA = "takt/s" // resolvable in this stub
+	bundle.SaveState(d.Bundle("s"), st)
+	fs = doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.Branch})
+	if l := levels(fs, "branch"); l[0] != "WARN" {
+		t.Fatalf("checkout on another branch → WARN: %+v", fs)
+	}
+}

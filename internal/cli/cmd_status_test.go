@@ -35,6 +35,9 @@ func TestStatusSingleBundle(t *testing.T) {
 	if len(goals) != 1 || goals[0].(map[string]any)["id"] != "G1" {
 		t.Fatalf("goals = %v", goals)
 	}
+	if _, ok := got["gates_live"]; !ok {
+		t.Fatal("live gate status missing")
+	}
 
 	var out strings.Builder
 	cli.Main([]string{"status"}, &out, &out, func(k string) string {

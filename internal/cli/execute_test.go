@@ -123,6 +123,21 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 	if st.Task(1).Status != bundle.StatusDone || st.Task(2).Status != bundle.StatusDone {
 		t.Fatalf("statuses: %+v", st.Tasks)
 	}
+	// status must show task 1's attempt and the model its digest recorded.
+	scode, sout, serrb := runIn(t, root, nil, "status", "--json")
+	if scode != 0 {
+		t.Fatalf("status: %d %s", scode, serrb)
+	}
+	items := sout["tasks"].(map[string]any)["items"].([]any)
+	var task1 map[string]any
+	for _, it := range items {
+		if m := it.(map[string]any); m["id"] == float64(1) {
+			task1 = m
+		}
+	}
+	if task1 == nil || task1["attempt"] != float64(1) || task1["model"] != "sonnet" {
+		t.Fatalf("status task 1 = %v (items %v)", task1, items)
+	}
 	// next clears the wave and launches wave 1 (task 3, docs → sonnet).
 	_, o, _ = next(t, root, nil)
 	if o["op"] != "dispatch" || o["wave"] != float64(1) || agentsOf(t, o)[0]["model"] != "sonnet" {

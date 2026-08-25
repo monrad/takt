@@ -63,6 +63,12 @@ const (
 	keyCommitted     = "committed"
 )
 
+// gatePending is a gate's value before any receipt exists (state.gates at
+// init, and a live gate.Compute with no verdict yet) — named so goconst
+// sees one definition instead of repeated literals across cmd_init.go and
+// cmd_status.go.
+const gatePending = "pending"
+
 // Task statuses a close record can hold that state.json cannot: a reviewed
 // task sent back for rework is still pending, and a task whose review could
 // not be run at all is neither passed nor failed (spec §7.4 step 4).

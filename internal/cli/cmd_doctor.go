@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/monrad/takt/internal/doctor"
 	"github.com/monrad/takt/internal/plan"
@@ -24,8 +26,7 @@ func cmdDoctor(env Env) int {
 	if err != nil {
 		return fail(env.Stderr, 1, err.Error(), workspaceHint)
 	}
-	findings := doctor.Run(ctx, ws.Dir, *all, doctor.Default,
-		func(bdir string) plan.ValidateOpts { return validateOpts(ws, bdir) })
+	findings := doctor.RunWith(ctx, ws.Dir, doctorOptions(ctx, ws, *all), doctor.Default)
 	errs := countErrors(findings)
 	if *asJSON {
 		if werr := writeJSON(env.Stdout, map[string]any{keyFindings: findings, "errors": errs}); werr != nil {
@@ -38,6 +39,26 @@ func cmdDoctor(env Env) int {
 		return 1
 	}
 	return 0
+}
+
+// doctorOptions builds the doctor.Options a `takt doctor` run judges every
+// bundle against: today's clock, this workspace's staleness thresholds, the
+// checked-out branch, and a Resolve that asks git whether a ref or sha is a
+// real commit (spec §11). CurrentBranch is left "" when it cannot be read
+// (e.g. a detached HEAD mid-rebase) so the branch check simply skips its
+// WARN rather than misreporting a mismatch.
+func doctorOptions(ctx context.Context, ws *workspace, all bool) doctor.Options {
+	cur, _ := ws.Repo.CurrentBranch(ctx)
+	return doctor.Options{
+		All: all, Now: time.Now().UTC(),
+		WaveStaleAfter: time.Duration(ws.Cfg.WaveStaleAfter), LockTTL: time.Duration(ws.Cfg.LockTTL),
+		RepoRoot: ws.Repo.Root, CurrentBranch: cur,
+		Resolve: func(ref string) bool {
+			_, err := ws.Repo.Run(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+			return err == nil
+		},
+		ValidateOpts: func(bdir string) plan.ValidateOpts { return validateOpts(ws, bdir) },
+	}
 }
 
 // countErrors tallies findings at ERROR level.

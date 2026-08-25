@@ -155,9 +155,17 @@ func (r *nextRun) waveSession() string {
 }
 
 // transition records a phase change and commits it (spec §5.3 rows 7, 19).
+// Leaving brainstorm for plan is exactly the transition that follows the
+// spec gate passing, so this is where state.gates records it durably —
+// `takt status`'s live gate.Compute reflects the receipt from the moment it
+// is written, but state.gates is what a doctor index-staleness check
+// compares a later edit against (spec §11).
 func (r *nextRun) transition(ctx context.Context, to string) int {
 	from := r.st.Phase
 	r.st.Phase = to
+	if to == bundle.PhasePlan {
+		r.st.Gates["spec"] = "ok"
+	}
 	if err := bundle.SaveState(r.bdir, r.st); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
@@ -201,6 +209,7 @@ func (r *nextRun) loadPlan(ctx context.Context) int {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	r.st.Phase = bundle.PhaseExecute
+	r.st.Gates["plan"] = "ok"
 	if err = bundle.SaveState(r.bdir, r.st); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
