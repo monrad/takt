@@ -62,20 +62,17 @@ func cmdNext(env Env) int {
 	if code != 0 {
 		return code
 	}
-	// An archived run has nothing left to decide (spec §5.3 row 26), and the
-	// answer must not cost it a state write: acquireLock would stamp a fresh
-	// holder on the run takt just released and rewrite state.json — a tracked
-	// file — leaving the worktree dirty with nothing to commit, every time
-	// anyone asks a finished run what is next. The one thing that may still
-	// be owed is the disposition's own git work: `applied` is only recorded
-	// once it has really happened, so an archive that died between its commit
-	// and its merge is finished here instead of being lost. Neither path
-	// takes the lock.
+	// An archived run has nothing left to decide (spec §5.3 row 26), and no
+	// lock is taken: acquireLock would stamp a fresh holder on the run takt
+	// just released and rewrite state.json — a tracked file — leaving the
+	// worktree dirty with nothing to commit, every time anyone asks a
+	// finished run what is next. What the disposition asked of git is
+	// re-derived instead of remembered, so an archive whose merge could not
+	// be made — the primary worktree was busy, the merge conflicted — makes
+	// it here on a later call, and one that is fully done says so and does
+	// nothing.
 	if tgt.st.Phase == bundle.PhaseArchived {
-		if tgt.st.Disposition != nil && !tgt.st.Disposition.Applied {
-			return applyAndStop(ctx, env, tgt)
-		}
-		return printOp(env, op.Op{Op: op.Stop, Narration: "run archived", Reason: reasonArchived})
+		return applyAndStop(ctx, env, tgt)
 	}
 	id, generated := sessionID(env.Getenv)
 	r := &nextRun{

@@ -90,6 +90,24 @@ func (r *Repo) MergeNoFF(ctx context.Context, dir, branch, msg string) (string, 
 	return strings.TrimSpace(out), err
 }
 
+// MergeAbort undoes a merge that stopped on a conflict, restoring dir to
+// the commit it was on. takt is not there to resolve a conflict — and the
+// worktree the merge ran in is usually not the one the user is sitting in —
+// so a merge it could not finish is taken back out rather than left staged.
+func (r *Repo) MergeAbort(ctx context.Context, dir string) error {
+	_, err := r.Run(ctx, "-C", dir, "merge", "--abort")
+	return err
+}
+
+// DeleteBranchSafe is `git branch -d`: it refuses a branch that is not
+// merged into HEAD, which is the check that makes deleting a run branch
+// after a merge safe rather than merely quiet. git refuses either way when a
+// worktree has the branch checked out.
+func (r *Repo) DeleteBranchSafe(ctx context.Context, name string) error {
+	_, err := r.Run(ctx, "branch", "-d", name)
+	return err
+}
+
 // DeleteBranchForce is `git branch -D`; git refuses when a worktree has it.
 func (r *Repo) DeleteBranchForce(ctx context.Context, name string) error {
 	_, err := r.Run(ctx, "branch", "-D", name)

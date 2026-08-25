@@ -1,8 +1,10 @@
 package cli_test
 
 import (
+	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,14 +13,30 @@ import (
 	"github.com/monrad/takt/internal/testutil"
 )
 
+// runShell runs a cleanup command from a stop op exactly as the session
+// would: the printed string, verbatim, through a shell in the repository.
+func runShell(t *testing.T, dir, script string) (int, string) {
+	t.Helper()
+	cmd := exec.CommandContext(context.Background(), "bash", "-c", script)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if e, ok := errors.AsType[*exec.ExitError](err); ok {
+		return e.ExitCode(), string(out)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return 0, string(out)
+}
+
 // adoptedPRURL is the pull request the scripted session reports opening for
 // the adopted-branch run.
 const adoptedPRURL = "https://example.invalid/pr/1"
 
 // finishedRun drives a run to the branch_finish question.
-func finishedRun(t *testing.T, initFlags ...string) (*driver, string, map[string]any) {
+func finishedRun(t *testing.T) (*driver, string, map[string]any) {
 	t.Helper()
-	d, bdir := finishRun(t, append([]string{"--no-goals"}, initFlags...)...)
+	d, bdir := finishRun(t, "--no-goals")
 	driveToFinish(t, d)
 	d.cmd("verify", "--slug", "demo")
 	d.nextOp()
@@ -142,73 +160,136 @@ func TestBranchFinishMergeInLinkedWorktree(t *testing.T) {
 	}
 	st, _ := bundle.LoadState(d.bdir)
 	if st.Disposition == nil || !st.Disposition.Applied {
-		t.Fatalf("the merge landed, so the disposition is applied: %+v", st.Disposition)
+		t.Fatalf("the archive commit finishes takt's bookkeeping: %+v", st.Disposition)
 	}
-	// Nothing is owed any more, so a further call is the plain row-26 stop —
-	// it does not re-run the disposition or repeat its hand-off.
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
+		t.Fatalf("the archive commit is the run's last write: %q", s)
+	}
+	// A further call re-derives from git rather than replaying a record: the
+	// merge is not made a second time, and the hand-off stands for as long as
+	// the branch it names does.
 	before := testutil.Git(t, root, "rev-parse", "HEAD")
-	if o = d.nextOp(); o["op"] != "stop" || o["reason"] != "archived" || o["cleanup"] != nil {
-		t.Fatalf("an applied disposition is not applied again: %v", o)
+	o = d.nextOp()
+	again, _ := o["cleanup"].([]any)
+	if o["op"] != "stop" || len(again) != 1 || again[0] != cleanup[0] {
+		t.Fatalf("the hand-off stands while the branch does: %v", o)
 	}
 	if testutil.Git(t, root, "rev-parse", "HEAD") != before {
 		t.Fatal("the primary must not take a second merge commit")
 	}
 }
 
-// TestArchivedRunReappliesAnUnappliedMerge is the crash this ordering exists
-// to survive: the archive commits, its merge then fails, and `applied` stays
-// false — so the run is archived, the merge is still owed, and the next
-// `takt next` finishes it rather than declaring a merge nobody made.
-func TestArchivedRunReappliesAnUnappliedMerge(t *testing.T) {
+// TestArchivedMergeWaitsForThePrimaryToComeBack is the check that keeps a
+// merge on the base branch. The primary moves to another branch between the
+// answer and the archive, so takt merges nothing, says why, and hands over
+// the command — then makes the merge itself once the primary is back.
+func TestArchivedMergeWaitsForThePrimaryToComeBack(t *testing.T) {
 	t.Parallel()
 	d, root, _ := linkedWorktreeRun(t)
 	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "merge", "--slug", "demo"); code != 0 {
 		t.Fatal(errb)
 	}
-	// The primary goes unmergeable between the answer and the archive: an
-	// untracked a.go is exactly what the merge would have to overwrite.
-	testutil.WriteFile(t, root, "a.go", "package a // not what the branch has\n")
+	testutil.Git(t, root, "checkout", "-b", "release/1.0")
 	o := d.nextOp()
 	if o["op"] != "stop" || o["reason"] != "archived" {
 		t.Fatalf("%v", o)
 	}
-	if ctx, _ := o["context"].(map[string]any); ctx["error"] == nil || ctx["merged"] != nil {
-		t.Fatalf("a failed merge is reported and claims nothing: %v", o["context"])
+	ctxm, _ := o["context"].(map[string]any)
+	if errText, _ := ctxm["error"].(string); !strings.Contains(errText, "main") || ctxm["merged"] != nil {
+		t.Fatalf("the error names the base and claims no merge: %v", ctxm)
+	}
+	if s := testutil.Git(t, root, "log", "-1", "--format=%s"); strings.HasPrefix(s, "Merge") {
+		t.Fatalf("release/1.0 must not receive the run: %s", s)
 	}
 	cleanup, _ := o["cleanup"].([]any)
 	if len(cleanup) != 1 || !strings.Contains(cleanup[0].(string), "merge --no-ff takt/demo") {
 		t.Fatalf("the merge is handed to the session meanwhile: %v", cleanup)
 	}
-	st, _ := bundle.LoadState(d.bdir)
-	if st.Phase != bundle.PhaseArchived || st.Disposition.Applied {
-		t.Fatalf("a merge that did not happen is not applied: %+v", st.Disposition)
-	}
-	if s := testutil.Git(t, root, "log", "-1", "--format=%s"); strings.HasPrefix(s, "Merge") {
-		t.Fatalf("nothing was merged: %s", s)
-	}
-	// The obstacle goes away; the next call owes the merge and makes it.
-	if err := os.Remove(filepath.Join(root, "a.go")); err != nil {
-		t.Fatal(err)
-	}
+	// The primary comes back to the base; the next call makes the merge.
+	testutil.Git(t, root, "checkout", "main")
 	o = d.nextOp()
-	if ctx, _ := o["context"].(map[string]any); o["op"] != "stop" || ctx["merged"] == nil {
-		t.Fatalf("the re-applied merge is reported: %v", o)
+	if ctxm, _ = o["context"].(map[string]any); ctxm["merged"] == nil || ctxm["error"] != nil {
+		t.Fatalf("the merge lands once the primary is back: %v", o)
 	}
 	if s := testutil.Git(t, root, "log", "-1", "--format=%s"); !strings.HasPrefix(s, "Merge takt/demo") {
-		t.Fatalf("the merge lands on the retry: %s", s)
+		t.Fatalf("main is the merge commit: %s", s)
 	}
-	if st, _ = bundle.LoadState(d.bdir); !st.Disposition.Applied {
-		t.Fatal("a merge that happened is applied")
+	// The base can only have received this state.json through the merge, so
+	// what it says about the disposition is true there by construction.
+	if s := testutil.Git(t, root, "show", "main:docs/takt/demo/state.json"); !strings.Contains(s, `"applied": true`) {
+		t.Fatalf("the merged state.json records the disposition as applied:\n%s", s)
 	}
-	if n := countEvents(t, d.bdir, "disposition_applied"); n != 1 {
-		t.Fatalf("one disposition_applied event, got %d", n)
+}
+
+// TestArchivedMergeAbortsAConflictAndRetries: a merge that stops on a
+// conflict must not be left in the primary worktree — takt is not there to
+// resolve it, and that worktree is not the one the session is sitting in.
+func TestArchivedMergeAbortsAConflictAndRetries(t *testing.T) {
+	t.Parallel()
+	d, root, _ := linkedWorktreeRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "merge", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
 	}
 	before := testutil.Git(t, root, "rev-parse", "HEAD")
-	if o = d.nextOp(); o["op"] != "stop" || o["cleanup"] != nil {
-		t.Fatalf("%v", o)
+	testutil.WriteFile(t, root, "a.go", "package a // the base wrote its own\n")
+	testutil.Commit(t, root, "conflicting a.go on main")
+	conflicting := testutil.Git(t, root, "rev-parse", "HEAD")
+	o := d.nextOp()
+	ctxm, _ := o["context"].(map[string]any)
+	if o["op"] != "stop" || ctxm["error"] == nil || ctxm["merged"] != nil {
+		t.Fatalf("a conflicted merge is reported and claims nothing: %v", o)
 	}
-	if testutil.Git(t, root, "rev-parse", "HEAD") != before {
-		t.Fatal("an applied merge is never made twice")
+	if _, err := os.Stat(filepath.Join(root, ".git", "MERGE_HEAD")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the conflicted merge must be aborted, not left in the primary: %v", err)
+	}
+	if s := testutil.Git(t, root, "status", "--porcelain"); s != "" {
+		t.Fatalf("no conflict markers and nothing staged: %q", s)
+	}
+	if testutil.Git(t, root, "rev-parse", "HEAD") != conflicting {
+		t.Fatal("the abort restores the primary's HEAD")
+	}
+	cleanup, _ := o["cleanup"].([]any)
+	if len(cleanup) != 1 || !strings.Contains(cleanup[0].(string), "merge --no-ff takt/demo") {
+		t.Fatalf("the merge is handed to the session: %v", cleanup)
+	}
+	// Drop the conflicting commit; the next call merges.
+	testutil.Git(t, root, "reset", "--hard", before)
+	o = d.nextOp()
+	if ctxm, _ = o["context"].(map[string]any); ctxm["merged"] == nil || ctxm["error"] != nil {
+		t.Fatalf("the merge lands once the conflict is gone: %v", o)
+	}
+	if s := testutil.Git(t, root, "log", "-1", "--format=%s"); !strings.HasPrefix(s, "Merge takt/demo") {
+		t.Fatalf("main is the merge commit: %s", s)
+	}
+}
+
+// TestArchivedDiscardCleanupRunsAsPrinted: a hand-off is only worth printing
+// if it works, so this runs the printed command verbatim. It is also what the
+// clean tree buys — `git checkout <base>` would refuse over a modified
+// state.json, which is why nothing is written after the archive commit.
+func TestArchivedDiscardCleanupRunsAsPrinted(t *testing.T) {
+	t.Parallel()
+	d, _, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "discard",
+		"--confirm", "demo", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	o := d.nextOp()
+	cleanup, _ := o["cleanup"].([]any)
+	if len(cleanup) != 1 {
+		t.Fatalf("one hand-off command: %v", o)
+	}
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
+		t.Fatalf("the tree is clean before the hand-off runs: %q", s)
+	}
+	if code, out := runShell(t, d.root, cleanup[0].(string)); code != 0 {
+		t.Fatalf("the printed cleanup must run as-is: exit %d\n%s", code, out)
+	}
+	if b := testutil.Git(t, d.root, "branch", "--list", "takt/demo"); b != "" {
+		t.Fatalf("takt/demo must be gone: %q", b)
+	}
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
+		t.Fatalf("the repository is clean once the hand-off has run: %q", s)
 	}
 }
 
@@ -274,11 +355,10 @@ func TestBranchFinishDiscardCopiesTheBundle(t *testing.T) {
 	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a stale copy of the slug must be replaced, not merged into: %v", err)
 	}
-	// discard's own last two writes (applied, the event) are deliberately
-	// left uncommitted on a branch that is going away; what must never show
-	// up in the tree is the copy.
-	if s := testutil.Git(t, d.root, "status", "--porcelain"); strings.Contains(s, ".discarded") {
-		t.Fatalf(".discarded must be ignored: %q", s)
+	// The copy is ignored and the archive commit was the last write, so the
+	// tree the hand-off has to run in is clean.
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
+		t.Fatalf(".discarded must be ignored and nothing else left behind: %q", s)
 	}
 }
 
