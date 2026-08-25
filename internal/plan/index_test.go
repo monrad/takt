@@ -2,6 +2,7 @@ package plan_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/monrad/takt/internal/plan"
@@ -66,5 +67,53 @@ func TestCanonicalStripsWaveAndIsStable(t *testing.T) {
 	b, _ := plan.Canonical(idx)
 	if string(a) != string(b) {
 		t.Fatal("wave must not affect the canonical bytes")
+	}
+}
+
+// TestParseIndexRejectsUnknownFields covers review finding 4: a typo like
+// "dependsOn" used to be dropped silently, so a plan that declared an order
+// validated as valid with every task in wave 0.
+func TestParseIndexRejectsUnknownFields(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"dependsOn": `{"schema":1,"spec_hash":"x","tasks":[
+		  {"id":1,"title":"a","description":"d","files":["a.go"],"verify":["true"]},
+		  {"id":2,"title":"b","description":"d","files":["b.go"],"verify":["true"],"dependsOn":[1]}]}`,
+		"specHash":     `{"schema":1,"specHash":"x","tasks":[]}`,
+		"max_parallel": `{"schema":1,"spec_hash":"x","max_parallel":4,"tasks":[]}`,
+	}
+	for field, raw := range cases {
+		_, err := plan.ParseIndex([]byte(raw))
+		if err == nil {
+			t.Fatalf("%s: unknown field must be rejected", field)
+		}
+		if !strings.Contains(err.Error(), field) {
+			t.Fatalf("%s: error must name the field: %v", field, err)
+		}
+	}
+}
+
+// TestParseIndexRejectsTrailingData covers review finding 4's second half:
+// json.Decoder reads only the first value, so a second object or stray text
+// after the index used to be ignored.
+func TestParseIndexRejectsTrailingData(t *testing.T) {
+	t.Parallel()
+	for name, raw := range map[string]string{
+		"second object": `{"schema":1,"spec_hash":"x","tasks":[]}{"schema":1}`,
+		"garbage":       `{"schema":1,"spec_hash":"x","tasks":[]} oops`,
+		"array":         `{"schema":1,"spec_hash":"x","tasks":[]}[1,2]`,
+	} {
+		if _, err := plan.ParseIndex([]byte(raw)); err == nil {
+			t.Fatalf("%s: trailing data must be rejected", name)
+		}
+	}
+}
+
+// TestParseIndexAcceptsTrailingWhitespace keeps the strictness above from
+// rejecting an ordinary file that ends with a newline.
+func TestParseIndexAcceptsTrailingWhitespace(t *testing.T) {
+	t.Parallel()
+	if _, err := plan.ParseIndex([]byte(`{"schema":1,"spec_hash":"x","tasks":[]}` + "\n\n  \t")); err != nil {
+		t.Fatalf("trailing whitespace must be accepted: %v", err)
 	}
 }

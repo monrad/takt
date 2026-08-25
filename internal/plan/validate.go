@@ -111,12 +111,21 @@ func validateTask(t Task, o ValidateOpts, ids map[int]bool, add func(int, string
 	}
 }
 
-// validateTaskFiles applies the files-list rules for one task.
+// validateTaskFiles applies the files-list rules for one task. A file listed
+// twice is reported as its own problem: left to validateOverlaps it came out
+// as "tasks 1 and 1 share x.go … add depends_on", which points the planner
+// at a dependency it cannot add (review minor finding).
 func validateTaskFiles(t Task, o ValidateOpts, add func(int, string, string)) {
 	if len(t.Files) == 0 {
 		add(t.ID, "files", "files is empty — every task declares the files it may change")
 	}
+	seen := make(map[string]bool, len(t.Files))
 	for _, f := range t.Files {
+		if seen[f] {
+			add(t.ID, "files", "duplicate file "+f)
+			continue
+		}
+		seen[f] = true
 		if err := bundle.CheckRelPath(o.RepoRoot, f); err != nil {
 			add(t.ID, "files", err.Error())
 		}
@@ -148,12 +157,20 @@ func validateTaskVerify(t Task, o ValidateOpts, add func(int, string, string)) {
 }
 
 // validateOverlaps requires shared files to be ordered (transitively) by
-// depends_on. Assumes idx is acyclic (checked by the caller).
+// depends_on. Assumes idx is acyclic (checked by the caller). Each task
+// contributes a file at most once, so a task never appears twice as an owner
+// and can never be reported as sharing a file with itself — the duplicate
+// itself is validateTaskFiles's problem to report.
 func validateOverlaps(idx Index, add func(int, string, string)) {
 	reach := reachability(idx)
 	byFile := map[string][]int{}
 	for _, t := range idx.Tasks {
+		seen := make(map[string]bool, len(t.Files))
 		for _, f := range t.Files {
+			if seen[f] {
+				continue
+			}
+			seen[f] = true
 			byFile[f] = append(byFile[f], t.ID)
 		}
 	}

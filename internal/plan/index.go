@@ -5,7 +5,9 @@ package plan
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"sort"
 )
 
@@ -33,11 +35,20 @@ type Index struct {
 const DefaultClass = "implement"
 
 // ParseIndex decodes strictly, defaults class, and sorts tasks by id.
+// Strict means both halves of the word: an unknown key is an error, not a
+// silent drop — a "dependsOn" typo used to validate as a plan whose tasks
+// all ran in wave 0 — and nothing may follow the top-level object but
+// whitespace (review finding 4).
 func ParseIndex(b []byte) (Index, error) {
 	var idx Index
 	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
 	if err := dec.Decode(&idx); err != nil {
 		return Index{}, fmt.Errorf("plan.index.json: %w", err)
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return Index{}, errors.New("plan.index.json: trailing data after the top-level object")
 	}
 	for i := range idx.Tasks {
 		if idx.Tasks[i].Class == "" {

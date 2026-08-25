@@ -120,3 +120,27 @@ func TestValidateSkipsOptionalChecks(t *testing.T) {
 		t.Fatalf("nil GoalIDs/LookPath and empty SpecHash must skip those checks: %v", ps)
 	}
 }
+
+// TestValidateReportsDuplicateFileAsItsOwnProblem covers the review's minor
+// finding: a file listed twice in one task used to surface as the nonsense
+// "tasks 1 and 1 share x.go but neither depends on the other", which points
+// the planner at a dependency it cannot add.
+func TestValidateReportsDuplicateFileAsItsOwnProblem(t *testing.T) {
+	t.Parallel()
+	idx := loadFixture(t)
+	dup := idx.Tasks[0].Files[0]
+	idx.Tasks[0].Files = append(idx.Tasks[0].Files, dup)
+
+	ps := plan.Validate(idx, opts(t))
+	if !hasProblem(ps, 1, "duplicate file "+dup) {
+		t.Fatalf("want a duplicate-file problem, got %v", ps)
+	}
+	for _, p := range ps {
+		if strings.Contains(p.Message, "tasks 1 and 1") {
+			t.Fatalf("a task must never be reported as sharing a file with itself: %v", ps)
+		}
+	}
+	if len(ps) != 1 {
+		t.Fatalf("a duplicate must produce exactly one problem, got %v", ps)
+	}
+}
