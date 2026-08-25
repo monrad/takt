@@ -9,9 +9,24 @@ import (
 	"testing"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/cli"
 	"github.com/monrad/takt/internal/testutil"
 	"github.com/monrad/takt/internal/wave"
 )
+
+// statusText runs `takt status` (text form, no --slug needed with a single
+// active bundle) and returns stdout.
+func statusText(t *testing.T, root string) string {
+	t.Helper()
+	var out strings.Builder
+	cli.Main([]string{"status"}, &out, &out, func(k string) string {
+		if k == "HOME" {
+			return root + "/.home"
+		}
+		return ""
+	}, root)
+	return out.String()
+}
 
 // executeRun builds a bundle already in phase execute with a two-wave plan
 // (task 1 bounded → sonnet, task 2 implement → opus, task 3 depends on 1).
@@ -591,5 +606,31 @@ func TestAllWaivedWaveCommitSubject(t *testing.T) {
 	}
 	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("an all-waived wave still unblocks the next one: %v", o)
+	}
+}
+
+// TestStatusTextOmitsModelUntilDigest covers fix round 1: Task.Attempt is
+// set at dispatch, before any digest exists (launch.go's renderTaskBrief),
+// so guarding the status text render on Attempt==0 rendered a
+// dispatched-but-unrecorded task as "(bounded, attempt 1, )" — a trailing
+// comma and an empty model. The guard must be on Model=="" instead.
+func TestStatusTextOmitsModelUntilDigest(t *testing.T) {
+	t.Parallel()
+	root, _ := executeRun(t)
+	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("%v", o)
+	}
+	before := statusText(t, root)
+	if strings.Contains(before, ", )") {
+		t.Fatalf("dispatched-but-unrecorded task must not render an empty model: %s", before)
+	}
+	if !strings.Contains(before, "#1 wave 0 pending (bounded)\n") {
+		t.Fatalf("task 1 before any digest = %s", before)
+	}
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	record(t, root, 1, 1, "done", "wrote a.go")
+	after := statusText(t, root)
+	if !strings.Contains(after, "#1 wave 0 pending (bounded, attempt 1, sonnet)\n") {
+		t.Fatalf("task 1 after its digest = %s", after)
 	}
 }

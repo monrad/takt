@@ -1,6 +1,8 @@
 package cli_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,6 +84,57 @@ func TestStatusNoRun(t *testing.T) {
 	root := testutil.NewRepo(t)
 	if code, _, errb := runIn(t, root, nil, "status", "--json"); code != 1 || !strings.Contains(errb, "no active run") {
 		t.Fatalf("%d %s", code, errb)
+	}
+}
+
+// TestStatusAlignmentContradictedIsContraction covers fix round 1: spec
+// §7.3 ("narrowed/dropped/contradicted are reported as contraction, widened
+// as creep") named "contradicted" as a contraction verdict alongside
+// narrowed/dropped; statusAlignment must bucket it there too, not drop it
+// from both lists.
+func TestStatusAlignmentContradictedIsContraction(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	verdicts := filepath.Join(t.TempDir(), "verdicts.txt")
+	body := "```json\n" +
+		`{"mode":"verdicts","verdicts":[` +
+		`{"id":"A1","verdict":"covered","evidence":"task 1"},` +
+		`{"id":"A2","verdict":"contradicted","evidence":"plan does the opposite of A2"}]}` +
+		"\n```\n"
+	if err := os.WriteFile(verdicts, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errb := runIn(
+		t,
+		root,
+		nil,
+		"record",
+		"--agent",
+		"alignment-auditor",
+		"--mode",
+		"verdicts",
+		"--from",
+		verdicts,
+		"--slug",
+		"demo",
+	); code != 0 {
+		t.Fatal(errb)
+	}
+	code, got, errb := runIn(t, root, nil, "status", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	alignment := got["alignment"].(map[string]any)
+	counts := alignment["counts"].(map[string]any)
+	if counts["contradicted"] != float64(1) {
+		t.Fatalf("counts = %v", counts)
+	}
+	contraction := alignment["contraction"].([]any)
+	if len(contraction) != 1 || contraction[0] != "A2" {
+		t.Fatalf("contraction = %v, want just [A2]", contraction)
+	}
+	if creep, ok := alignment["creep"].([]any); ok && len(creep) != 0 {
+		t.Fatalf("A2 must not also land in creep: %v", creep)
 	}
 }
 

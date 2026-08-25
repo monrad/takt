@@ -35,8 +35,8 @@ type taskLine struct {
 
 // alignmentDigest summarises alignment.json for status: how many clauses
 // landed each verdict, and which ones drifted the ask narrower (contraction:
-// narrowed or dropped) or wider (creep: widened) than what was confirmed
-// (spec §11).
+// narrowed, dropped or contradicted) or wider (creep: widened) than what was
+// confirmed (spec §7.3, §11).
 type alignmentDigest struct {
 	Confirmed   bool           `json:"confirmed"`
 	Counts      map[string]int `json:"counts"`
@@ -205,7 +205,7 @@ func statusAlignment(bdir string) *alignmentDigest {
 	for _, v := range a.Verdicts {
 		d.Counts[v.Verdict]++
 		switch v.Verdict {
-		case "narrowed", "dropped":
+		case "narrowed", "dropped", "contradicted":
 			d.Contraction = append(d.Contraction, v.ID)
 		case "widened":
 			d.Creep = append(d.Creep, v.ID)
@@ -252,7 +252,7 @@ func renderStatus(info statusInfo) string {
 		info.TasksTotal, c[bundle.StatusPending], c[bundle.StatusDone], c[bundle.StatusFailed],
 		c[bundle.StatusBlocked], c[bundle.StatusWaived])
 	for _, t := range info.Tasks {
-		if t.Attempt == 0 {
+		if t.Model == "" {
 			fmt.Fprintf(&b, "  #%d wave %d %s (%s)\n", t.ID, t.Wave, t.Status, t.Class)
 			continue
 		}
@@ -301,8 +301,8 @@ func renderLiveGates(b *strings.Builder, live map[string]string) {
 var alignmentVerdictOrder = []string{"covered", "narrowed", "dropped", "widened", "contradicted"}
 
 // alignmentLine renders the alignment digest: verdict counts, then the
-// clause ids that narrowed or dropped the ask (contraction) and the ones
-// that widened it (creep), each only when non-empty.
+// clause ids that narrowed, dropped or contradicted the ask (contraction)
+// and the ones that widened it (creep), each only when non-empty.
 func alignmentLine(a *alignmentDigest) string {
 	counts := make([]string, 0, len(a.Counts))
 	for _, v := range alignmentVerdictOrder {
