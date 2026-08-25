@@ -7,10 +7,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gitx"
@@ -122,4 +125,61 @@ func TouchedSince(ctx context.Context, repo *gitx.Repo, baseline []bundle.Baseli
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
+}
+
+// BaselinePath is bundleDir/waves/<n>/baseline.json, where a wave's baseline
+// is parked while it has no active_wave to live on.
+func BaselinePath(bundleDir string, wave int) string {
+	return filepath.Join(bundleDir, "waves", strconv.Itoa(wave), "baseline.json")
+}
+
+// SaveBaseline parks a wave's baseline on disk. Answering the wave_failures
+// gate with `retry` clears active_wave so the relaunch picks a fresh slice,
+// which would also throw away the baseline the wave started from — and a
+// retry measures against the tree the wave began in, not the one its failed
+// attempt left behind (review M1, spec §7.4 step 5).
+func SaveBaseline(bundleDir string, wave int, entries []bundle.BaselineEntry) error {
+	p := BaselinePath(bundleDir, wave)
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return err
+	}
+	if entries == nil {
+		entries = []bundle.BaselineEntry{}
+	}
+	b, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, append(b, '\n'), 0o600)
+}
+
+// ReadBaseline returns the parked baseline, or nil when none was parked.
+// Absence is the normal case — only a retry parks one — so it is not an
+// error, the same contract as [ReadClose].
+func ReadBaseline(bundleDir string, wave int) ([]bundle.BaselineEntry, error) {
+	b, err := os.ReadFile(BaselinePath(bundleDir, wave))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var entries []bundle.BaselineEntry
+	if uerr := json.Unmarshal(b, &entries); uerr != nil {
+		return nil, fmt.Errorf("baseline.json: %w", uerr)
+	}
+	if entries == nil {
+		entries = []bundle.BaselineEntry{}
+	}
+	return entries, nil
+}
+
+// DeleteBaseline drops a parked baseline once the wave has committed: the
+// next slice of the same wave starts from the tree that commit left, not
+// from the one the retried attempt started in.
+func DeleteBaseline(bundleDir string, wave int) error {
+	if err := os.Remove(BaselinePath(bundleDir, wave)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }

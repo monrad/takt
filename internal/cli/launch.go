@@ -188,11 +188,21 @@ func waveAttempt(st *bundle.State, ids []int, decided int) int {
 
 // waveBaseline is the wave's baseline: kept as captured when this is another
 // attempt of the same wave (rework or recovery must measure against the same
-// tree the wave started from), freshly captured otherwise. takt's own bundle
-// tree is excluded — see bundleTreeRel.
+// tree the wave started from), taken from the copy a wave_failures retry
+// parked when that retry cleared active_wave, and freshly captured
+// otherwise. takt's own bundle tree is excluded — see bundleTreeRel.
 func waveBaseline(ctx context.Context, r *nextRun, waveN int) ([]bundle.BaselineEntry, int, error) {
 	if aw := r.st.ActiveWave; aw != nil && aw.N == waveN {
 		return aw.Baseline, aw.Slice, nil
+	}
+	if waveHasRun(r.st, waveN) {
+		parked, err := wave.ReadBaseline(r.bdir, waveN)
+		if err != nil {
+			return nil, 0, err
+		}
+		if parked != nil {
+			return parked, 0, nil
+		}
 	}
 	base, err := wave.Baseline(ctx, r.ws.Repo)
 	if err != nil {
@@ -200,6 +210,18 @@ func waveBaseline(ctx context.Context, r *nextRun, waveN int) ([]bundle.Baseline
 	}
 	rel := bundleTreeRel(r.ws)
 	return slices.DeleteFunc(base, func(e bundle.BaselineEntry) bool { return underBundle(rel, e.Path) }), 0, nil
+}
+
+// waveHasRun reports whether any task of the wave has already been
+// dispatched. Only then can a parked baseline belong to this wave rather
+// than to an earlier, already-committed run of it.
+func waveHasRun(st *bundle.State, waveN int) bool {
+	for _, t := range st.Tasks {
+		if t.Wave == waveN && t.Attempt > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // renderTaskBrief writes one task's brief for this attempt and returns the

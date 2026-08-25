@@ -308,6 +308,9 @@ func recordCloseOutcome(tgt *runTarget, res *wave.CloseResult, ids []int) error 
 		if err := wave.WriteClose(tgt.bdir, *res); err != nil {
 			return err
 		}
+		// The wave has landed, so the baseline a retry parked for it is
+		// spent: the next slice starts from the tree this commit left.
+		_ = wave.DeleteBaseline(tgt.bdir, res.Wave)
 	}
 	if res.CommitSHA != "" {
 		err := bundle.AppendEvent(tgt.bdir, "wave_committed", map[string]any{

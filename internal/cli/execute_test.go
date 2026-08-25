@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -858,5 +859,61 @@ func TestWaiveRefusesAPendingTaskThatHasNotRun(t *testing.T) {
 	if code, _, errb := runIn(t, root, nil,
 		"waive", "--task", "2", "--reason", "wrong wave", "--slug", "demo"); code == 0 {
 		t.Fatalf("a task of a later wave must not be waivable: %s", errb)
+	}
+}
+
+// TestRetryMeasuresAgainstTheWaveBaseline covers review M1: answering
+// wave_failures with `retry` clears active_wave so the relaunch comes back
+// as a fresh slice — and a baseline captured then would record the failed
+// attempt's half-written files as pre-existing. The retry that finally gets
+// the file right without rewriting it would then look like it changed
+// nothing at all, fail as no_changes, and leave the work uncommitted.
+func TestRetryMeasuresAgainstTheWaveBaseline(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	next(t, root, nil)
+	// Task 1 gives up, but leaves what it had written behind — which is, as
+	// it happens, exactly right. Task 2 finishes.
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	recordReport(t, root, 1, "STATUS: failed\nSUMMARY: ran out of ideas\nBLOCKERS: none\n")
+	record(t, root, 2, 1, "done", "b")
+	if code, o, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+	if code, _, errb := runIn(t, root, nil,
+		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || o["attempt"] != float64(2) || len(agentsOf(t, o)) != 1 {
+		t.Fatalf("retry dispatch: %v", o)
+	}
+	st, _ := bundle.LoadState(bdir)
+	for _, e := range st.ActiveWave.Baseline {
+		if e.Path == "a.go" {
+			t.Fatalf("the retry must measure against the tree the wave started from: %+v", st.ActiveWave.Baseline)
+		}
+	}
+
+	// The attempt-2 agent reads a.go, finds it correct, and touches nothing.
+	record(t, root, 1, 2, "done", "a was already right")
+	code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo")
+	if code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	c, _ := wave.ReadClose(bdir, 0)
+	i := slices.IndexFunc(c.Tasks, func(tr wave.TaskResult) bool { return tr.Task == 1 })
+	if i < 0 || c.Tasks[i].Status != bundle.StatusDone {
+		t.Fatalf("task 1 must be done, not no_changes: %+v", c.Tasks)
+	}
+	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(files, "a.go") {
+		t.Fatalf("the retried task's file must be in the wave commit: %q", files)
+	}
+	if _, err := os.Stat(wave.BaselinePath(bdir, 0)); !os.IsNotExist(err) {
+		t.Fatalf("the parked baseline must be dropped once the wave commits: %v", err)
 	}
 }

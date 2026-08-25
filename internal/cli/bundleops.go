@@ -237,7 +237,18 @@ func answerWaveGate(
 				st.Tasks[i].Status = bundle.StatusPending
 			}
 		}
-		st.ActiveWave = nil // the next launch captures a fresh baseline
+		// Clearing active_wave lets the retry come back as a fresh slice,
+		// but the baseline must survive it: a failed attempt leaves its
+		// half-written files in the tree, and a baseline captured now would
+		// record them as pre-existing — so a retry that gets the file right
+		// without touching it again reads as no_changes and fails a second
+		// time (review M1). Park it for waveBaseline to pick back up.
+		if aw != nil {
+			if err := wave.SaveBaseline(bdir, aw.N, aw.Baseline); err != nil {
+				return false, err
+			}
+		}
+		st.ActiveWave = nil
 		return false, bundle.SaveState(bdir, st)
 	case "wave_failures/waive":
 		// The wave stays open: `takt waive` marks the chosen tasks, and the
