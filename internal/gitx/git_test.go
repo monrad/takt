@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -202,5 +203,49 @@ func TestRunGitDeadlineKillsHookHoldingStdout(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond+gitx.WaitDelay+2*time.Second {
 		t.Fatalf("commit returned after %v; the hook held git past the deadline", elapsed)
+	}
+}
+
+func TestAddPathspecRestoreAndInHead(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, _ := gitx.Open(ctx, root)
+	testutil.WriteFile(t, root, "keep.txt", "k\n")
+	testutil.WriteFile(t, root, "a.go", "a\n")
+	if err := r.AddPathspec(ctx, "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if st := testutil.Git(
+		t,
+		root,
+		"status",
+		"--porcelain",
+	); !strings.Contains(st, "A  a.go") ||
+		!strings.Contains(st, "?? keep.txt") {
+		t.Fatalf("only a.go staged: %q", st)
+	}
+	if _, err := r.Commit(ctx, "add a"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := r.InHead(ctx, "a.go"); !ok {
+		t.Fatal("a.go must be in HEAD")
+	}
+	if ok, _ := r.InHead(ctx, "keep.txt"); ok {
+		t.Fatal("keep.txt must not be in HEAD")
+	}
+	testutil.WriteFile(t, root, "a.go", "changed\n")
+	if err := r.RestorePaths(ctx, "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.go")); string(b) != "a\n" {
+		t.Fatalf("restore: %q", b)
+	}
+	os.Remove(filepath.Join(root, "a.go"))
+	if err := r.AddPathspec(ctx, "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if st := testutil.Git(t, root, "status", "--porcelain"); !strings.Contains(st, "D  a.go") {
+		t.Fatalf("deletion must be staged: %q", st)
 	}
 }

@@ -177,3 +177,34 @@ func (r *Repo) Unstage(ctx context.Context, paths ...string) error {
 	_, err := r.Run(ctx, append([]string{"reset", "-q", "--"}, paths...)...)
 	return err
 }
+
+// AddPathspec stages every change (modify, add, delete) under exactly the
+// given paths: `git add -A -- <paths>`. Never called without a pathspec.
+func (r *Repo) AddPathspec(ctx context.Context, paths ...string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	_, err := r.Run(ctx, append([]string{"add", "-A", "--"}, paths...)...)
+	return err
+}
+
+// RestorePaths discards working-tree changes to tracked paths.
+func (r *Repo) RestorePaths(ctx context.Context, paths ...string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	_, err := r.Run(ctx, append([]string{"checkout", "--"}, paths...)...)
+	return err
+}
+
+// InHead reports whether path exists in the HEAD commit.
+func (r *Repo) InHead(ctx context.Context, path string) (bool, error) {
+	_, err := r.Run(ctx, "cat-file", "-e", "HEAD:"+path)
+	if err == nil {
+		return true, nil
+	}
+	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return false, nil
+	}
+	return false, err
+}
