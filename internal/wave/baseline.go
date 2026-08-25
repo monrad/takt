@@ -77,7 +77,12 @@ type Touched struct {
 }
 
 // TouchedSince lists paths that are dirty now and were either absent from
-// the baseline or have a different content hash than it recorded.
+// the baseline or have a different content hash than it recorded, plus
+// baseline paths that have fallen out of `git status` entirely: an
+// untracked file git never reports once it is deleted (git has no record
+// of something it never tracked), so those baseline paths are checked
+// directly against the filesystem instead of via dirtyPaths. The result is
+// sorted by path.
 func TouchedSince(ctx context.Context, repo *gitx.Repo, baseline []bundle.BaselineEntry) ([]Touched, error) {
 	base := map[string]string{}
 	for _, e := range baseline {
@@ -87,8 +92,10 @@ func TouchedSince(ctx context.Context, repo *gitx.Repo, baseline []bundle.Baseli
 	if err != nil {
 		return nil, err
 	}
+	dirty := map[string]bool{}
 	var out []Touched
 	for _, p := range paths {
+		dirty[p] = true
 		h, herr := hashFile(repo.Root, p)
 		if herr != nil {
 			return nil, herr
@@ -98,5 +105,21 @@ func TouchedSince(ctx context.Context, repo *gitx.Repo, baseline []bundle.Baseli
 		}
 		out = append(out, Touched{Path: p, Deleted: h == ""})
 	}
+	for _, e := range baseline {
+		if dirty[e.Path] {
+			continue
+		}
+		h, herr := hashFile(repo.Root, e.Path)
+		if herr != nil {
+			return nil, herr
+		}
+		switch {
+		case h == "":
+			out = append(out, Touched{Path: e.Path, Deleted: true})
+		case h != e.Hash:
+			out = append(out, Touched{Path: e.Path})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
 }

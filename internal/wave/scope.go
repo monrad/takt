@@ -42,7 +42,10 @@ func VerifyScope(touched []Touched, tasks map[int][]string) Scope {
 }
 
 // Revert discards out-of-scope changes: tracked paths are restored from
-// HEAD, untracked ones are deleted. Returns the paths reverted.
+// HEAD, untracked ones are deleted. An out-of-scope path that is an
+// untracked deletion (never tracked, already gone) has nothing to restore —
+// it stays reported via the caller's Scope.OutOfScope but is not counted in
+// the returned reverted slice. Returns the paths actually reverted.
 func Revert(ctx context.Context, repo *gitx.Repo, out []Touched) ([]string, error) {
 	var reverted []string
 	for _, tp := range out {
@@ -50,11 +53,14 @@ func Revert(ctx context.Context, repo *gitx.Repo, out []Touched) ([]string, erro
 		if err != nil {
 			return reverted, err
 		}
-		if tracked {
+		switch {
+		case tracked:
 			if rerr := repo.RestorePaths(ctx, tp.Path); rerr != nil {
 				return reverted, rerr
 			}
-		} else if !tp.Deleted {
+		case tp.Deleted:
+			continue // untracked and already gone: nothing to restore
+		default:
 			rmerr := os.Remove(filepath.Join(repo.Root, filepath.FromSlash(tp.Path)))
 			if rmerr != nil && !os.IsNotExist(rmerr) {
 				return reverted, rmerr

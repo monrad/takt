@@ -39,6 +39,35 @@ func TestVerifyScopeAndRevert(t *testing.T) {
 	}
 }
 
+// TestRevertSkipsUntrackedDeletion covers the fix for the gap where an
+// out-of-scope path is an untracked baseline file the agent deleted:
+// there is nothing to restore, so Revert must return without error and
+// must not count it in the reverted slice (it stays visible only via the
+// Scope.OutOfScope the caller already has, and from there in close.json).
+func TestRevertSkipsUntrackedDeletion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root, r := repo(t)
+	testutil.WriteFile(t, root, "stray.txt", "x\n") // user's untracked dirt at baseline time
+	base, _ := wave.Baseline(ctx, r)
+	os.Remove(filepath.Join(root, "stray.txt")) // agent deletes it
+	touched, err := wave.TouchedSince(ctx, r, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := wave.VerifyScope(touched, map[int][]string{})
+	if len(sc.OutOfScope) != 1 || sc.OutOfScope[0].Path != "stray.txt" || !sc.OutOfScope[0].Deleted {
+		t.Fatalf("%+v", sc)
+	}
+	reverted, err := wave.Revert(ctx, r, sc.OutOfScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reverted) != 0 {
+		t.Fatalf("an untracked deletion has nothing to restore and must not be counted as reverted: %v", reverted)
+	}
+}
+
 func TestResetForRecoveryKeepsUntouchedUserDirt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
