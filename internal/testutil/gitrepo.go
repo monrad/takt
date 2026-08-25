@@ -82,6 +82,19 @@ func RunHermetic(m *testing.M) int {
 		"GIT_CONFIG_NOSYSTEM": "1",
 		"GIT_TERMINAL_PROMPT": "0",
 		"HOME":                home,
+		// git runs `git maintenance run --auto --detach` after a commit.
+		// The detached child outlives the git call takt waited for, so it is
+		// still walking the object store when t.TempDir cleans the repo up —
+		// which surfaces as a rare "unlinkat …/.git: directory not empty"
+		// failure under -race -count=N, in whichever test happened to be
+		// unlucky. Both auto-maintenance paths are turned off through
+		// GIT_CONFIG_COUNT rather than a config file, so a repo made with
+		// plain `git init` in any test inherits them.
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "maintenance.autoDetach",
+		"GIT_CONFIG_VALUE_0": "false",
+		"GIT_CONFIG_KEY_1":   "gc.auto",
+		"GIT_CONFIG_VALUE_1": "0",
 	}
 	for k, v := range env {
 		if serr := os.Setenv(k, v); serr != nil {
