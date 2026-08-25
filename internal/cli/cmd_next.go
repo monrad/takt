@@ -100,9 +100,20 @@ func (r *nextRun) acquireLock() (int, bool) {
 			return fail(r.env.Stderr, exitError, err.Error(), ""), true
 		}
 	}
-	if outcome == bundle.LockStolen || (outcome == bundle.LockForced && r.force) {
+	// Every takeover is recorded: an expired heartbeat, an explicit --force,
+	// and the silent takeover of a holder that recorded generated=true and
+	// can therefore never come back. The last one is invisible to the user
+	// by design, which is exactly why it belongs in the log — spec §4.6 has
+	// takt record recovery as an event rather than repairing state silently
+	// (review M7).
+	switch {
+	case outcome == bundle.LockStolen, outcome == bundle.LockForced && r.force:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			"session": r.session, "outcome": string(outcome),
+		})
+	case outcome == bundle.LockForced && orphaned:
+		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
+			"session": r.session, "outcome": string(outcome), keyReason: "orphaned",
 		})
 	}
 	return 0, false

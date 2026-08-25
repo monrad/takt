@@ -21,6 +21,9 @@ const validIndex = `{"schema":1,"spec_hash":"%s","tasks":[
  {"id":1,"title":"a","description":"add a","files":["a.go"],"verify":["true"],"depends_on":[],"goals":["G1"],"class":"bounded"},
  {"id":2,"title":"b","description":"add b","files":["b.go"],"verify":["true"],"depends_on":[1],"goals":["G1"],"class":"implement"}]}`
 
+// keyReasonJSON is the event-data key takt records a takeover's reason under.
+const keyReasonJSON = "reason"
+
 // goalsHash is the hash validateOpts binds a plan's spec_hash to.
 func goalsHash(b []byte) string { return cli.GoalsHash(b) }
 
@@ -400,9 +403,26 @@ func TestNextOwnerGateProtectsAnEnvNamedSession(t *testing.T) {
 		t.Fatalf("an env-named holder must raise the owner gate: %d %v", code, o)
 	}
 	// The generated holder init left behind is still taken over silently.
-	root2, _ := setupRun(t)
+	root2, bdir2 := setupRun(t)
 	if _, o2, _ := next(t, root2, live); o2["op"] != "run" {
 		t.Fatalf("a generated holder must not block: %v", o2)
+	}
+	// Silently for the user, but not silently on the record: spec §4.6 has
+	// takt record every takeover as an event, and the orphan one — the only
+	// one that needs no confirmation — was leaving no trace at all
+	// (review M7).
+	events, err := bundle.ReadEvents(bdir2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taken := false
+	for _, e := range events {
+		if e.Type == "lock_taken" && e.Data[keyReasonJSON] == "orphaned" {
+			taken = true
+		}
+	}
+	if !taken {
+		t.Fatalf("the orphan takeover must be recorded: %+v", events)
 	}
 }
 
