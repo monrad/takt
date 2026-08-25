@@ -22,8 +22,12 @@ func (f *fakeReviewer) Name() string { return nameFake }
 
 func (f *fakeReviewer) Healthy(context.Context) error { return nil }
 
-func (f *fakeReviewer) Review(_ context.Context, req ReviewRequest) (ReviewResult, error) {
+func (f *fakeReviewer) Review(ctx context.Context, req ReviewRequest) (ReviewResult, error) {
 	logPrompt(req.LogDir, req.LogID, req.Prompt)
+
+	if err := fakeDelay(ctx, f.getenv("TAKT_FAKE_REVIEW_SLEEP")); err != nil {
+		return errorResult(nameFake, nameFake, err.Error(), "", 0), nil
+	}
 
 	raw := defaultFakeResult
 	if p := f.getenv("TAKT_FAKE_REVIEW_FILE"); p != "" {
@@ -42,4 +46,25 @@ func (f *fakeReviewer) Review(_ context.Context, req ReviewRequest) (ReviewResul
 	}
 	r.Provider, r.Model, r.Raw, r.Elapsed = nameFake, nameFake, raw, fakeElapsed
 	return r, nil
+}
+
+// fakeDelay makes the fake reviewer take as long as TAKT_FAKE_REVIEW_SLEEP
+// says, honouring the context it was handed. A real reviewer is minutes of
+// backend work, and takt has to hand it a deadline sized for that rather
+// than the one it bounds git with (spec §13) — this is the seam that lets a
+// test prove which deadline the reviewer is actually running under. An
+// unset or unparsable value means no delay.
+func fakeDelay(ctx context.Context, v string) error {
+	d, err := time.ParseDuration(v)
+	if v == "" || err != nil || d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }

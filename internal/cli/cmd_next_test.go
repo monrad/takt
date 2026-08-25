@@ -540,3 +540,33 @@ func TestGoalsAmendRearmsSpecGate(t *testing.T) {
 		t.Fatalf("amended goals re-arm the spec gate: %v", o)
 	}
 }
+
+// TestGateReviewOutlivesTheGitDeadline covers review I5: the spec and plan
+// reviews ran under commandContext, the deadline that bounds git (spec §13).
+// A gate review is minutes of backend work, so takt was cutting healthy
+// reviews off with its own "context deadline exceeded" — and the git work
+// that follows the verdict has to be measured from when it starts, not from
+// what the reviewer left of the budget.
+func TestGateReviewOutlivesTheGitDeadline(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+
+	env := map[string]string{"TAKT_GIT_TIMEOUT": "1s", "TAKT_FAKE_REVIEW_SLEEP": "2s"}
+	code, out, errb := runIn(t, root, env, "review", "spec", "--slug", "demo")
+	if code != 0 || out["verdict"] != "approve" {
+		t.Fatalf("a reviewer slower than the git budget must still be heard: %d %v %s", code, out, errb)
+	}
+	if strings.Contains(errb, "context deadline exceeded") {
+		t.Fatalf("stderr = %q", errb)
+	}
+	if _, err := os.Stat(filepath.Join(bdir, "gates", "spec.json")); err != nil {
+		t.Fatal(err)
+	}
+	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); !strings.Contains(msg, "spec reviewed: approve") {
+		t.Fatalf("the receipt must still be committed: %q", msg)
+	}
+}

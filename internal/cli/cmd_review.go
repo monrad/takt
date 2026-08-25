@@ -46,8 +46,14 @@ func cmdReview(env Env) int {
 	if o.skip {
 		return recordSkip(env, tgt, o, hash)
 	}
-	return runReview(ctx, env, tgt, o.gate, hash, present)
+	return runReview(env, tgt, o.gate, hash, present)
 }
+
+// reviewGrace is what a gate review is allowed on top of the backend's own
+// timeout, mirroring how closeWaveTimeout bounds the per-task reviews: takt's
+// deadline must not fire before the backend's, so a slow reviewer reports its
+// own timeout instead of being cut off by takt's.
+const reviewGrace = 30 * time.Second
 
 // reviewFlags parses `takt review spec|plan`'s positional gate and flags.
 func reviewFlags(env Env) (reviewOpts, int) {
@@ -72,7 +78,17 @@ func reviewFlags(env Env) (reviewOpts, int) {
 }
 
 // runReview asks the configured reviewer for a verdict and records it.
-func runReview(ctx context.Context, env Env, tgt *runTarget, g, hash string, present []string) int {
+//
+// The reviewer runs under a deadline of its own — the backend's timeout plus
+// reviewGrace — not under the one commandContext hands out. That budget
+// bounds git (spec §13, two minutes by default, and a test or a caller may
+// shorten it to seconds), while a spec or plan review is routinely minutes
+// of backend work: running the reviewer under it killed healthy reviews with
+// "context deadline exceeded" (review I5). The git work after the verdict
+// takes a fresh commandContext for the same reason — the budget bounds each
+// git call, and the review may well have outlasted the one the command
+// started with.
+func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	reviewer, be, err := reviewerFor(tgt.ws, env)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(),
@@ -89,7 +105,9 @@ func runReview(ctx context.Context, env Env, tgt *runTarget, g, hash string, pre
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	res, err := reviewer.Review(ctx, backend.ReviewRequest{
+	rctx, rcancel := context.WithTimeout(context.Background(), time.Duration(be.Timeout)+reviewGrace)
+	defer rcancel()
+	res, err := reviewer.Review(rctx, backend.ReviewRequest{
 		Rubric: g, Title: tgt.slug, Prompt: prompt, RepoRoot: tgt.ws.Repo.Root,
 		Model: be.Model, Effort: be.Effort, Timeout: time.Duration(be.Timeout),
 		LogDir: filepath.Join(tgt.bdir, "logs"), LogID: fmt.Sprintf("review-%s-%d", g, time.Now().Unix()),
@@ -111,7 +129,9 @@ func runReview(ctx context.Context, env Env, tgt *runTarget, g, hash string, pre
 	_ = bundle.AppendEvent(tgt.bdir, "gate_reviewed", map[string]any{
 		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, "provider": res.Provider, keyFindings: len(res.Findings),
 	})
-	if _, _, err = commitBundle(ctx, tgt.ws, tgt.bdir, tgt.slug, g+" reviewed: "+res.Verdict); err != nil {
+	gctx, gcancel := commandContext(env)
+	defer gcancel()
+	if _, _, err = commitBundle(gctx, tgt.ws, tgt.bdir, tgt.slug, g+" reviewed: "+res.Verdict); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	return printJSON(env, map[string]any{
