@@ -11,6 +11,8 @@ import (
 const (
 	choiceStop  = "stop"
 	choiceRetry = "retry"
+	choiceFix   = "fix"
+	choiceAbort = "abort"
 	labelStop   = "Stop"
 )
 
@@ -34,6 +36,14 @@ func Question(gate string, ctx map[string]any) op.Op {
 		questionWaveFailures(&q, ctx)
 	case "review_error":
 		questionReviewError(&q, ctx)
+	case "verification_failed":
+		questionVerificationFailed(&q, ctx)
+	case "no_verification":
+		questionNoVerification(&q, ctx)
+	case "goals_unmet":
+		questionGoalsUnmet(&q, ctx)
+	case "branch_finish":
+		questionBranchFinish(&q, ctx)
 	default:
 		questionDefault(&q, gate)
 	}
@@ -165,6 +175,97 @@ func questionReviewError(q *op.Op, ctx map[string]any) {
 		},
 		{Choice: choiceStop, Label: labelStop, Description: "End the turn with the wave open."},
 	}
+}
+
+// questionVerificationFailed fills the "verification_failed" gate. It takes
+// no values from ctx, but keeps the (q, ctx) signature shared by every
+// filler dispatched from Question's switch.
+func questionVerificationFailed(q *op.Op, _ map[string]any) {
+	q.Narration = "verification failed at HEAD"
+	q.Question = "Verification failed. How do you want to proceed?"
+	q.Options = []op.Option{
+		{Choice: choiceFix, Label: "Fix first and re-run (Recommended)",
+			Description: "Fix the failure, commit, then `takt next` re-verifies at the new HEAD."},
+		{Choice: "override", Label: "Proceed anyway (reviewed)",
+			Description: "Record verified_sha = HEAD with your reason (`--reason`); the override is in the event log."},
+		{
+			Choice:      choiceAbort,
+			Label:       "Abort finish",
+			Description: "End the turn; the question returns on the next `takt next`.",
+		},
+	}
+}
+
+// questionNoVerification fills the "no_verification" gate. It takes no
+// values from ctx, but keeps the (q, ctx) signature shared by every filler
+// dispatched from Question's switch.
+func questionNoVerification(q *op.Op, _ map[string]any) {
+	q.Narration = "no verify commands to run"
+	q.Question = "The plan declares no verify commands. How do you want to proceed?"
+	q.Options = []op.Option{
+		{
+			Choice:      "specify",
+			Label:       "Specify one (Recommended)",
+			Description: "`takt answer --gate no_verification --choice specify --reason \"<command>\"`; it runs at HEAD next.",
+		},
+		{Choice: "proceed", Label: "Proceed without verification",
+			Description: "Record verified_sha = HEAD with no commands run; the skip is in the event log."},
+	}
+}
+
+// questionGoalsUnmet fills the "goals_unmet" gate.
+func questionGoalsUnmet(q *op.Op, ctx map[string]any) {
+	q.Narration = "goal check found unmet goals"
+	q.Question = fmt.Sprintf("Unmet goals: %v. How do you want to proceed?", ctx["unmet"])
+	q.Options = []op.Option{
+		{Choice: choiceFix, Label: "Fix and continue (Recommended)",
+			Description: "Address the goals, commit, then `takt next` re-verifies and re-assesses at the new HEAD."},
+		{Choice: "waive", Label: "Waive the unmet goals",
+			Description: "`--reason` required; one goal_waived event per goal, then goals_checked_sha = HEAD."},
+		{
+			Choice:      choiceAbort,
+			Label:       "Abort finish",
+			Description: "End the turn; the question returns on the next `takt next`.",
+		},
+	}
+}
+
+// questionBranchFinish fills the "branch_finish" gate.
+func questionBranchFinish(q *op.Op, ctx map[string]any) {
+	q.Narration = "choose what happens to the branch"
+	q.Question = fmt.Sprintf("Run %v is verified on %v (base %v). What should happen to the branch?",
+		ctx[ctxSlug], ctx["branch"], ctx["base"])
+	pr := op.Option{
+		Choice:      "pr",
+		Label:       "Push and open a pull request",
+		Description: "The session pushes the branch and runs `gh pr create --base <base> --fill`, then `takt done --step push_pr`.",
+	}
+	keep := op.Option{
+		Choice:      "keep",
+		Label:       "Keep the branch as-is",
+		Description: "Archive the run; you integrate later.",
+	}
+	if adopted, _ := ctx["adopted"].(bool); adopted {
+		q.Options = []op.Option{pr, keep}
+		return
+	}
+	merge := op.Option{
+		Choice:      "merge",
+		Label:       "Merge into the base branch locally (Recommended)",
+		Description: "`git merge --no-ff` in the primary worktree after the archive commit; the branch is deleted when nothing has it checked out.",
+	}
+	if allowed, _ := ctx["merge_allowed"].(bool); !allowed {
+		merge.Disabled, _ = ctx["merge_blocked"].(string)
+	}
+	discard := op.Option{
+		Choice:      "discard",
+		Label:       "Discard the work",
+		Description: "Requires `--confirm <slug>`. The bundle is copied to <dir>/.discarded/<slug>/ and the branch force-deleted.",
+	}
+	if allowed, _ := ctx["discard_allowed"].(bool); !allowed {
+		discard.Disabled, _ = ctx["discard_blocked"].(string)
+	}
+	q.Options = []op.Option{merge, pr, keep, discard}
 }
 
 // questionDefault fills an unrecognised gate id with a generic continue/stop choice.

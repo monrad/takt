@@ -56,6 +56,7 @@ const (
 	ActLaunch     Action = "launch"     // Wave, Tasks, Attempt
 	ActRecover    Action = "recover"    // Tasks to reset, then launch with Attempt
 	ActClearWave  Action = "clear_wave" // close.json says committed
+	ActArchive    Action = "archive"    // phase → archived, commit, apply the disposition, stop
 )
 
 // GateStatus summarises a gate receipt (spec §9).
@@ -111,6 +112,7 @@ type Facts struct {
 	PlanGate  GateStatus
 	Alignment AlignmentFacts
 	Wave      WaveFacts
+	Finish    FinishFacts
 }
 
 // Decision is Decide's answer.
@@ -140,7 +142,7 @@ func Decide(st *bundle.State, f Facts) (Decision, error) {
 	case bundle.PhaseExecute:
 		return decideExecute(st, f)
 	case bundle.PhaseFinish:
-		return stop("finish phase is plan 3", "finish_not_implemented"), nil
+		return decideFinish(st, f), nil
 	case bundle.PhaseArchived:
 		return stop("run archived", "archived"), nil
 	}

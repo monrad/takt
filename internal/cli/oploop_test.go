@@ -101,16 +101,24 @@ func (d *driver) activeWave() string {
 	return string(b)
 }
 
-// play runs the loop until a stop op; it returns the stop reason.
-func (d *driver) play(maxSteps int) string {
+// playToFinish drives the loop, executing every op via step, until the run
+// reaches finish (the exec op for `takt verify`), then returns that op
+// without executing it — `takt verify` is a later plan-3 task, so driving
+// `step` on it here would fail. Callers that only need "the run reached
+// finish" use this.
+func (d *driver) playToFinish(maxSteps int) map[string]any {
 	d.t.Helper()
 	for range maxSteps {
-		if reason, stopped := d.step(d.nextOp()); stopped {
-			return reason
+		o := d.nextOp()
+		if o["op"] == "exec" && strings.Contains(o["command"].(string), "takt verify") {
+			return o
+		}
+		if reason, stopped := d.step(o); stopped {
+			d.t.Fatalf("loop stopped (%s) before reaching finish: %v", reason, d.ops)
 		}
 	}
-	d.t.Fatalf("loop did not stop in %d steps: %v", maxSteps, d.ops)
-	return ""
+	d.t.Fatalf("loop did not reach finish in %d steps: %v", maxSteps, d.ops)
+	return nil
 }
 
 // step performs one op. It reports the stop reason and true for a stop op.
@@ -320,8 +328,8 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 	root, bdir := setupRun(t)
 	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"}, replay: true}
 
-	if reason := d.play(60); reason != "finish_not_implemented" {
-		t.Fatalf("stop reason = %s (ops: %v)", reason, d.ops)
+	if o := d.playToFinish(60); o["op"] != "exec" || !strings.Contains(o["command"].(string), "takt verify") {
+		t.Fatalf("op at finish = %v (ops: %v)", o, d.ops)
 	}
 
 	st, err := bundle.LoadState(bdir)
@@ -405,8 +413,8 @@ func TestOpLoopSurvivesACrashAfterDispatch(t *testing.T) {
 	b.ops = append(b.ops, "dispatch")
 	b.dispatch(o)
 
-	if reason := b.play(40); reason != "finish_not_implemented" {
-		t.Fatalf("stop reason = %s (ops: %v)", reason, b.ops)
+	if fo := b.playToFinish(40); fo["op"] != "exec" || !strings.Contains(fo["command"].(string), "takt verify") {
+		t.Fatalf("op at finish = %v (ops: %v)", fo, b.ops)
 	}
 	st, err := bundle.LoadState(bdir)
 	if err != nil {
@@ -444,8 +452,8 @@ func TestDisabledReviewsRecordDisabledGates(t *testing.T) {
 	t.Parallel()
 	root, bdir := setupRunWith(t, "--no-review-spec", "--no-review-plan")
 	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"}}
-	if reason := d.play(60); reason != "finish_not_implemented" {
-		t.Fatalf("stop reason = %s (ops: %v)", reason, d.ops)
+	if o := d.playToFinish(60); o["op"] != "exec" || !strings.Contains(o["command"].(string), "takt verify") {
+		t.Fatalf("op at finish = %v (ops: %v)", o, d.ops)
 	}
 	for _, g := range []string{"spec", "plan"} {
 		if _, err := os.Stat(filepath.Join(bdir, "gates", g+".json")); err == nil {

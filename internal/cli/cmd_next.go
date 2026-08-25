@@ -156,6 +156,12 @@ func (r *nextRun) loop(ctx context.Context) int {
 			return r.run(*d.Op)
 		case decide.ActExec, decide.ActStop:
 			return printOp(r.env, *d.Op)
+		case decide.ActArchive:
+			// Row 25/26 (archive, commit, apply the disposition) lands in a
+			// later plan-3 task; until then it fails like any other decision
+			// this loop cannot yet execute (same as default, named so the
+			// exhaustive switch still catches a future Action nobody wired up).
+			return fail(r.env.Stderr, exitError, "unknown decision "+string(d.Action), "")
 		default:
 			return fail(r.env.Stderr, exitError, "unknown decision "+string(d.Action), "")
 		}

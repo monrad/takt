@@ -423,8 +423,8 @@ func TestFinishAndArchivedStop(t *testing.T) {
 		t,
 		state(bundle.PhaseFinish),
 		facts(),
-	); d.Action != decide.ActStop ||
-		d.Op.Reason != "finish_not_implemented" {
+	); d.Action != decide.ActExec ||
+		!strings.Contains(d.Op.Command, "takt verify") {
 		t.Fatalf("%+v", d)
 	}
 	if d := mustDecide(

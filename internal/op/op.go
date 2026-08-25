@@ -32,6 +32,10 @@ type Option struct {
 	Choice      string `json:"choice"`
 	Label       string `json:"label"`
 	Description string `json:"description"`
+
+	// Disabled carries the reason an option cannot be chosen right now; the
+	// prompt shows it greyed out with this text (spec §7.5 merge/discard).
+	Disabled string `json:"disabled,omitempty"`
 }
 
 // Op is the single object `takt next` prints.
@@ -63,5 +67,6 @@ type Op struct {
 	TimeoutS int    `json:"timeout_s,omitempty"`
 
 	// stop
-	Reason string `json:"reason,omitempty"`
+	Reason  string   `json:"reason,omitempty"`
+	Cleanup []string `json:"cleanup,omitempty"` // git commands takt could not run itself (spec §7.5)
 }
