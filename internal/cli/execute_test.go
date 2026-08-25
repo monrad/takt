@@ -1135,8 +1135,14 @@ func TestPostCommitKillBackfillsTheSha(t *testing.T) {
 	}
 	backfilled := false
 	for _, e := range events {
-		if e.Type == "wave_committed" && e.Data["backfilled"] == true && e.Data["sha"] == head {
-			backfilled = true
+		if e.Type != "wave_committed" || e.Data["backfilled"] != true || e.Data["sha"] != head {
+			continue
+		}
+		backfilled = true
+		// The repair's event says what the commit it names carried, exactly
+		// as the one recordCloseOutcome would have written does.
+		if got := fmt.Sprint(e.Data["tasks"]); got != "[1 2]" {
+			t.Fatalf("the backfilled event must name the tasks: %s in %+v", got, e.Data)
 		}
 	}
 	if !backfilled {
@@ -1330,5 +1336,67 @@ func blankTheSha(t *testing.T, bdir string) {
 	c.CommitSHA = ""
 	if err = wave.WriteClose(bdir, *c); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestBackfillDeclinesASubjectThatNamesNoSlice covers the limit of the
+// repair: it identifies a commit by the subject the close would have
+// written, and a slice whose work was all waived writes the wave's waiver
+// list — the same sentence every other slice of that wave would write, and
+// "close" when there are no waivers either. A record whose task results
+// never reached the disk can therefore be matched against a commit that is
+// not its own, so the repair declines and the wave is re-closed the older
+// way instead.
+func TestBackfillDeclinesASubjectThatNamesNoSlice(t *testing.T) {
+	t.Parallel()
+	root, bdir := wideRun(t, 2)
+	waiveSliceAway(t, root, 1, 2) // slice 1: tasks 1 and 2, waived and committed
+	waiveSliceAway(t, root, 3)    // slice 2: task 3, likewise
+	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — waived 1, 2, 3" {
+		t.Fatalf("the all-waived slice commits under the wave's waiver list: %q", msg)
+	}
+	// The crash window for a record that never got its task results written
+	// either: what is left names no slice at all.
+	c, err := wave.ReadClose(bdir, 0, 2)
+	if err != nil || c == nil {
+		t.Fatalf("%v %+v", err, c)
+	}
+	c.CommitSHA, c.Tasks = "", nil
+	if err = wave.WriteClose(bdir, *c); err != nil {
+		t.Fatal(err)
+	}
+
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "exec" || !strings.HasPrefix(o["command"].(string), "takt close-wave") {
+		t.Fatalf("an unidentifiable subject must fall back to closing the wave again: %v", o)
+	}
+	if again, rerr := wave.ReadClose(bdir, 0, 2); rerr != nil || again != nil {
+		t.Fatalf("the record must have been retired, not repaired: %v %+v", rerr, again)
+	}
+}
+
+// waiveSliceAway launches the next slice, fails every task in it, waives
+// them one by one through the wave_failures gate, and closes the wave —
+// which commits the bundle under the wave's waiver list, since the slice has
+// nothing of its own to show.
+func waiveSliceAway(t *testing.T, root string, tasks ...int) {
+	t.Helper()
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || len(agentsOf(t, o)) != len(tasks) {
+		t.Fatalf("expected a dispatch of tasks %v: %v", tasks, o)
+	}
+	for _, id := range tasks {
+		recordReport(t, root, id, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
+	}
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	for _, id := range tasks {
+		next(t, root, nil) // raises wave_failures
+		waiveOne(t, root, id, "out of scope")
+		next(t, root, nil) // exec close-wave
+		if code, _, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 {
+			t.Fatalf("%d %s", code, errb)
+		}
 	}
 }

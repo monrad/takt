@@ -265,11 +265,13 @@ func (r *nextRun) clearWave(ctx context.Context, n int) int {
 //
 // The claim is not taken on the record's word — that is exactly what
 // waveCommitLanded refuses — but re-derived from git: HEAD's subject must be
-// the one this close would have written, and none of the wave's own files
-// may still be outstanding, because a commit that carried them left them
-// clean. Only then is the sha filled in from HEAD, the record rewritten and
-// the repair recorded as a backfilled wave_committed. Anything else and the
-// caller retires the record and closes the wave again, as before.
+// the one this close would have written *and* must name task ids, since the
+// wave-wide fallbacks name no slice; and none of the wave's own files may
+// still be outstanding, because a commit that carried them left them clean.
+// Only then is the sha filled in from HEAD, the record rewritten, the parked
+// baseline dropped and the repair recorded as a backfilled wave_committed.
+// Anything else and the caller retires the record and closes the wave again,
+// as before.
 func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bool {
 	if c == nil || !c.Committed || c.CommitSHA != "" || c.NothingToCommit {
 		return false
@@ -279,8 +281,17 @@ func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bo
 	if err != nil {
 		return false
 	}
+	graded, mine := gradedIDs(c.Tasks), inSlice(r.st.ActiveWave, done)
+	if len(graded) == 0 && len(mine) == 0 {
+		// With no task ids to name, waveSubject falls through to the wave's
+		// waiver list — or to a bare "close" — and every slice of the wave
+		// would write that same sentence. A subject that cannot tell one
+		// slice's commit from another's is no evidence at all, so nothing is
+		// repaired on it.
+		return false
+	}
 	subj, err := r.ws.Repo.Run(ctx, "log", "-1", "--format=%s")
-	if err != nil || subj != waveSubject(r.st, r.slug, c.Wave, gradedIDs(c.Tasks), inSlice(r.st.ActiveWave, done)) {
+	if err != nil || subj != waveSubject(r.st, r.slug, c.Wave, graded, mine) {
 		return false
 	}
 	if clean, cerr := pathsCommitted(ctx, r.ws.Repo, files); cerr != nil || !clean {
@@ -300,8 +311,13 @@ func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bo
 	// over the tree the commit left — coming up as the slice it was parked
 	// for, and closing over the record of the slice that has just landed.
 	_ = wave.DeleteBaseline(r.bdir, c.Wave)
+	ids := graded
+	if len(ids) == 0 {
+		ids = mine
+	}
 	_ = bundle.AppendEvent(r.bdir, "wave_committed", map[string]any{
-		keyWave: c.Wave, keySlice: c.Slice, keyAttempt: c.Attempt, keySHA: head, "backfilled": true,
+		keyWave: c.Wave, keySlice: c.Slice, keyAttempt: c.Attempt, keySHA: head,
+		keyTasks: ids, "backfilled": true,
 	})
 	return true
 }
