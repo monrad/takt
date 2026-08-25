@@ -1,12 +1,14 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/cli"
@@ -53,6 +55,26 @@ func executeRun(t *testing.T) (string, string) {
 	}
 	testutil.Commit(t, root, "execute fixture")
 	return root, bdir
+}
+
+// porcelainOutsideBundle is `git status --porcelain` with takt's own bundle
+// tree filtered out. A wave commit records the sha of the commit that
+// carries it, and that sha cannot exist until the commit does — so
+// close.json and events.jsonl are modified for as long as it takes the next
+// takt commit (the next slice, or the execute → finish transition) to sweep
+// them up (review I1, spec §4.7). What must be clean the moment a wave
+// commit lands is everything outside takt's own bookkeeping.
+func porcelainOutsideBundle(t *testing.T, root string) string {
+	t.Helper()
+	var kept []string
+	for line := range strings.SplitSeq(testutil.Git(t, root, "status", "--porcelain"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || strings.HasPrefix(fields[len(fields)-1], "docs/takt/") {
+			continue
+		}
+		kept = append(kept, strings.TrimSpace(line))
+	}
+	return strings.Join(kept, "\n")
 }
 
 func agentsOf(t *testing.T, o map[string]any) []map[string]any {
@@ -123,7 +145,7 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "stray.go")); !os.IsNotExist(err) {
 		t.Fatal("out-of-scope file must be reverted")
 	}
-	if status := testutil.Git(t, root, "status", "--porcelain"); status != "?? notes.txt" {
+	if status := porcelainOutsideBundle(t, root); status != "?? notes.txt" {
 		t.Fatalf("tree after wave commit: %q", status)
 	}
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 1, 2" {
@@ -392,7 +414,7 @@ func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 3" {
 		t.Fatalf("a slice commit names only the tasks it closed: %q", msg)
 	}
-	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
+	if status := porcelainOutsideBundle(t, root); status != "" {
 		t.Fatalf("tree after the last slice: %q", status)
 	}
 }
@@ -576,7 +598,7 @@ func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
 	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(files, "c.go") {
 		t.Fatalf("the done task's work must be committed: %q", files)
 	}
-	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
+	if status := porcelainOutsideBundle(t, root); status != "" {
 		t.Fatalf("tree: %q", status)
 	}
 }
@@ -632,5 +654,105 @@ func TestStatusTextOmitsModelUntilDigest(t *testing.T) {
 	after := statusText(t, root)
 	if !strings.Contains(after, "#1 wave 0 pending (bounded, attempt 1, sonnet)\n") {
 		t.Fatalf("task 1 after its digest = %s", after)
+	}
+}
+
+// TestCloseWaveTwiceIsANoOp covers review I1 (spec §5.4, "every op is safe to
+// execute twice"): the session may replay an `exec takt close-wave`, so a
+// second run after a successful close must grade nothing, write nothing and
+// make no second commit — it reprints the record that already landed.
+func TestCloseWaveTwiceIsANoOp(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	next(t, root, nil)
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	record(t, root, 1, 1, "done", "a")
+	record(t, root, 2, 1, "done", "b")
+	code, first, errb := runIn(t, root, nil, "close-wave", "--slug", "demo")
+	if code != 0 || first["committed"] != true || first["commit"] == "" {
+		t.Fatalf("%d %v %s", code, first, errb)
+	}
+	head := testutil.Git(t, root, "rev-parse", "HEAD")
+	before, err := os.ReadFile(wave.ClosePath(bdir, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code, second, errb := runIn(t, root, nil, "close-wave", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("a replayed close must succeed: %d %s", code, errb)
+	}
+	a, _ := json.Marshal(first)
+	b, _ := json.Marshal(second)
+	if string(a) != string(b) {
+		t.Fatalf("a replayed close must reprint the same record:\n%s\n%s", a, b)
+	}
+	after, err := os.ReadFile(wave.ClosePath(bdir, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("the replay rewrote close.json:\n%s\n%s", before, after)
+	}
+	c, _ := wave.ReadClose(bdir, 0)
+	if c == nil || len(c.Tasks) != 2 {
+		t.Fatalf("the record must keep the tasks it graded: %+v", c)
+	}
+	if h := testutil.Git(t, root, "rev-parse", "HEAD"); h != head {
+		t.Fatalf("the replay moved HEAD: %s → %s", head, h)
+	}
+	log := testutil.Git(t, root, "log", "--format=%s")
+	if n := strings.Count(log, "wave 0 — tasks"); n != 1 {
+		t.Fatalf("exactly one wave commit, got %d:\n%s", n, log)
+	}
+}
+
+// TestCrashInsideWaveCommitIsReconciled covers review I2 (spec §5.4): a
+// close record is written before `git commit` runs, so a crash inside the
+// commit leaves committed:true with no sha. `next` must check that claim
+// against git rather than believing it — clearing the wave on the record's
+// word alone strands the work uncommitted with nothing pointing at it.
+func TestCrashInsideWaveCommitIsReconciled(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	next(t, root, nil)
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	record(t, root, 1, 1, "done", "a")
+	record(t, root, 2, 1, "done", "b")
+	// The state a process killed inside `git commit` leaves behind.
+	if err := wave.WriteClose(bdir, wave.CloseResult{
+		Wave: 0, Attempt: 1, ClosedAt: time.Now().UTC(), Committed: true,
+		Failed: []int{}, Blocked: []int{}, Rework: []int{}, ReviewErrors: []int{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "exec" || !strings.HasPrefix(o["command"].(string), "takt close-wave") {
+		t.Fatalf("a commit git cannot confirm must be re-closed, not cleared: %v", o)
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.ActiveWave == nil {
+		t.Fatal("the wave must stay active until its commit really lands")
+	}
+	code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo")
+	if code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(files, "a.go") || !strings.Contains(files, "b.go") {
+		t.Fatalf("the reconciled close commits the work: %q", files)
+	}
+	if status := porcelainOutsideBundle(t, root); status != "" {
+		t.Fatalf("tree after the reconciled close: %q", status)
+	}
+	log := testutil.Git(t, root, "log", "--format=%s")
+	if n := strings.Count(log, "wave 0 — tasks"); n != 1 {
+		t.Fatalf("exactly one wave commit, got %d:\n%s", n, log)
+	}
+	if _, o, _ = next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+		t.Fatalf("the reconciled wave clears and the run moves on: %v", o)
 	}
 }

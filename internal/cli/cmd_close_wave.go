@@ -57,15 +57,23 @@ func cmdCloseWave(env Env) int {
 	}
 	return printJSON(env, map[string]any{
 		keyWave: c.Wave, keyAttempt: c.Attempt, keyCommitted: c.Committed, "commit": c.CommitSHA,
-		"failed": c.Failed, "blocked": c.Blocked, statusRework: c.Rework,
+		"nothing_to_commit": c.NothingToCommit,
+		"failed":            c.Failed, "blocked": c.Blocked, statusRework: c.Rework,
 		"review_errors": c.ReviewErrors, "reverted": c.Reverted,
 	})
 }
 
 // closeWave grades every pending task of the active wave that reported, then
-// commits the wave when all of them are done.
+// commits the wave when all of them are done. Re-running it after a
+// successful close is a no-op: the record is reprinted and nothing is
+// written, so an `exec close-wave` the session replays cannot grade a second
+// time or make a second commit (review I1, spec §5.4).
 func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult, error) {
 	aw := tgt.st.ActiveWave
+	landed, err := landedClose(ctx, tgt, aw)
+	if err != nil || landed != nil {
+		return landed, err
+	}
 	idx, err := readIndex(tgt.bdir)
 	if err != nil {
 		return nil, err
@@ -84,17 +92,41 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 	graded := gradedIDs(res.Tasks) // before persistClose carries earlier rounds forward
 	applyTaskStatuses(tgt.st, &res)
 	res.Committed = sliceDone(tgt.st, aw.N)
-	// state.json, close.json and the event are written before the commit, so
-	// the one commit spec §4.7 asks for carries them and leaves the tree
-	// clean. That is also why close.json holds no commit sha: it is inside
-	// the commit it would have to name.
+	// state.json and close.json are written before the commit, so the one
+	// commit spec §4.7 asks for carries them. What the commit itself did is
+	// recorded afterwards, by recordCloseOutcome: a sha cannot be written
+	// into the commit that carries it, and a record written first would
+	// claim a commit a crash could still prevent.
 	if err = persistClose(tgt, &res); err != nil {
 		return nil, err
 	}
-	if err = commitWave(ctx, tgt, &res, graded); err != nil {
+	ids, err := commitWave(ctx, tgt, &res, graded)
+	if err != nil {
+		return nil, err
+	}
+	if err = recordCloseOutcome(tgt, &res, ids); err != nil {
 		return nil, err
 	}
 	return &res, nil
+}
+
+// landedClose returns the active attempt's close record when its commit is
+// already in HEAD, and nil when the wave still has to be closed. It is what
+// makes a repeated `close-wave` a no-op rather than a second grading round
+// that overwrites the record and makes a duplicate wave commit (review I1).
+// A record from an earlier attempt is not this attempt's answer, and one
+// that claims a commit git does not have is not trusted (spec §5.4).
+//
+//nolint:nilnil // documented "the wave still has to be closed" sentinel, like wave.ReadClose
+func landedClose(ctx context.Context, tgt *runTarget, aw *bundle.ActiveWave) (*wave.CloseResult, error) {
+	c, err := wave.ReadClose(tgt.bdir, aw.N)
+	if err != nil || !closeMatchesDispatch(c, aw) {
+		return nil, err
+	}
+	if !waveCommitLanded(ctx, tgt.ws.Repo, c) {
+		return nil, nil
+	}
+	return c, nil
 }
 
 // gradedIDs is the tasks this close round judged, in id order — the ids its
@@ -244,10 +276,11 @@ func summarise(st *bundle.State, res *wave.CloseResult) {
 	}
 }
 
-// persistClose writes the task statuses, the close record and the event —
-// everything the wave commit has to carry. A close that follows a retired
-// one inherits its results for the tasks this round did not grade, so the
-// record stays the whole wave's story rather than only its last round.
+// persistClose writes the task statuses and the close record — everything
+// the wave commit has to carry. A close that follows a retired one inherits
+// its results for the tasks this round did not grade, so the record stays
+// the whole wave's story rather than only its last round. What the commit
+// did is not known yet; recordCloseOutcome adds it afterwards.
 func persistClose(tgt *runTarget, res *wave.CloseResult) error {
 	carryForward(tgt.bdir, res)
 	summarise(tgt.st, res)
@@ -258,8 +291,35 @@ func persistClose(tgt *runTarget, res *wave.CloseResult) error {
 		return err
 	}
 	_ = os.Remove(prevClosePath(tgt.bdir, res.Wave))
+	return nil
+}
+
+// recordCloseOutcome records what the commit actually did, after it did it:
+// close.json is rewritten with the sha (a value that cannot exist before the
+// commit it names) and the outcome is appended to the log. Both writes land
+// after the wave commit and therefore sit uncommitted until the next takt
+// commit picks them up — the next slice, or the execute → finish transition
+// (spec §4.7). That is the price of never claiming a commit that did not
+// happen: a crash between the commit and this call leaves committed:true
+// with no sha, which waveCommitLanded reads as "not landed" and `next`
+// reconciles by closing the wave again (spec §5.4).
+func recordCloseOutcome(tgt *runTarget, res *wave.CloseResult, ids []int) error {
+	if res.Committed {
+		if err := wave.WriteClose(tgt.bdir, *res); err != nil {
+			return err
+		}
+	}
+	if res.CommitSHA != "" {
+		err := bundle.AppendEvent(tgt.bdir, "wave_committed", map[string]any{
+			keyWave: res.Wave, keyAttempt: res.Attempt, keySHA: res.CommitSHA, keyTasks: ids,
+		})
+		if err != nil {
+			return err
+		}
+	}
 	return bundle.AppendEvent(tgt.bdir, "wave_closed", map[string]any{
 		keyWave: res.Wave, keyAttempt: res.Attempt, keyCommitted: res.Committed,
+		keySHA: res.CommitSHA, "nothing_to_commit": res.NothingToCommit,
 		"failed": res.Failed, "blocked": res.Blocked, statusRework: res.Rework,
 		"review_errors": res.ReviewErrors, "reverted": res.Reverted,
 	})
@@ -285,59 +345,66 @@ func carryForward(bdir string, res *wave.CloseResult) {
 	sort.Slice(res.Tasks, func(i, j int) bool { return res.Tasks[i].Task < res.Tasks[j].Task })
 }
 
-// commitWave commits the finished slice, and guarantees the record never
-// outlives a commit that did not happen: ANY failure on the way — resolving
-// the paths, staging them, the commit itself — retires close.json, so the
-// next `takt next` closes the wave again instead of reading committed=true,
-// clearing the wave and stranding the work uncommitted.
-func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) error {
+// commitWave commits the finished slice and returns the task ids its subject
+// names. It guarantees the record never outlives a commit that did not
+// happen: ANY failure on the way — resolving the paths, staging them, the
+// commit itself — retires close.json, so the next `takt next` closes the
+// wave again instead of reading committed=true, clearing the wave and
+// stranding the work uncommitted.
+func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) ([]int, error) {
 	if !res.Committed {
-		return nil
+		return nil, nil
 	}
-	if err := commitWaveOnce(ctx, tgt, res, graded); err != nil {
-		return errors.Join(err, dropClose(tgt.bdir, res.Wave))
+	ids, err := commitWaveOnce(ctx, tgt, res, graded)
+	if err != nil {
+		return nil, errors.Join(err, dropClose(tgt.bdir, res.Wave))
 	}
-	return nil
+	return ids, nil
 }
 
-// commitWaveOnce stages the files of every done task of the wave plus the
-// bundle and commits exactly those (spec §4.7). A wave with nothing left to
-// record is not committed rather than crashing on an empty pathspec — that
-// is a decided outcome, not a failure, so it returns nil and keeps its
-// record.
-func commitWaveOnce(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) error {
-	paths, ids, err := doneWaveFiles(ctx, tgt, res.Wave)
+// commitWaveOnce stages the files of every done or waived task of the wave
+// plus the bundle and commits exactly those (spec §4.7, §7.4 step 5). A wave
+// with nothing left to record makes no commit rather than crashing on an
+// empty pathspec — a decided outcome, not a failure, so it stays committed
+// and says so with nothing_to_commit.
+func commitWaveOnce(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) ([]int, error) {
+	paths, done, err := doneWaveFiles(ctx, tgt, res.Wave)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rel := ""
 	if tgt.ws.Dir.InRepo {
 		if rel, err = tgt.ws.Dir.RelToRepo(tgt.bdir); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	staged, err := stageWave(ctx, tgt.ws.Repo, paths, rel)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !staged {
 		// Nothing of this wave's making is left in the tree — every file is
-		// already in HEAD, or the wave was waived away. Recording it as
-		// committed would claim a commit that never happened, so the close
-		// stands with committed=false and the reason in the log.
-		res.Committed = false
+		// already in HEAD, or an external bundle's wave was waived away.
+		// There is nothing to commit, which is not a failure: recording it
+		// as committed:false would raise a wave_failures gate naming nobody
+		// (review M2), so the record says committed with no sha instead.
+		res.NothingToCommit = true
 		_ = bundle.AppendEvent(tgt.bdir, "wave_commit_skipped", map[string]any{
 			keyWave: res.Wave, keyReason: "nothing staged under the wave's pathspec",
 		})
-		return wave.WriteClose(tgt.bdir, *res)
+		return nil, nil
 	}
-	msg := waveSubject(tgt.st, tgt.slug, res.Wave, graded, ids)
+	ids := graded
+	if len(ids) == 0 {
+		ids = done
+	}
+	msg := waveSubject(tgt.st, tgt.slug, res.Wave, graded, done)
 	sha, err := wave.CommitWave(ctx, tgt.ws.Repo, paths, rel, msg)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	res.CommitSHA = sha
-	return nil
+	return ids, nil
 }
 
 // waveSubject names what the commit records: the tasks this close graded,

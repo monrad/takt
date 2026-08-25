@@ -61,6 +61,7 @@ const (
 	keyWave          = "wave"
 	keyStatus        = "status"
 	keyCommitted     = "committed"
+	keySHA           = "sha"
 )
 
 // gatePending is a gate's value before any receipt exists (state.gates at

@@ -17,7 +17,7 @@ import (
 // TaskResult is one task's outcome in a close record.
 type TaskResult struct {
 	Task         int                   `json:"task"`
-	Status       string                `json:"status"` // done | failed | blocked | rework
+	Status       string                `json:"status"` // done | failed | blocked | rework | review_error
 	Reason       string                `json:"reason,omitempty"`
 	FilesChanged []string              `json:"files_changed"`
 	Verify       []VerifyResult        `json:"verify,omitempty"`
@@ -26,18 +26,25 @@ type TaskResult struct {
 
 // CloseResult is waves/<n>/close.json.
 type CloseResult struct {
-	Wave         int          `json:"wave"`
-	Attempt      int          `json:"attempt"`
-	Tasks        []TaskResult `json:"tasks"`
-	OutOfScope   []string     `json:"out_of_scope"`
-	Reverted     []string     `json:"reverted"`
-	Committed    bool         `json:"committed"`
-	CommitSHA    string       `json:"commit_sha,omitempty"`
-	ClosedAt     time.Time    `json:"closed_at"`
-	Failed       []int        `json:"failed"`
-	Blocked      []int        `json:"blocked"`
-	Rework       []int        `json:"rework"`
-	ReviewErrors []int        `json:"review_errors"`
+	Wave       int          `json:"wave"`
+	Attempt    int          `json:"attempt"`
+	Tasks      []TaskResult `json:"tasks"`
+	OutOfScope []string     `json:"out_of_scope"`
+	Reverted   []string     `json:"reverted"`
+	Committed  bool         `json:"committed"`
+	CommitSHA  string       `json:"commit_sha,omitempty"`
+	// NothingToCommit records a close that decided the wave was finished and
+	// found nothing of its making left to stage — an external bundle whose
+	// tasks were all waived, say. It is a landed outcome, not a failure, so
+	// it is written as committed with no sha rather than as committed:false
+	// with empty failure lists, which would raise a content-free gate
+	// (review M2).
+	NothingToCommit bool      `json:"nothing_to_commit,omitempty"`
+	ClosedAt        time.Time `json:"closed_at"`
+	Failed          []int     `json:"failed"`
+	Blocked         []int     `json:"blocked"`
+	Rework          []int     `json:"rework"`
+	ReviewErrors    []int     `json:"review_errors"`
 }
 
 // ClosePath returns bundleDir/waves/<n>/close.json.

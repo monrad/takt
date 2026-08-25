@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gitx"
 	"github.com/monrad/takt/internal/op"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
@@ -44,6 +45,42 @@ func bundleTreeRel(ws *workspace) string {
 // excludes no path at all.
 func underBundle(rel, p string) bool {
 	return rel != "" && (p == rel || strings.HasPrefix(p, rel+"/"))
+}
+
+// waveCommitLanded reports whether the commit a close record claims is
+// really in this branch's history. `committed` on its own cannot answer
+// that: it is written before `git commit` runs, so a crash inside the
+// commit — or a hook that rejected it, or a later reset — leaves a record
+// claiming work that HEAD does not have. Reading the claim back off git is
+// what makes `close-wave` idempotent and lets `next` reconcile instead of
+// clearing the wave and stranding it (review I1/I2, spec §5.4). A close
+// that had nothing of its own to stage has landed by definition.
+func waveCommitLanded(ctx context.Context, repo *gitx.Repo, rec *wave.CloseResult) bool {
+	if rec == nil || !rec.Committed {
+		return false
+	}
+	if rec.NothingToCommit {
+		return true
+	}
+	if rec.CommitSHA == "" {
+		return false
+	}
+	if ok, err := repo.CommitExists(ctx, rec.CommitSHA); err != nil || !ok {
+		return false
+	}
+	ok, err := repo.IsAncestor(ctx, rec.CommitSHA, "HEAD")
+	return err == nil && ok
+}
+
+// closeMatchesDispatch reports whether a close record answers the dispatch
+// that is on the table now. Attempt alone cannot say: a wave larger than
+// max_parallel is dispatched in slices that all run at attempt 1, so the
+// committed record of the previous slice would otherwise be read as this
+// slice's answer — clearing the wave, or making `close-wave` a no-op, before
+// the second slice was ever graded. A record closed before the current
+// dispatch started belongs to an earlier one.
+func closeMatchesDispatch(c *wave.CloseResult, aw *bundle.ActiveWave) bool {
+	return c != nil && aw != nil && c.Attempt == aw.Attempt && !c.ClosedAt.Before(aw.StartedAt)
 }
 
 // dropClose retires a wave's close record so the next `takt next` runs

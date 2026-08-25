@@ -253,3 +253,33 @@ func (r *Repo) InHead(ctx context.Context, path string) (bool, error) {
 	}
 	return false, err
 }
+
+// CommitExists reports whether rev names a commit object in this repository.
+// A sha a record claims but that was never written — a crash inside `git
+// commit` — resolves to nothing, which is what lets a caller tell a claimed
+// commit from a real one (spec §5.4).
+func (r *Repo) CommitExists(ctx context.Context, rev string) (bool, error) {
+	_, err := r.Run(ctx, "cat-file", "-e", rev+"^{commit}")
+	if err == nil {
+		return true, nil
+	}
+	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return false, nil
+	}
+	return false, err
+}
+
+// IsAncestor reports whether commit a is an ancestor of b (a commit is its
+// own ancestor). `git merge-base --is-ancestor` says so with exit 0, denies
+// it with exit 1 and fails otherwise, so an exit 1 is an answer rather than
+// an error.
+func (r *Repo) IsAncestor(ctx context.Context, a, b string) (bool, error) {
+	_, err := r.Run(ctx, "merge-base", "--is-ancestor", a, b)
+	if err == nil {
+		return true, nil
+	}
+	if e, ok := errors.AsType[*exec.ExitError](err); ok && e.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
+}

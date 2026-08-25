@@ -112,7 +112,7 @@ func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if c != nil && c.Attempt == aw.Attempt {
+	if closeMatchesDispatch(c, aw) {
 		f.Wave.Close = &decide.CloseFacts{
 			Committed: c.Committed, Failed: c.Failed, Blocked: c.Blocked,
 			Rework: c.Rework, ReviewErrors: c.ReviewErrors,

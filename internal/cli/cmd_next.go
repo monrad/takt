@@ -17,6 +17,7 @@ import (
 	"github.com/monrad/takt/internal/decide"
 	"github.com/monrad/takt/internal/op"
 	"github.com/monrad/takt/internal/plan"
+	"github.com/monrad/takt/internal/wave"
 )
 
 // maxDecideIterations bounds the transition loop inside one `takt next`.
@@ -128,7 +129,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 				return code
 			}
 		case decide.ActClearWave:
-			if code := r.clearWave(d.Wave); code != 0 {
+			if code := r.clearWave(ctx, d.Wave); code != 0 {
 				return code
 			}
 		case decide.ActLaunch:
@@ -186,10 +187,30 @@ func (r *nextRun) transition(ctx context.Context, to string) int {
 	return 0
 }
 
-// clearWave drops a wave whose close record says it was committed.
-func (r *nextRun) clearWave(n int) int {
+// clearWave drops a wave whose close record says it was committed — but
+// only once git agrees the commit is really in HEAD. The record is written
+// before `git commit` runs, so a crash inside the commit leaves
+// committed:true with no sha; clearing the wave on that word alone would
+// strand the work uncommitted with nothing left pointing at it (review I2,
+// spec §5.4). When the claim does not hold, the record is retired instead
+// and the next turn of the loop re-issues `exec close-wave`, which re-grades
+// nothing (the .prev carry-forward) and commits.
+func (r *nextRun) clearWave(ctx context.Context, n int) int {
+	c, err := wave.ReadClose(r.bdir, n)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	if !closeMatchesDispatch(c, r.st.ActiveWave) || !waveCommitLanded(ctx, r.ws.Repo, c) {
+		if err = dropClose(r.bdir, n); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+		_ = bundle.AppendEvent(r.bdir, "wave_close_unreconciled", map[string]any{
+			keyWave: n, keyReason: "the close record claims a commit that is not in HEAD",
+		})
+		return 0
+	}
 	r.st.ActiveWave = nil
-	if err := bundle.SaveState(r.bdir, r.st); err != nil {
+	if err = bundle.SaveState(r.bdir, r.st); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	_ = bundle.AppendEvent(r.bdir, "wave_cleared", map[string]any{keyWave: n})
