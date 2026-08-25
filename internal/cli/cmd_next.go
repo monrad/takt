@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
@@ -215,11 +216,47 @@ func (r *nextRun) loadPlan(ctx context.Context) int {
 	}
 	_ = bundle.AppendEvent(r.bdir, "plan_loaded", map[string]any{"tasks": len(idx.Tasks), keyWaves: maxWave + 1})
 	_ = bundle.AppendEvent(r.bdir, "phase", map[string]any{"from": bundle.PhasePlan, "to": bundle.PhaseExecute})
-	msg := fmt.Sprintf("plan → execute (%d tasks, %d waves)", len(idx.Tasks), maxWave+1)
+	msg := loadCommitMessage(r.bdir, r.slug, len(idx.Tasks), maxWave+1)
 	if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, msg); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	return 0
+}
+
+// commitSubjectSoftLimit is the approximate rune budget for the load
+// commit's git subject line before the alignment summary moves to the
+// commit body instead (spec §7.3).
+const commitSubjectSoftLimit = 100
+
+// loadCommitMessage builds the plan→execute commit message: the existing
+// "plan → execute (n tasks, w waves)" subject, plus — once the alignment
+// audit has recorded verdicts — " — alignment: " and the same
+// contraction/creep summary `status` shows after its own "alignment: "
+// label, reusing statusAlignment/alignmentLine rather than re-deriving the
+// bucketing (spec §7.3: "...are reported as contraction, widened as creep —
+// in the load commit message and in status"), e.g.
+// "plan → execute (2 tasks, 2 waves) — alignment: 1 covered, 1 narrowed
+// (contraction: A2)". No verdict artifacts (the audit is disabled, skipped,
+// or has not run yet) leaves the message unchanged. Appending the summary
+// would sometimes push the subject well past a readable git subject line,
+// so once the one-line form (with the "takt(<slug>): " prefix commitBundle
+// adds) would exceed commitSubjectSoftLimit runes, the subject stays just
+// "plan → execute (…)" and "alignment: <summary>" becomes the commit
+// body's first line instead.
+func loadCommitMessage(bdir, slug string, tasks, waves int) string {
+	subject := fmt.Sprintf("plan → execute (%d tasks, %d waves)", tasks, waves)
+	align := ""
+	if a := statusAlignment(bdir); a != nil {
+		align = alignmentLine(a)
+	}
+	if align == "" {
+		return subject
+	}
+	oneLine := subject + " — alignment: " + align
+	if utf8.RuneCountInString("takt("+slug+"): "+oneLine) <= commitSubjectSoftLimit {
+		return oneLine
+	}
+	return subject + "\n\nalignment: " + align
 }
 
 // materialiseTasks replaces state.tasks with the index's tasks, stamps each

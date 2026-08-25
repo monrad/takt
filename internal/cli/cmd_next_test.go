@@ -213,6 +213,90 @@ func TestNextWalksBrainstormAndPlan(t *testing.T) {
 	}
 }
 
+// planLoadFixture builds a bundle in phase plan with a valid two-task index,
+// plan review and alignment gating both off, so a single `next` reaches the
+// load transition (spec §7.3 Load) without walking every earlier gate the
+// way TestNextWalksBrainstormAndPlan does.
+func planLoadFixture(t *testing.T) (string, string) {
+	t.Helper()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	specH := specHash(t, bdir)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", strings.Replace(validIndex, "%s", specH, 1))
+	st, _ := bundle.LoadState(bdir)
+	st.Phase = bundle.PhasePlan
+	st.Config.Review.Plan = false
+	st.Config.Alignment = false
+	if err := bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Commit(t, root, "plan fixture")
+	return root, bdir
+}
+
+// TestLoadCommitMessageCarriesAlignmentSummary covers fix round 2: spec §7.3
+// says the contraction/creep summary belongs "in the load commit message
+// and in status" — not status alone. loadCommitMessage must reuse
+// statusAlignment/alignmentLine rather than re-deriving the bucketing, so
+// this pins the wire format, not a second implementation of it.
+func TestLoadCommitMessageCarriesAlignmentSummary(t *testing.T) {
+	t.Parallel()
+	root, _ := planLoadFixture(t)
+	verdicts := filepath.Join(t.TempDir(), "verdicts.txt")
+	body := "```json\n" +
+		`{"mode":"verdicts","verdicts":[` +
+		`{"id":"A1","verdict":"covered","evidence":"task 1"},` +
+		`{"id":"A2","verdict":"narrowed","evidence":"scope cut"}]}` +
+		"\n```\n"
+	if err := os.WriteFile(verdicts, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errb := runIn(
+		t,
+		root,
+		nil,
+		"record",
+		"--agent",
+		"alignment-auditor",
+		"--mode",
+		"verdicts",
+		"--from",
+		verdicts,
+		"--slug",
+		"demo",
+	); code != 0 {
+		t.Fatal(errb)
+	}
+	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("load must fall through to the wave-0 dispatch: %v", o)
+	}
+	log := testutil.Git(t, root, "log", "-1", "--format=%s%n%b")
+	if !strings.Contains(log, "plan → execute") {
+		t.Fatalf("subject must still say plan → execute (Task 9 asserts this substring): %q", log)
+	}
+	if !strings.Contains(log, "alignment: 1 covered, 1 narrowed (contraction: A2)") {
+		t.Fatalf("commit message must carry the alignment summary: %q", log)
+	}
+}
+
+// TestLoadCommitMessageOmitsAlignmentWhenAbsent covers the other half: no
+// alignment.json at all (alignment disabled, skipped, or never run) must
+// leave the load commit message exactly as before — no trailing " — ".
+func TestLoadCommitMessageOmitsAlignmentWhenAbsent(t *testing.T) {
+	t.Parallel()
+	root, _ := planLoadFixture(t)
+	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("load must fall through to the wave-0 dispatch: %v", o)
+	}
+	log := testutil.Git(t, root, "log", "-1", "--format=%s%n%b")
+	if !strings.Contains(log, "plan → execute") {
+		t.Fatalf("subject must still say plan → execute: %q", log)
+	}
+	if strings.Contains(log, "alignment:") {
+		t.Fatalf("no alignment.json — commit message must not mention alignment: %q", log)
+	}
+}
+
 func TestReviewReworkOpensGateAndOverrideClearsIt(t *testing.T) {
 	t.Parallel()
 	root, bdir := setupRun(t)
