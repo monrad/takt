@@ -449,19 +449,25 @@ func stageWave(ctx context.Context, repo *gitx.Repo, paths []string, bundleRel s
 	return repo.HasStagedIn(ctx, spec...)
 }
 
-// doneWaveFiles is every declared file of the wave's done tasks, and their
-// ids. The files of a task that finished in an earlier attempt are included:
-// its edits are still uncommitted, so the wave commit is what records them.
-// A declared file that was never created is dropped — `git add` fails on a
-// pathspec that matches nothing at all.
+// doneWaveFiles is every declared file of the wave's done and waived tasks,
+// plus the ids of the done ones. The files of a task that finished in an
+// earlier attempt are included: its edits are still uncommitted, so the wave
+// commit is what records them. A waived task's files are included too —
+// spec §7.4 step 5 commits them "as they stand", and leaving them behind
+// strands half-finished work in the tree for the next wave's scope check to
+// revert (review I8) — but a waiver is not an achievement, so it adds no id
+// to the commit subject's task list. A declared file that was never created
+// is dropped: `git add` fails on a pathspec that matches nothing at all.
 func doneWaveFiles(ctx context.Context, tgt *runTarget, waveN int) ([]string, []int, error) {
 	var files []string
 	var ids []int
 	for _, t := range tgt.st.Tasks {
-		if t.Wave != waveN || t.Status != bundle.StatusDone {
+		if t.Wave != waveN || (t.Status != bundle.StatusDone && t.Status != bundle.StatusWaived) {
 			continue
 		}
-		ids = append(ids, t.ID)
+		if t.Status == bundle.StatusDone {
+			ids = append(ids, t.ID)
+		}
 		for _, f := range t.Files {
 			present, err := existsOrTracked(ctx, tgt.ws.Repo, f)
 			if err != nil {

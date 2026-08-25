@@ -328,6 +328,7 @@ func TestWaiveAndStaleDigest(t *testing.T) {
 	next(t, root, nil)
 	f := filepath.Join(t.TempDir(), "m.txt")
 	_ = os.WriteFile(f, []byte("STATUS: blocked\nSUMMARY: cannot\nBLOCKERS: needs schema\n"), 0o600)
+	testutil.WriteFile(t, root, "a.go", "package a // as far as task 1 got\n")
 	runIn(t, root, nil, "record", "--task", "1", "--attempt", "1", "--from", f, "--slug", "demo")
 	if _, o, _ := runIn(t, root, nil,
 		"record", "--task", "1", "--attempt", "7", "--from", f, "--slug", "demo"); o["ignored"] != true {
@@ -357,8 +358,18 @@ func TestWaiveAndStaleDigest(t *testing.T) {
 	if code, o, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != true {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
-	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(files, "b.go") {
+	files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(files, "b.go") {
 		t.Fatalf("the done task's work must be committed: %q", files)
+	}
+	// Review I8 / spec §7.4 step 5: a waived task's files are committed as
+	// they stand. Left in the tree they would be reverted as out of scope by
+	// the next wave's scope check, silently undoing what the user accepted.
+	if !strings.Contains(files, "a.go") {
+		t.Fatalf("the waived task's partial work must be committed too: %q", files)
+	}
+	if status := porcelainOutsideBundle(t, root); status != "" {
+		t.Fatalf("tree after the waived wave commit: %q", status)
 	}
 	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("waived task 1 unblocks wave 1: %v", o)
@@ -754,5 +765,98 @@ func TestCrashInsideWaveCommitIsReconciled(t *testing.T) {
 	}
 	if _, o, _ = next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("the reconciled wave clears and the run moves on: %v", o)
+	}
+}
+
+// soloWaveRun is executeRun with wave 0 narrowed to task 1, so a reviewer
+// that always asks for rework exhausts exactly one task and the wave's fate
+// rests on that one waiver.
+func soloWaveRun(t *testing.T) (string, string) {
+	t.Helper()
+	root, bdir := executeRun(t)
+	st, _ := bundle.LoadState(bdir)
+	st.Tasks[1].Wave = 1
+	if err := bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Commit(t, root, "solo fixture")
+	return root, bdir
+}
+
+// TestWaiveAcceptsAReworkExhaustedTask covers review I3: a task the reviewer
+// keeps sending back stays `pending` (spec §4.3), so once it runs out of
+// rework attempts the wave_failures gate names it under `exhausted` and tells
+// the user to waive it — and `waive` refused, leaving the run with no way
+// out of the gate it had just raised.
+func TestWaiveAcceptsAReworkExhaustedTask(t *testing.T) {
+	t.Parallel()
+	root, bdir := soloWaveRun(t)
+	rework := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"needs a test",` +
+		`"findings":[{"severity":"major","file":"a.go","line":1,"title":"no test","detail":"add a_test.go"}]}`}
+	next(t, root, nil)
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	record(t, root, 1, 1, "done", "a")
+	if code, o, errb := runIn(t, root, rework, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	// max_rework is 1: one retry, then the gate.
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || o["attempt"] != float64(2) {
+		t.Fatalf("the first rework is retried: %v", o)
+	}
+	record(t, root, 1, 2, "done", "a again")
+	if code, out, errb := runIn(t, root, rework, "close-wave", "--slug", "demo"); code != 0 {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if _, o, _ = next(t, root, nil); o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+	if got := fmt.Sprint(o["context"].(map[string]any)["exhausted"]); got != "[1]" {
+		t.Fatalf("the gate must name the exhausted task, got exhausted=%s in %v", got, o["context"])
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.Task(1).Status != bundle.StatusPending {
+		t.Fatalf("a rework-exhausted task is still pending: %+v", st.Tasks)
+	}
+
+	waiveOne(t, root, 1, "the missing test lands with task 3")
+	if st, _ = bundle.LoadState(bdir); st.Task(1).Status != bundle.StatusWaived {
+		t.Fatalf("waive must accept a rework-exhausted task: %+v", st.Tasks)
+	}
+	if _, o, _ = next(t, root, nil); o["op"] != "exec" ||
+		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
+		t.Fatalf("the waived wave is re-closed: %v", o)
+	}
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(files, "a.go") {
+		t.Fatalf("the waived task's work is committed as it stands: %q", files)
+	}
+	if status := porcelainOutsideBundle(t, root); status != "" {
+		t.Fatalf("tree: %q", status)
+	}
+}
+
+// TestWaiveRefusesAPendingTaskThatHasNotRun keeps the other half of review
+// I3 honest: `waive` widened to tasks the reviewer has actually sent back,
+// not to every pending one. A task with no attempt behind it has produced
+// nothing to accept, and a task of a later wave is not the user's decision
+// to make yet.
+func TestWaiveRefusesAPendingTaskThatHasNotRun(t *testing.T) {
+	t.Parallel()
+	root, _ := soloWaveRun(t)
+	if code, _, errb := runIn(t, root, nil,
+		"waive", "--task", "1", "--reason", "not yet", "--slug", "demo"); code == 0 {
+		t.Fatalf("a task that has never run must not be waivable: %s", errb)
+	}
+	rework := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"needs a test"}`}
+	next(t, root, nil)
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	record(t, root, 1, 1, "done", "a")
+	runIn(t, root, rework, "close-wave", "--slug", "demo")
+	if code, _, errb := runIn(t, root, nil,
+		"waive", "--task", "2", "--reason", "wrong wave", "--slug", "demo"); code == 0 {
+		t.Fatalf("a task of a later wave must not be waivable: %s", errb)
 	}
 }
