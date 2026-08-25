@@ -82,6 +82,8 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file st
 		return answerVerification(ctx, tgt, choice, reason)
 	case "no_verification":
 		return answerNoVerification(ctx, tgt, choice, reason)
+	case "goals_unmet":
+		return answerGoalsUnmet(tgt, choice, reason)
 	}
 	return false, errorf("unknown gate %s", g)
 }

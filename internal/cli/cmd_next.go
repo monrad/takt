@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -15,7 +16,9 @@ import (
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/config"
 	"github.com/monrad/takt/internal/decide"
+	"github.com/monrad/takt/internal/finish"
 	"github.com/monrad/takt/internal/gate"
+	"github.com/monrad/takt/internal/goals"
 	"github.com/monrad/takt/internal/op"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
@@ -341,6 +344,8 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 		text, name, err = r.plannerBrief(ctx, &ag, tok)
 	case "alignment-auditor":
 		text, name, err = r.auditorBrief(&ag, tok)
+	case "goal-assessor":
+		text, name, err = r.assessorBrief(ctx, &ag, tok)
 	default:
 		return fail(r.env.Stderr, exitError, "unknown agent "+ag.Agent, "")
 	}
@@ -401,6 +406,60 @@ func (r *nextRun) auditorBrief(ag *op.Agent, tok string) (string, string, error)
 		return "", "", err
 	}
 	return text, "alignment-" + ag.Mode + ".md", nil
+}
+
+// assessorBrief renders goal-assessor.md from goals.md, the base..HEAD
+// diff stat and the verify record (spec §7.5 step 2).
+func (r *nextRun) assessorBrief(ctx context.Context, ag *op.Agent, tok string) (string, string, error) {
+	gb, err := os.ReadFile(filepath.Join(r.bdir, "goals.md"))
+	if err != nil {
+		return "", "", err
+	}
+	g, err := goals.Parse(gb)
+	if err != nil {
+		return "", "", err
+	}
+	stat, err := r.ws.Repo.DiffStat(ctx, r.st.BaseSHA, "HEAD")
+	if err != nil {
+		return "", "", err
+	}
+	rec, err := finish.ReadVerify(r.bdir)
+	if err != nil {
+		return "", "", err
+	}
+	ag.Model = r.ws.Cfg.Agents.GoalAssessor.Model
+	ag.Label = "assess the goals at HEAD"
+	lines := make([]brief.GoalLine, 0, len(g.Items))
+	for _, it := range g.Items {
+		lines = append(lines, brief.GoalLine{ID: it.ID, Text: it.Text})
+	}
+	text, err := brief.Render("goal-assessor", brief.GoalAssessorData{
+		Slug: r.slug, Token: tok, GoalsText: string(gb), DiffStat: stat,
+		VerifySummary: verifySummary(rec), Goals: lines,
+	})
+	return text, "goal-assessor.md", err
+}
+
+// verifySummary is one line per verify command for the assessor.
+func verifySummary(rec *finish.VerifyRecord) string {
+	if rec == nil {
+		return "(no verification record)"
+	}
+	var b strings.Builder
+	for _, res := range rec.Results {
+		outcome := "FAIL"
+		if res.Passed {
+			outcome = "pass"
+		}
+		fmt.Fprintf(&b, "%s → exit %d (%s)\n", res.Command, res.Exit, outcome)
+	}
+	if rec.Overridden != "" {
+		fmt.Fprintf(&b, "overridden by the user: %s\n", rec.Overridden)
+	}
+	if rec.Skipped {
+		b.WriteString("no verify commands; the user proceeded without verification\n")
+	}
+	return b.String()
 }
 
 // ask persists the gate on first rendering, then prints it; a re-rendered

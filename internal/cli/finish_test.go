@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,5 +219,109 @@ func TestNoVerificationSpecifyThenProceed(t *testing.T) {
 	st, _ := bundle.LoadState(bdir2)
 	if st.VerifiedSHA == nil {
 		t.Fatal("proceed records verified_sha")
+	}
+}
+
+const goalVerdictsJSON = "```json\n[{\"id\":\"G1\",\"verdict\":\"%s\"," +
+	"\"evidence\":\"a.go and b.go exist\",\"citations\":[\"a.go:1\"]}]\n```\n"
+
+func recordGoalVerdict(t *testing.T, d *driver, verdict string) (int, map[string]any, string) {
+	t.Helper()
+	msg := filepath.Join(t.TempDir(), "goals.txt")
+	os.WriteFile(msg, []byte(fmt.Sprintf(goalVerdictsJSON, verdict)), 0o600)
+	return d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo")
+}
+
+func TestGoalAssessorDispatchRecordAndCheck(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t) // goals on
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	o := d.nextOp()
+	ag := agentsOf(t, o)
+	if o["op"] != "dispatch" || len(ag) != 1 || ag[0]["agent"] != "goal-assessor" || ag[0]["model"] != "sonnet" {
+		t.Fatalf("%v", o)
+	}
+	brief, _ := os.ReadFile(ag[0]["brief"].(string))
+	for _, want := range []string{"G1", "UNTRUSTED-ARTIFACT", "a.go", "go test", "achieved|partial|missed"} {
+		if !strings.Contains(string(brief), want) {
+			t.Fatalf("brief lacks %q:\n%s", want, brief)
+		}
+	}
+	if code, got, errb := recordGoalVerdict(t, d, "achieved"); code != 0 || got["all_achieved"] != true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.GoalsCheckedSHA == nil || *st.GoalsCheckedSHA != *st.VerifiedSHA {
+		t.Fatalf("goals_checked_sha = %v", st.GoalsCheckedSHA)
+	}
+	if o = d.nextOp(); o["op"] != "run" || o["step"] != "retro" {
+		t.Fatalf("all achieved → retro: %v", o)
+	}
+}
+
+func TestGoalsUnmetGateWaiveAndFix(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t)
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	d.nextOp()
+	if code, got, _ := recordGoalVerdict(t, d, "missed"); code != 0 || got["all_achieved"] != false {
+		t.Fatalf("%d %v", code, got)
+	}
+	o := d.nextOp()
+	if o["op"] != "ask" || o["gate"] != "goals_unmet" {
+		t.Fatalf("%v", o)
+	}
+	unmet := o["context"].(map[string]any)["unmet"].([]any)
+	if len(unmet) != 1 || unmet[0].(map[string]any)["id"] != "G1" {
+		t.Fatalf("%v", unmet)
+	}
+	// fix drops the record: the next call re-dispatches the assessor at the same HEAD.
+	d.cmd("answer", "--gate", "goals_unmet", "--choice", "fix", "--slug", "demo")
+	if o = d.nextOp(); o["op"] != "dispatch" {
+		t.Fatalf("fix → re-assess: %v", o)
+	}
+	recordGoalVerdict(t, d, "missed")
+	d.nextOp()
+	if code, _, _ := d.cmd("answer", "--gate", "goals_unmet", "--choice", "waive", "--slug", "demo"); code == 0 {
+		t.Fatal("waive needs --reason")
+	}
+	if code, _, errb := d.cmd("answer", "--gate", "goals_unmet", "--choice", "waive",
+		"--reason", "docs later", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.GoalsCheckedSHA == nil {
+		t.Fatal("waive checks the goals at HEAD")
+	}
+	events, _ := bundle.ReadEvents(bdir)
+	seen := false
+	for _, e := range events {
+		if e.Type == "goal_waived" && e.Data["goal"] == "G1" && e.Data["reason"] == "docs later" {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatal("one goal_waived event per waived goal")
+	}
+	if o = d.nextOp(); o["op"] != "run" || o["step"] != "retro" {
+		t.Fatalf("%v", o)
+	}
+}
+
+func TestGoalAssessorRecordRejectsBadVerdicts(t *testing.T) {
+	t.Parallel()
+	d, _ := finishRun(t)
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	d.nextOp()
+	msg := filepath.Join(t.TempDir(), "bad.txt")
+	os.WriteFile(msg, []byte("```json\n[{\"id\":\"G9\",\"verdict\":\"achieved\",\"evidence\":\"x\"}]\n```\n"), 0o600)
+	if code, _, _ := d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo"); code == 0 {
+		t.Fatal("unknown goal id must be rejected")
+	}
+	if o := d.nextOp(); o["op"] != "dispatch" {
+		t.Fatalf("a rejected record leaves the dispatch pending: %v", o)
 	}
 }

@@ -94,6 +94,16 @@ func (d AlignmentData) ClauseLines() string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// GoalAssessorData feeds goal-assessor.md (spec §7.5 step 2, §10).
+type GoalAssessorData struct {
+	Slug          string
+	Token         string
+	GoalsText     string
+	DiffStat      string
+	VerifySummary string
+	Goals         []GoalLine
+}
+
 // ReviewData fills the three reviewer templates.
 type ReviewData struct {
 	Gate, Title, Token, Schema string

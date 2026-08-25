@@ -193,3 +193,43 @@ func enclosed(rendered, label, want string) bool {
 	body, _, ok = strings.Cut(body, "END "+quoteToken)
 	return ok && strings.Contains(body, want)
 }
+
+// TestGoalAssessorBrief covers the finish-phase assessor prompt (spec §7.5
+// step 2): the goal ids it must judge, the reply schema it must use, and —
+// as for every other brief — that each supplied artifact arrives inside the
+// dispatch's delimiter token, declared as data (spec §10).
+func TestGoalAssessorBrief(t *testing.T) {
+	t.Parallel()
+	s, err := brief.Render("goal-assessor", brief.GoalAssessorData{
+		Slug: "demo", Token: quoteToken,
+		GoalsText:     "- G1 — greet works · signal: test · evidence: go test ./...",
+		DiffStat:      " a.go | 1 +\n 1 file changed",
+		VerifySummary: "true → exit 0 (pass)\n",
+		Goals:         []brief.GoalLine{{ID: "G1", Text: "greet works"}, {ID: "G2", Text: "docs updated"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"run demo", "read-only", "G1 G2", "achieved|partial|missed", "```json"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "{{") {
+		t.Fatal("unrendered template action")
+	}
+	for _, label := range []string{"goals", "diff-stat", "verify-results"} {
+		if !strings.Contains(s, "BEGIN "+quoteToken+" "+label+"\n") {
+			t.Errorf("%s is not quoted:\n%s", label, s)
+		}
+	}
+	if !enclosed(s, "goals", "evidence: go test ./...") || !enclosed(s, "diff-stat", "a.go") ||
+		!enclosed(s, "verify-results", "exit 0") {
+		t.Errorf("an artifact escaped its markers:\n%s", s)
+	}
+	if _, err = brief.Render("goal-assessor", brief.GoalAssessorData{
+		Slug: "demo", Token: quoteToken, GoalsText: "holds " + quoteToken + " already",
+	}); err == nil {
+		t.Fatal("a token collision in a quoted artifact must be an error")
+	}
+}

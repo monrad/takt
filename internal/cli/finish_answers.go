@@ -74,6 +74,70 @@ func answerNoVerification(ctx context.Context, tgt *runTarget, choice, reason st
 	return false, errorf("unknown choice %q for no_verification", choice)
 }
 
+// markGoalsChecked writes the record, sets goals_checked_sha and records
+// goal_check with the verdict counts. Every path that declares HEAD's goals
+// checked goes through here.
+func markGoalsChecked(tgt *runTarget, rec finish.GoalsRecord) error {
+	if err := finish.WriteGoals(tgt.bdir, rec); err != nil {
+		return err
+	}
+	sha := rec.SHA
+	tgt.st.GoalsCheckedSHA = &sha
+	if err := bundle.SaveState(tgt.bdir, tgt.st); err != nil {
+		return err
+	}
+	counts := map[string]int{}
+	for _, v := range rec.Verdicts {
+		counts[v.Verdict]++
+	}
+	return bundle.AppendEvent(tgt.bdir, "goal_check", map[string]any{
+		keySHA: sha, "achieved": counts["achieved"], "partial": counts["partial"],
+		"missed": counts["missed"], "waived": len(rec.Waived),
+	})
+}
+
+// answerGoalsUnmet applies goals_unmet: fix drops the record (re-assess
+// after the user's commits); waive records every unmet goal with the
+// reason and checks the goals at HEAD; abort only ends the turn.
+func answerGoalsUnmet(tgt *runTarget, choice, reason string) (bool, error) {
+	switch choice {
+	case "fix":
+		err := os.Remove(finish.GoalsPath(tgt.bdir))
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	case "waive":
+		return false, waiveGoals(tgt, reason)
+	case "abort":
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for goals_unmet", choice)
+}
+
+// waiveGoals records the reason against every currently unmet goal — one
+// goal_waived event each — and then checks the goals at the record's HEAD.
+func waiveGoals(tgt *runTarget, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		return errors.New("waive needs --reason")
+	}
+	rec, err := finish.ReadGoals(tgt.bdir)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return errors.New("no goal record to waive against")
+	}
+	if rec.Waived == nil {
+		rec.Waived = map[string]string{}
+	}
+	for _, v := range rec.Unmet() {
+		rec.Waived[v.ID] = reason
+		_ = bundle.AppendEvent(tgt.bdir, "goal_waived", map[string]any{"goal": v.ID, keyReason: reason})
+	}
+	return markGoalsChecked(tgt, *rec)
+}
+
 // dropVerify removes the record; absence is not an error.
 func dropVerify(bdir string) error {
 	err := os.Remove(finish.VerifyPath(bdir))

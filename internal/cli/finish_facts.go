@@ -66,6 +66,9 @@ func gatherFinishFacts(ctx context.Context, ws *workspace, bdir string, st *bund
 			return fin, err
 		}
 	}
+	if fin.Goals, err = goalFacts(ctx, ws, bdir); err != nil {
+		return fin, err
+	}
 	fin.HasRetro = fileNonEmpty(filepath.Join(bdir, "retro.md"))
 	if st.Disposition != nil {
 		fin.Disposition = st.Disposition.Choice
@@ -88,4 +91,18 @@ func verifyFacts(ctx context.Context, ws *workspace, bdir string) (decide.Verify
 	return decide.VerifyFacts{
 		Present: true, Passed: rec.Passed, NoCommands: rec.NoCommands, Failed: failedList(rec.Results),
 	}, nil
+}
+
+// goalFacts reads finish/goals.json and reports it only while it still
+// covers HEAD, exactly as verifyFacts does for the verification record.
+func goalFacts(ctx context.Context, ws *workspace, bdir string) (decide.GoalFacts, error) {
+	rec, err := finish.ReadGoals(bdir)
+	if err != nil || rec == nil {
+		return decide.GoalFacts{}, err
+	}
+	covered, err := headCovered(ctx, ws, bdir, rec.SHA)
+	if err != nil || !covered {
+		return decide.GoalFacts{}, err
+	}
+	return decide.GoalFacts{Present: true, Unmet: unmetList(rec.Unmet())}, nil
 }

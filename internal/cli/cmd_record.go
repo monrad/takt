@@ -15,6 +15,8 @@ import (
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/finish"
+	"github.com/monrad/takt/internal/goals"
 )
 
 // cmdRecord records an agent's result: an implementer digest (`--task`, Task
@@ -52,8 +54,11 @@ func cmdRecord(env Env) int {
 		return recordPlanner(ctx, env, tgt)
 	case "alignment-auditor":
 		return recordAlignment(env, tgt.bdir, tgt.st, *mode, *from)
+	case "goal-assessor":
+		return recordGoals(ctx, env, tgt, *from)
 	}
-	return fail(env.Stderr, exitUsage, "record needs --task N or --agent planner|alignment-auditor", "")
+	return fail(env.Stderr, exitUsage,
+		"record needs --task N or --agent planner|alignment-auditor|goal-assessor", "")
 }
 
 // recordPlanner validates what the planner wrote and reports the problems
@@ -79,6 +84,73 @@ func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: facts.IndexProblems})
 	}
 	return printJSON(env, map[string]any{keyValid: true})
+}
+
+// recordGoals parses the assessor's verdicts, validates them against
+// goals.md and either checks the goals at HEAD or leaves the unmet list
+// for the goals_unmet gate.
+func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int {
+	vs, code := readVerdicts(env, tgt.bdir, from)
+	if code != 0 {
+		return code
+	}
+	head, err := tgt.ws.Repo.HeadSHA(ctx)
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	rec := finish.GoalsRecord{SHA: head, Verdicts: vs, At: timeNow()}
+	if prev, _ := finish.ReadGoals(tgt.bdir); prev != nil && prev.SHA == head {
+		rec.Waived = prev.Waived // a re-assessment keeps earlier waivers at the same HEAD
+	}
+	unmet := rec.Unmet()
+	if len(unmet) == 0 {
+		if err = markGoalsChecked(tgt, rec); err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
+	} else if err = finish.WriteGoals(tgt.bdir, rec); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	return printJSON(env, map[string]any{keySHA: head, "all_achieved": len(unmet) == 0, "unmet": unmetList(unmet)})
+}
+
+// readVerdicts pulls the JSON block out of the assessor's message and
+// validates it against the run's frozen goal ids.
+func readVerdicts(env Env, bdir, from string) ([]finish.GoalVerdict, int) {
+	raw, err := os.ReadFile(from)
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, err.Error(), "")
+	}
+	js, err := backend.ExtractJSON(string(raw))
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, "no JSON block in the assessor's message: "+err.Error(),
+			assessorHint)
+	}
+	gb, err := os.ReadFile(filepath.Join(bdir, "goals.md"))
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, err.Error(), "")
+	}
+	g, err := goals.Parse(gb)
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, err.Error(), "")
+	}
+	vs, err := finish.ParseVerdicts(js, g.IDs())
+	if err != nil {
+		return nil, fail(env.Stderr, exitError, err.Error(), assessorHint)
+	}
+	return vs, 0
+}
+
+// assessorHint is what a session does with a rejected assessment: the
+// dispatch is still pending, so `takt next` hands the brief out again.
+const assessorHint = "re-dispatch the goal assessor"
+
+// unmetList is the goals_unmet ask context shape: {id, verdict, evidence}.
+func unmetList(vs []finish.GoalVerdict) []map[string]any {
+	out := []map[string]any{}
+	for _, v := range vs {
+		out = append(out, map[string]any{"id": v.ID, keyVerdict: v.Verdict, "evidence": v.Evidence})
+	}
+	return out
 }
 
 // recordAlignment stores the auditor's clauses or verdicts in alignment.json,
