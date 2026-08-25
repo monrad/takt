@@ -74,7 +74,7 @@ func staleGateFindings(in Input, rank int) []Finding {
 	events, _ := bundle.ReadEvents(in.BundleDir)
 	var out []Finding
 	for _, g := range staleGates {
-		if rank < g.from {
+		if rank < g.from || !reviewEnabled(in.State, g.name) {
 			continue
 		}
 		st, err := gate.Compute(in.BundleDir, g.name, events)
@@ -90,6 +90,21 @@ func staleGateFindings(in Input, rank int) []Finding {
 		}
 	}
 	return out
+}
+
+// reviewEnabled reports whether this run has the gate's review switched on.
+// A run initialised with --no-review-spec never takes a spec receipt, so
+// there is nothing a later edit can make stale — flagging it ERROR told the
+// user to re-run a review they had turned off (review I6, spec §12: the
+// run's config is frozen at init).
+func reviewEnabled(st *bundle.State, name string) bool {
+	switch name {
+	case gate.Spec:
+		return st.Config.Review.Spec
+	case gate.Plan:
+		return st.Config.Review.Plan
+	}
+	return true
 }
 
 // staleIndexFinding WARNs once the run has reached plan phase or later and

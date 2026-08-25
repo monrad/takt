@@ -64,6 +64,17 @@ const (
 	keySHA           = "sha"
 )
 
+// state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`
+// for a review this run switched off at init — a gate that will never take a
+// receipt, which none of the three existing words describes. Named so
+// goconst sees one definition instead of repeated literals; the values are
+// the wire format `takt status` prints and must not change.
+const (
+	gateOK       = "ok"
+	gateSkipped  = "skipped"
+	gateDisabled = "disabled"
+)
+
 // gatePending is a gate's value before any receipt exists (state.gates at
 // init, and a live gate.Compute with no verdict yet) — named so goconst
 // sees one definition instead of repeated literals across cmd_init.go and

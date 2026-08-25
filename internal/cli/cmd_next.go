@@ -15,6 +15,7 @@ import (
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/config"
 	"github.com/monrad/takt/internal/decide"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/op"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
@@ -175,7 +176,7 @@ func (r *nextRun) transition(ctx context.Context, to string) int {
 	from := r.st.Phase
 	r.st.Phase = to
 	if to == bundle.PhasePlan {
-		r.st.Gates["spec"] = "ok"
+		r.st.Gates[gate.Spec] = gateStateValue(r.bdir, r.st.Config.Review.Spec, gate.Spec)
 	}
 	if err := bundle.SaveState(r.bdir, r.st); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
@@ -240,7 +241,7 @@ func (r *nextRun) loadPlan(ctx context.Context) int {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	r.st.Phase = bundle.PhaseExecute
-	r.st.Gates["plan"] = "ok"
+	r.st.Gates[gate.Plan] = gateStateValue(r.bdir, r.st.Config.Review.Plan, gate.Plan)
 	if err = bundle.SaveState(r.bdir, r.st); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}

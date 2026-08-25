@@ -9,6 +9,7 @@ import (
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/doctor"
+	"github.com/monrad/takt/internal/goals"
 	"github.com/monrad/takt/internal/plan"
 )
 
@@ -21,10 +22,15 @@ func newDir(t *testing.T) bundle.Dir {
 	return d
 }
 
+// healthy is a bundle with nothing wrong with it. Its review config matches
+// the shipped defaults (spec §12: all three gates on), because that is what
+// the checks judge against — a zero RunConfig would silently switch the gate
+// half of index-staleness off.
 func healthy(slug string) *bundle.State {
 	return &bundle.State{
 		Schema: 1, Slug: slug, Topic: "t", Phase: bundle.PhaseExecute,
 		CreatedAt: time.Now(),
+		Config:    bundle.RunConfig{Review: bundle.ReviewConfig{Spec: true, Plan: true, Tasks: true}},
 		Branch:    "takt/" + slug, Base: "main", Gates: map[string]string{"spec": "ok", "plan": "ok"},
 		Tasks: []bundle.Task{
 			{ID: 1, Wave: 0, Status: bundle.StatusPending, Files: []string{"a.go"}, Class: "implement"},
@@ -182,5 +188,40 @@ func TestIndexStalenessAndBranch(t *testing.T) {
 	fs = doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.Branch})
 	if l := levels(fs, "branch"); l[0] != "WARN" {
 		t.Fatalf("checkout on another branch → WARN: %+v", fs)
+	}
+}
+
+// TestIndexStalenessSkipsADisabledReview covers review I6: a run started
+// with --no-review-spec / --no-review-plan never takes those receipts, so
+// the gate half of index-staleness has nothing to check — and used to
+// report the missing receipt as an ERROR telling the user to run a review
+// they had switched off. The fixture is the one
+// TestIndexStalenessAndBranch proves ERRORs with the reviews on.
+func TestIndexStalenessSkipsADisabledReview(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("off")
+	st.Config.Review.Spec, st.Config.Review.Plan = false, false
+	st.Gates = map[string]string{"spec": "disabled", "plan": "disabled"}
+	if err := bundle.SaveState(d.Bundle("off"), st); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"spec.md": "# spec\n", "plan.md": "# plan\n"} {
+		if err := os.WriteFile(filepath.Join(d.Bundle("off"), name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx := `{"schema":1,"spec_hash":"` + goals.Hash([]byte("# spec\n")) + `","tasks":[` +
+		`{"id":1,"title":"a","description":"d","files":["a.go"],"verify":["true"]}]}`
+	if err := os.WriteFile(filepath.Join(d.Bundle("off"), "plan.index.json"), []byte(idx), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := doctor.Options{
+		Now: time.Now(), WaveStaleAfter: time.Hour, LockTTL: time.Hour,
+		ValidateOpts: noOpts, Resolve: func(string) bool { return true },
+	}
+	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.IndexStaleness})
+	if l := levels(fs, "index-staleness"); len(l) != 1 || l[0] != "PASS" {
+		t.Fatalf("a disabled review has no receipt to go stale: %+v", fs)
 	}
 }

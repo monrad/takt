@@ -26,10 +26,18 @@ func goalsHash(b []byte) string { return cli.GoalsHash(b) }
 
 func setupRun(t *testing.T) (string, string) {
 	t.Helper()
+	return setupRunWith(t)
+}
+
+// setupRunWith is setupRun with extra `takt init` flags — the --no-review-*
+// and --no-alignment switches a run freezes into its config (spec §12).
+func setupRunWith(t *testing.T, initFlags ...string) (string, string) {
+	t.Helper()
 	root := testutil.NewRepo(t)
 	testutil.WriteFile(t, root, ".takt.json", fakeCfg)
 	testutil.Commit(t, root, "config")
-	if code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "Add a greeting"); code != 0 {
+	args := append([]string{"init", "--slug", "demo"}, initFlags...)
+	if code, _, errb := runIn(t, root, nil, append(args, "Add a greeting")...); code != 0 {
 		t.Fatal(errb)
 	}
 	return root, filepath.Join(root, "docs", "takt", "demo")

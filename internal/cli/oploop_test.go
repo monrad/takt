@@ -428,3 +428,36 @@ func TestOpLoopSurvivesACrashAfterDispatch(t *testing.T) {
 		t.Fatalf("tree not clean after a recovered run: %q", status)
 	}
 }
+
+// TestDisabledReviewsRecordDisabledGates covers review I6: state.gates was
+// stamped "ok" by the phase transition itself, so a run started with
+// --no-review-spec / --no-review-plan claimed two reviews that never
+// happened — and `takt doctor` then reported the missing receipts as ERRORs,
+// telling the user to run the reviews they had switched off. The gate value
+// now comes from the receipt, and `disabled` is what a switched-off review
+// records.
+func TestDisabledReviewsRecordDisabledGates(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRunWith(t, "--no-review-spec", "--no-review-plan")
+	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"}}
+	if reason := d.play(60); reason != "finish_not_implemented" {
+		t.Fatalf("stop reason = %s (ops: %v)", reason, d.ops)
+	}
+	for _, g := range []string{"spec", "plan"} {
+		if _, err := os.Stat(filepath.Join(bdir, "gates", g+".json")); err == nil {
+			t.Fatalf("a switched-off review must never take a receipt: gates/%s.json exists", g)
+		}
+	}
+	code, out, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("status: %d %s", code, errb)
+	}
+	gates, ok := out["gates"].(map[string]any)
+	if !ok || gates["spec"] != "disabled" || gates["plan"] != "disabled" {
+		t.Fatalf("a run with the reviews off must record them as disabled, got %v", out["gates"])
+	}
+	dcode, findings, derrb := runIn(t, root, nil, "doctor", "--json")
+	if dcode != 0 {
+		t.Fatalf("doctor must not ask for a review this run switched off: %d %v %s", dcode, findings, derrb)
+	}
+}

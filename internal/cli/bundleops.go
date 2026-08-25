@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/gitx"
 	"github.com/monrad/takt/internal/op"
 	"github.com/monrad/takt/internal/plan"
@@ -81,6 +82,30 @@ func waveCommitLanded(ctx context.Context, repo *gitx.Repo, rec *wave.CloseResul
 // dispatch started belongs to an earlier one.
 func closeMatchesDispatch(c *wave.CloseResult, aw *bundle.ActiveWave) bool {
 	return c != nil && aw != nil && c.Attempt == aw.Attempt && !c.ClosedAt.Before(aw.StartedAt)
+}
+
+// gateStateValue is what state.gates records for a gate at the transition
+// that leaves its phase behind. It reads the receipt rather than taking the
+// transition itself as proof: a gate can be satisfied by an evidenced skip
+// or by an override, and a run whose review is switched off never takes a
+// receipt at all. Recording `ok` for all of those made state.gates claim a
+// review that never happened, and left `takt doctor` asking the user to
+// re-run one they had disabled (review I6, spec §4.3, §9).
+func gateStateValue(bdir string, enabled bool, g string) string {
+	if !enabled {
+		return gateDisabled
+	}
+	events, _ := bundle.ReadEvents(bdir)
+	st, err := gate.Compute(bdir, g, events)
+	switch {
+	case err != nil:
+		return gatePending
+	case st.Verdict == gateSkipped:
+		return gateSkipped
+	case st.Satisfied:
+		return gateOK
+	}
+	return gatePending
 }
 
 // dropClose retires a wave's close record so the next `takt next` runs
