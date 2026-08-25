@@ -73,6 +73,33 @@ func waveCommitLanded(ctx context.Context, repo *gitx.Repo, rec *wave.CloseResul
 	return err == nil && ok
 }
 
+// pathsCommitted reports whether git has nothing outstanding at any of
+// paths — nothing staged, modified or untracked. It is the second half of
+// the question "did that commit really carry this wave": a commit that
+// staged and recorded these files left them clean, so anything still showing
+// at one of them means HEAD is not holding what the close was recording.
+// An empty path list is vacuously clean (a wave whose tasks were all waived
+// with nothing to show for them declares no files).
+func pathsCommitted(ctx context.Context, repo *gitx.Repo, paths []string) (bool, error) {
+	if len(paths) == 0 {
+		return true, nil
+	}
+	entries, err := repo.Porcelain(ctx)
+	if err != nil {
+		return false, err
+	}
+	want := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		want[p] = true
+	}
+	for _, e := range entries {
+		if want[e.Path] || (e.OrigPath != "" && want[e.OrigPath]) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // closeMatchesDispatch reports whether a close record answers the dispatch
 // that is on the table now. Attempt alone cannot say: a wave larger than
 // max_parallel is dispatched in slices that all run at attempt 1, so the

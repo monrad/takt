@@ -224,7 +224,9 @@ func (r *nextRun) transition(ctx context.Context, to string) int {
 // strand the work uncommitted with nothing left pointing at it (review I2,
 // spec §5.4). When the claim does not hold, the record is retired instead
 // and the next turn of the loop re-issues `exec close-wave`, which re-grades
-// nothing (the .prev carry-forward) and commits.
+// nothing (the .prev carry-forward) and commits — unless the commit turns
+// out to have landed after all, which backfillCommitSHA re-derives from git
+// and repairs in place.
 func (r *nextRun) clearWave(ctx context.Context, n int) int {
 	aw := r.st.ActiveWave
 	if aw == nil {
@@ -234,7 +236,9 @@ func (r *nextRun) clearWave(ctx context.Context, n int) int {
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
-	if !closeMatchesDispatch(c, aw) || !waveCommitLanded(ctx, r.ws.Repo, c) {
+	landed := closeMatchesDispatch(c, aw) &&
+		(waveCommitLanded(ctx, r.ws.Repo, c) || r.backfillCommitSHA(ctx, c))
+	if !landed {
 		if err = dropClose(r.bdir, n, sliceOf(aw)); err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
@@ -249,6 +253,51 @@ func (r *nextRun) clearWave(ctx context.Context, n int) int {
 	}
 	_ = bundle.AppendEvent(r.bdir, "wave_cleared", map[string]any{keyWave: n})
 	return 0
+}
+
+// backfillCommitSHA repairs the record a kill between the wave commit and
+// recordCloseOutcome leaves behind: committed:true with no sha, for a commit
+// that really is in HEAD (recordCloseOutcome names that window; nothing used
+// to close it). Re-closing the wave cannot recover it — the work is already
+// committed, so the re-close grades nothing, finds nothing of the wave's own
+// to stage and records nothing_to_commit, a contentless second answer to a
+// dispatch that had in fact succeeded.
+//
+// The claim is not taken on the record's word — that is exactly what
+// waveCommitLanded refuses — but re-derived from git: HEAD's subject must be
+// the one this close would have written, and none of the wave's own files
+// may still be outstanding, because a commit that carried them left them
+// clean. Only then is the sha filled in from HEAD, the record rewritten and
+// the repair recorded as a backfilled wave_committed. Anything else and the
+// caller retires the record and closes the wave again, as before.
+func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bool {
+	if c == nil || !c.Committed || c.CommitSHA != "" || c.NothingToCommit {
+		return false
+	}
+	tgt := &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st}
+	files, done, err := doneWaveFiles(ctx, tgt, c.Wave)
+	if err != nil {
+		return false
+	}
+	subj, err := r.ws.Repo.Run(ctx, "log", "-1", "--format=%s")
+	if err != nil || subj != waveSubject(r.st, r.slug, c.Wave, gradedIDs(c.Tasks), done) {
+		return false
+	}
+	if clean, cerr := pathsCommitted(ctx, r.ws.Repo, files); cerr != nil || !clean {
+		return false
+	}
+	head, err := r.ws.Repo.HeadSHA(ctx)
+	if err != nil || head == "" {
+		return false
+	}
+	c.CommitSHA = head
+	if err = wave.WriteClose(r.bdir, *c); err != nil {
+		return false
+	}
+	_ = bundle.AppendEvent(r.bdir, "wave_committed", map[string]any{
+		keyWave: c.Wave, keySlice: c.Slice, keyAttempt: c.Attempt, keySHA: head, "backfilled": true,
+	})
+	return true
 }
 
 // loadPlan materialises state.tasks from the validated index, writes the

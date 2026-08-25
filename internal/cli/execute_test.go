@@ -1082,3 +1082,64 @@ func TestRecordRejectsATaskTheWaveNeverDispatched(t *testing.T) {
 		t.Fatalf("a late report from a replaced attempt is ignored, not an error: %d %v %s", code, o, errb)
 	}
 }
+
+// TestPostCommitKillBackfillsTheSha covers the one window recordCloseOutcome
+// documents but nothing closed: the wave commit lands and the process dies
+// before the record learns its sha, leaving committed:true with no sha —
+// which waveCommitLanded reads as "not landed". Re-closing from there grades
+// nothing and stages nothing (the work is already in HEAD), so the run
+// bounces between `exec close-wave` and a record git will not confirm.
+// `next` reconciles instead: HEAD's subject is this close's own and the
+// wave's files have nothing outstanding, so the sha is backfilled from HEAD,
+// no second commit is made, and the wave clears.
+func TestPostCommitKillBackfillsTheSha(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	_, o, _ := next(t, root, nil)
+	for _, ag := range agentsOf(t, o) {
+		for _, f := range declaredFiles(t, ag["brief"].(string)) {
+			testutil.WriteFile(t, root, f, "package x\n")
+		}
+		record(t, root, int(ag["task"].(float64)), 1, "done", "ok")
+	}
+	_, o, _ = next(t, root, nil)
+	if code, _, errb := runIn(t, root, nil, strings.Fields(o["command"].(string))[1:]...); code != 0 {
+		t.Fatalf("close-wave: %d %s", code, errb)
+	}
+	// Forge the crash window: the commit landed, the record never learned
+	// its sha.
+	c, err := wave.LatestClose(bdir, 0)
+	if err != nil || c == nil {
+		t.Fatalf("%v %+v", err, c)
+	}
+	head := testutil.Git(t, root, "rev-parse", "HEAD")
+	c.CommitSHA = ""
+	if err = wave.WriteClose(bdir, *c); err != nil {
+		t.Fatal(err)
+	}
+	before := testutil.Git(t, root, "rev-list", "--count", "HEAD")
+
+	_, o, _ = next(t, root, nil)
+	if o["op"] != "dispatch" || o["wave"] != float64(1) {
+		t.Fatalf("the reconciled wave clears and the run moves on: %v", o)
+	}
+	if after := testutil.Git(t, root, "rev-list", "--count", "HEAD"); after != before {
+		t.Fatalf("backfill must not commit again: %s → %s", before, after)
+	}
+	if c, err = wave.LatestClose(bdir, 0); err != nil || c == nil || c.CommitSHA != head {
+		t.Fatalf("commit_sha must be backfilled from HEAD (%s): %v %+v", head, err, c)
+	}
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backfilled := false
+	for _, e := range events {
+		if e.Type == "wave_committed" && e.Data["backfilled"] == true && e.Data["sha"] == head {
+			backfilled = true
+		}
+	}
+	if !backfilled {
+		t.Fatalf("the repair must be in the log: %+v", events)
+	}
+}
