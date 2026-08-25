@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -312,18 +313,18 @@ func TestWaiveAndStaleDigest(t *testing.T) {
 	}
 }
 
-// sliceRun is executeRun with every task in wave 0 and max_parallel 2, so the
-// wave is dispatched in two slices.
-func sliceRun(t *testing.T) (string, string) {
+// wideRun is executeRun with every task in wave 0, dispatched maxParallel at
+// a time.
+func wideRun(t *testing.T, maxParallel int) (string, string) {
 	t.Helper()
 	root, bdir := executeRun(t)
 	st, _ := bundle.LoadState(bdir)
-	st.Config.MaxParallel = 2
+	st.Config.MaxParallel = maxParallel
 	st.Tasks[2].Wave = 0
 	if err := bundle.SaveState(bdir, st); err != nil {
 		t.Fatal(err)
 	}
-	testutil.Commit(t, root, "slice fixture")
+	testutil.Commit(t, root, "wide fixture")
 	return root, bdir
 }
 
@@ -332,7 +333,7 @@ func sliceRun(t *testing.T) (string, string) {
 // dispatched — neither blocks that commit nor raises a content-free gate.
 func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	t.Parallel()
-	root, _ := sliceRun(t)
+	root, _ := wideRun(t, 2)
 	_, o, _ := next(t, root, nil)
 	if len(agentsOf(t, o)) != 2 {
 		t.Fatalf("a slice is max_parallel tasks: %v", o)
@@ -471,5 +472,109 @@ func TestReCloseCarriesEarlierResultsForward(t *testing.T) {
 	}
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 1, 2" {
 		t.Fatalf("commit = %q", msg)
+	}
+}
+
+// recordReport records one raw agent report, whatever status it carries.
+func recordReport(t *testing.T, root string, task int, body string) {
+	t.Helper()
+	f := filepath.Join(t.TempDir(), "r.txt")
+	if err := os.WriteFile(f, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errb := runIn(t, root, nil,
+		"record", "--task", strconv.Itoa(task), "--attempt", "1", "--from", f, "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+}
+
+// waiveOne answers the wave_failures gate with waive and waives one task.
+func waiveOne(t *testing.T, root string, task int, reason string) {
+	t.Helper()
+	if code, _, errb := runIn(t, root, nil,
+		"answer", "--gate", "wave_failures", "--choice", "waive", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	if code, _, errb := runIn(t, root, nil,
+		"waive", "--task", strconv.Itoa(task), "--reason", reason, "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+}
+
+// TestPartialWaiveGateNamesTheRemainingFailure covers review finding N1: a
+// close grades only pending tasks, so after a partial waive it grades none of
+// them — the record it writes must still name the task that is actually
+// holding the wave, and must not name the one just waived.
+func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
+	t.Parallel()
+	root, bdir := wideRun(t, 8)
+	next(t, root, nil)
+	recordReport(t, root, 1, "STATUS: blocked\nSUMMARY: cannot\nBLOCKERS: needs schema\n")
+	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
+	testutil.WriteFile(t, root, "c.go", "package c\n")
+	record(t, root, 3, 1, "done", "c")
+	runIn(t, root, nil, "close-wave", "--slug", "demo")
+	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+
+	waiveOne(t, root, 1, "schema lands later")
+	if _, o, _ := next(t, root, nil); o["op"] != "exec" {
+		t.Fatalf("a waived wave is re-closed: %v", o)
+	}
+	if code, o, _ := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
+		t.Fatalf("task 2 still holds the wave: %d %v", code, o)
+	}
+	c, _ := wave.ReadClose(bdir, 0)
+	if len(c.Failed) != 1 || c.Failed[0] != 2 || len(c.Blocked) != 0 {
+		t.Fatalf("the record must name the still-failed task and drop the waived one: %+v", c)
+	}
+	_, o, _ := next(t, root, nil)
+	if o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+	if got := fmt.Sprint(o["context"].(map[string]any)["failed"]); got != "[2]" {
+		t.Fatalf("the returning gate must name task 2, got failed=%s in %v", got, o["context"])
+	}
+
+	// Waiving the last failure lets the wave commit the work that is there.
+	waiveOne(t, root, 2, "out of scope")
+	next(t, root, nil)
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(files, "c.go") {
+		t.Fatalf("the done task's work must be committed: %q", files)
+	}
+	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("tree: %q", status)
+	}
+}
+
+// TestAllWaivedWaveCommitSubject covers the ride-along minor: a wave whose
+// dispatched work was all waived still commits its bundle, and its subject
+// names the waivers rather than trailing off after "tasks".
+func TestAllWaivedWaveCommitSubject(t *testing.T) {
+	t.Parallel()
+	root, _ := executeRun(t)
+	next(t, root, nil)
+	recordReport(t, root, 1, "STATUS: blocked\nSUMMARY: cannot\nBLOCKERS: needs schema\n")
+	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
+	runIn(t, root, nil, "close-wave", "--slug", "demo")
+	next(t, root, nil)
+	waiveOne(t, root, 1, "schema lands later")
+	next(t, root, nil)
+	runIn(t, root, nil, "close-wave", "--slug", "demo")
+	next(t, root, nil)
+	waiveOne(t, root, 2, "out of scope")
+	next(t, root, nil)
+	if code, o, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != true {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — waived 1, 2" {
+		t.Fatalf("commit = %q", msg)
+	}
+	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+		t.Fatalf("an all-waived wave still unblocks the next one: %v", o)
 	}
 }

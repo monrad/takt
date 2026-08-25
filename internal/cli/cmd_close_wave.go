@@ -197,9 +197,9 @@ func taskOutcome(
 	return tr
 }
 
-// applyTaskStatuses writes each result back onto the task and fills the close
-// record's summary lists. A task sent back for rework stays pending: that is
-// what lets the loop re-dispatch it without a gate (spec §5.3 row 16).
+// applyTaskStatuses writes each freshly graded result back onto its task. A
+// task sent back for rework stays pending: that is what lets the loop
+// re-dispatch it without a gate (spec §5.3 row 16).
 func applyTaskStatuses(st *bundle.State, res *wave.CloseResult) {
 	for _, tr := range res.Tasks {
 		t := st.Task(tr.Task)
@@ -211,9 +211,30 @@ func applyTaskStatuses(st *bundle.State, res *wave.CloseResult) {
 			t.Status = bundle.StatusDone
 		case bundle.StatusFailed:
 			t.Status = bundle.StatusFailed
-			res.Failed = append(res.Failed, tr.Task)
 		case bundle.StatusBlocked:
 			t.Status = bundle.StatusBlocked
+		}
+	}
+}
+
+// summarise rebuilds the close record's summary lists from the merged task
+// results — the lists decide reads to raise the wave_failures gate and to
+// name what is in it. It must run after carryForward: a close grades only
+// pending tasks, so a task that failed in an earlier round is not graded
+// again, yet it is exactly what the returning gate has to name (review
+// finding N1). A task the user has since waived, or that is done, is left
+// out: it is no longer holding the wave and must not re-raise its own gate.
+func summarise(st *bundle.State, res *wave.CloseResult) {
+	res.Failed, res.Blocked, res.Rework, res.ReviewErrors = []int{}, []int{}, []int{}, []int{}
+	for _, tr := range res.Tasks {
+		if t := st.Task(tr.Task); t != nil &&
+			(t.Status == bundle.StatusDone || t.Status == bundle.StatusWaived) {
+			continue
+		}
+		switch tr.Status {
+		case bundle.StatusFailed:
+			res.Failed = append(res.Failed, tr.Task)
+		case bundle.StatusBlocked:
 			res.Blocked = append(res.Blocked, tr.Task)
 		case statusRework:
 			res.Rework = append(res.Rework, tr.Task)
@@ -229,6 +250,7 @@ func applyTaskStatuses(st *bundle.State, res *wave.CloseResult) {
 // record stays the whole wave's story rather than only its last round.
 func persistClose(tgt *runTarget, res *wave.CloseResult) error {
 	carryForward(tgt.bdir, res)
+	summarise(tgt.st, res)
 	if err := bundle.SaveState(tgt.bdir, tgt.st); err != nil {
 		return err
 	}
@@ -309,17 +331,38 @@ func commitWaveOnce(ctx context.Context, tgt *runTarget, res *wave.CloseResult, 
 		})
 		return wave.WriteClose(tgt.bdir, *res)
 	}
-	named := graded
-	if len(named) == 0 {
-		named = ids // a re-close that graded nothing still names what it records
-	}
-	msg := fmt.Sprintf("takt(%s): wave %d — tasks %s", tgt.slug, res.Wave, joinInts(named))
+	msg := waveSubject(tgt.st, tgt.slug, res.Wave, graded, ids)
 	sha, err := wave.CommitWave(ctx, tgt.ws.Repo, paths, rel, msg)
 	if err != nil {
 		return err
 	}
 	res.CommitSHA = sha
 	return nil
+}
+
+// waveSubject names what the commit records: the tasks this close graded,
+// else — for a re-close that graded nothing — the wave's done tasks, else the
+// tasks it waived, because a wave whose dispatched work was all waived still
+// has its bundle to commit and should say so rather than trail off after
+// "tasks".
+func waveSubject(st *bundle.State, slug string, waveN int, graded, done []int) string {
+	prefix := fmt.Sprintf("takt(%s): wave %d — ", slug, waveN)
+	switch {
+	case len(graded) > 0:
+		return prefix + "tasks " + joinInts(graded)
+	case len(done) > 0:
+		return prefix + "tasks " + joinInts(done)
+	}
+	var waived []int
+	for _, t := range st.Tasks {
+		if t.Wave == waveN && t.Status == bundle.StatusWaived {
+			waived = append(waived, t.ID)
+		}
+	}
+	if len(waived) > 0 {
+		return prefix + "waived " + joinInts(waived)
+	}
+	return prefix + "close"
 }
 
 // stageWave stages the wave's pathspec and reports whether it holds anything
