@@ -419,17 +419,20 @@ func TestRetroRunInputsAndDone(t *testing.T) {
 // fileExists reports whether an op's path names something that is there.
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// prURL is the pull request the scripted session reports having opened.
-const prURL = "https://git.invalid/monrad/takt/pull/1"
+// prURL is the pull request the scripted session reports having opened, and
+// reopenedPRURL the one it reports after re-opening it.
+const (
+	prURL         = "https://git.invalid/monrad/takt/pull/1"
+	reopenedPRURL = "https://git.invalid/monrad/takt/pull/2"
+)
 
-// TestPushPRRunAndDone covers row 24: the push_pr run op carries the branch
-// and base the session must push, its done line asks for the URL, and
-// `done --step push_pr` records that URL on the disposition. Answering
-// branch_finish is a later task, so the disposition is set through
-// bundle.SaveState rather than through `takt answer`.
-func TestPushPRRunAndDone(t *testing.T) {
-	t.Parallel()
-	d, bdir := finishRun(t, "--no-goals")
+// atPushPROp drives a run to the push_pr op: verified, retro written, and
+// the pr disposition chosen. Answering branch_finish is a later task, so the
+// disposition is set through bundle.SaveState — the real API — rather than
+// through `takt answer`. On the way it checks that push_pr is refused while
+// no disposition names a pull request.
+func atPushPROp(t *testing.T, d *driver, bdir string) map[string]any {
+	t.Helper()
 	driveToFinish(t, d)
 	d.cmd("verify", "--slug", "demo")
 	d.nextOp() // the retro run op
@@ -448,9 +451,21 @@ func TestPushPRRunAndDone(t *testing.T) {
 	if err = bundle.SaveState(bdir, st); err != nil {
 		t.Fatal(err)
 	}
-	o := d.nextOp()
+	return d.nextOp()
+}
+
+// TestPushPRRunOp covers row 24's op: it names the branch to push and the
+// base to open against, and its done line asks for the URL.
+func TestPushPRRunOp(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	o := atPushPROp(t, d, bdir)
 	if o["op"] != "run" || o["step"] != "push_pr" {
 		t.Fatalf("%v", o)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
 	}
 	in, ok := o["inputs"].(map[string]any)
 	if !ok || in["branch"] != st.Branch || in["base"] != st.Base {
@@ -460,6 +475,16 @@ func TestPushPRRunAndDone(t *testing.T) {
 		!strings.Contains(o["instructions"].(string), "gh pr create") {
 		t.Fatalf("%v", o)
 	}
+}
+
+// TestPushPRDoneRecordsTheURL covers `done --step push_pr`: the URL is
+// required, it lands on the disposition, repeating the call with the same
+// URL is ignored — and repeating it with a different one is a new done, not
+// a replay, because the URL is what push_pr has instead of an artifact.
+func TestPushPRDoneRecordsTheURL(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	atPushPROp(t, d, bdir)
 	if code, _, _ := d.cmd("done", "--step", "push_pr", "--slug", "demo"); code == 0 {
 		t.Fatal("done push_pr needs --url")
 	}
@@ -467,10 +492,11 @@ func TestPushPRRunAndDone(t *testing.T) {
 		"--slug", "demo"); code != 0 || got["ok"] != true {
 		t.Fatalf("%d %v %s", code, got, errb)
 	}
-	if st, err = bundle.LoadState(bdir); err != nil || st.Disposition.PRURL != prURL {
+	st, err := bundle.LoadState(bdir)
+	if err != nil || st.Disposition.PRURL != prURL {
 		t.Fatalf("%v %+v", err, st.Disposition)
 	}
-	// idempotent: the pull request is already on the record.
+	// idempotent: the same pull request is already on the record.
 	before := testutil.Git(t, d.root, "rev-parse", "HEAD")
 	if code, got, _ := d.cmd("done", "--step", "push_pr", "--url", prURL,
 		"--slug", "demo"); code != 0 || got["ignored"] != true {
@@ -479,4 +505,38 @@ func TestPushPRRunAndDone(t *testing.T) {
 	if after := testutil.Git(t, d.root, "rev-parse", "HEAD"); after != before {
 		t.Fatal("a no-op done must not commit")
 	}
+	// a re-opened pull request is a new done: it replaces the recorded URL,
+	// appends a second receipt, and takes exactly one commit.
+	if code, got, errb := d.cmd("done", "--step", "push_pr", "--url", reopenedPRURL,
+		"--slug", "demo"); code != 0 || got["ok"] != true || got["ignored"] == true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	if st, err = bundle.LoadState(bdir); err != nil || st.Disposition.PRURL != reopenedPRURL {
+		t.Fatalf("a changed URL must replace the recorded one: %v %+v", err, st.Disposition)
+	}
+	if n := countEvents(t, bdir, "pr_pushed"); n != 2 {
+		t.Fatalf("a changed URL must append a second pr_pushed, got %d", n)
+	}
+	if n := testutil.Git(t, d.root, "rev-list", "--count", before+"..HEAD"); n != "1" {
+		t.Fatalf("a changed URL must take exactly one commit, got %s", n)
+	}
+	if msg := testutil.Git(t, d.root, "log", "-1", "--format=%s"); !strings.Contains(msg, "push_pr done") {
+		t.Fatalf("commit: %s", msg)
+	}
+}
+
+// countEvents is how many events of one type the run has logged.
+func countEvents(t *testing.T, bdir, typ string) int {
+	t.Helper()
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range events {
+		if e.Type == typ {
+			n++
+		}
+	}
+	return n
 }

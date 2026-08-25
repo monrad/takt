@@ -27,8 +27,9 @@ const stepsHint = "steps: brainstorm, goals, retro, push_pr"
 const dispositionPR = "pr"
 
 // doneStep is what closing a step leaves behind: the event `done` appends,
-// and the artifact whose hash that event records. push_pr has no artifact —
-// a pull request is not a file — so its event alone is the receipt.
+// and the artifact whose hash that event records. push_pr has no file, so
+// its artifact is empty and the pull request URL on the disposition stands
+// in for the hash (see pushPRRecorded).
 type doneStep struct {
 	event    string
 	artifact string
@@ -62,7 +63,7 @@ func cmdDone(env Env) int {
 	if code != 0 {
 		return code
 	}
-	replayed, rerr := doneAlready(tgt.bdir, *step)
+	replayed, rerr := doneAlready(tgt, *step, *prURL)
 	if rerr != nil {
 		return fail(env.Stderr, exitError, rerr.Error(), "")
 	}
@@ -99,12 +100,15 @@ func doneStepWork(env Env, tgt *runTarget, step, prURL string) int {
 // receipt and take an empty commit (spec §5.4). Editing the artifact and
 // closing the step again is a new done, not a replay, which is what keeps
 // this compatible with the steps a session may legitimately redo.
-func doneAlready(bdir, step string) (bool, error) {
+func doneAlready(tgt *runTarget, step, prURL string) (bool, error) {
 	d, known := doneSteps[step]
 	if !known {
 		return false, nil
 	}
-	events, err := bundle.ReadEvents(bdir)
+	if d.artifact == "" {
+		return pushPRRecorded(tgt.st, prURL), nil
+	}
+	events, err := bundle.ReadEvents(tgt.bdir)
 	if err != nil {
 		return false, err
 	}
@@ -117,11 +121,23 @@ func doneAlready(bdir, step string) (bool, error) {
 	if last == nil {
 		return false, nil
 	}
-	if d.artifact == "" {
-		return true, nil
-	}
 	h, _ := last.Data[keyHash].(string)
-	return h != "" && h == artifactHash(bdir, d.artifact), nil
+	return h != "" && h == artifactHash(tgt.bdir, d.artifact), nil
+}
+
+// pushPRRecorded reports whether the disposition already names this exact
+// pull request. push_pr has no file, so the URL the session passes in is
+// its artifact: the same URL is a replay, and a different one — a re-opened
+// or replaced pull request — is a new done, exactly as an edited spec.md
+// is. The comparison is against the URL on the disposition rather than the
+// one in the last pr_pushed event because the disposition is what row 24
+// reads to decide the push happened: a state that lost the URL has to be
+// allowed to record it again.
+func pushPRRecorded(st *bundle.State, prURL string) bool {
+	if st.Disposition == nil || st.Disposition.PRURL == "" {
+		return false
+	}
+	return st.Disposition.PRURL == strings.TrimSpace(prURL)
 }
 
 // artifactHash is the hash a done event records for its step's artifact. A
@@ -181,13 +197,15 @@ func doneRetro(env Env, bdir string) int {
 
 // donePushPR records the pull request the session opened. The URL is the
 // only evidence takt has that the push happened, so row 24 keeps asking for
-// it until one is recorded (spec §7.5).
+// it until one is recorded, and re-running the step with a different URL
+// replaces the one on the record (spec §7.5).
 func donePushPR(env Env, tgt *runTarget, prURL string) int {
 	if tgt.st.Disposition == nil || tgt.st.Disposition.Choice != dispositionPR {
 		return fail(env.Stderr, exitError, "push_pr is only valid after choosing the pr disposition",
 			"answer the branch_finish gate with --choice pr first")
 	}
-	if strings.TrimSpace(prURL) == "" {
+	prURL = strings.TrimSpace(prURL)
+	if prURL == "" {
 		return fail(env.Stderr, exitUsage, "--url is required",
 			"pass the pull request URL: takt done --step push_pr --url <pr-url>")
 	}
