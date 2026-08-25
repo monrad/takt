@@ -95,8 +95,8 @@ func cmdInit(env Env) int {
 	}
 
 	err = writeJSON(env.Stdout, map[string]any{
-		"slug": opts.slug, "bundle": bundleOut, "branch": bi.branch, "branch_adopted": bi.adopted,
-		"base": bi.def, "base_sha": baseSHA, "committed": committed,
+		keySlug: opts.slug, "bundle": bundleOut, keyBranch: bi.branch, keyBranchAdopted: bi.adopted,
+		keyBase: bi.def, keyBaseSHA: baseSHA, "committed": committed,
 	})
 	if err != nil {
 		return 1
@@ -251,7 +251,7 @@ func persistState(
 		return failInit(ctx, env, ws, bi, err.Error())
 	}
 	if err := bundle.AppendEvent(bdir, "init", map[string]any{
-		"slug": st.Slug, "branch": bi.branch, "branch_adopted": bi.adopted, "base": bi.def, "base_sha": baseSHA,
+		keySlug: st.Slug, keyBranch: bi.branch, keyBranchAdopted: bi.adopted, keyBase: bi.def, keyBaseSHA: baseSHA,
 	}); err != nil {
 		return failInit(ctx, env, ws, bi, err.Error())
 	}

@@ -28,9 +28,23 @@ type command func(Env) int
 // unknown command, or bad flags (spec §5.1).
 const exitUsage = 2
 
+// JSON document keys shared by more than one command's output — named so
+// goconst does not flag the repeated literals across cmd_init.go,
+// cmd_status.go, and cmd_plan.go.
+const (
+	keySlug          = "slug"
+	keyBranch        = "branch"
+	keyBranchAdopted = "branch_adopted"
+	keyBase          = "base"
+	keyBaseSHA       = "base_sha"
+	keyTasks         = "tasks"
+)
+
 var commands = map[string]command{
 	"version": cmdVersion,
 	"init":    cmdInit,
+	"status":  cmdStatus,
+	"plan":    cmdPlan,
 }
 
 // Main dispatches args[0] to a subcommand and returns the process exit code.
