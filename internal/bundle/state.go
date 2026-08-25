@@ -80,6 +80,7 @@ type ActiveWave struct {
 	Attempt   int             `json:"attempt"`
 	StartedAt time.Time       `json:"started_at"`
 	SessionID string          `json:"session_id"`
+	Tasks     []int           `json:"tasks,omitempty"`
 	Baseline  []BaselineEntry `json:"baseline"`
 }
 
