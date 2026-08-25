@@ -133,12 +133,23 @@ func BaselinePath(bundleDir string, wave int) string {
 	return filepath.Join(bundleDir, "waves", strconv.Itoa(wave), "baseline.json")
 }
 
-// SaveBaseline parks a wave's baseline on disk. Answering the wave_failures
-// gate with `retry` clears active_wave so the relaunch picks a fresh slice,
-// which would also throw away the baseline the wave started from — and a
-// retry measures against the tree the wave began in, not the one its failed
-// attempt left behind (review M1, spec §7.4 step 5).
-func SaveBaseline(bundleDir string, wave int, entries []bundle.BaselineEntry) error {
+// parked is the on-disk shape of a parked baseline: the entries plus the
+// slice they were captured for. The slice travels with them because it is
+// the retry's own number — a retry of an uncommitted slice is that slice
+// again, not the next one, and active_wave (where the number normally lives)
+// is exactly what the retry cleared.
+type parked struct {
+	Slice   int                    `json:"slice"`
+	Entries []bundle.BaselineEntry `json:"entries"`
+}
+
+// SaveBaseline parks a wave's baseline, and the slice it belongs to, on disk.
+// Answering the wave_failures gate with `retry` clears active_wave so the
+// relaunch picks the slice back up, which would also throw away the baseline
+// the wave started from — and a retry measures against the tree the wave
+// began in, not the one its failed attempt left behind (review M1,
+// spec §7.4 step 5).
+func SaveBaseline(bundleDir string, wave, slice int, entries []bundle.BaselineEntry) error {
 	p := BaselinePath(bundleDir, wave)
 	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
 		return err
@@ -146,32 +157,32 @@ func SaveBaseline(bundleDir string, wave int, entries []bundle.BaselineEntry) er
 	if entries == nil {
 		entries = []bundle.BaselineEntry{}
 	}
-	b, err := json.MarshalIndent(entries, "", "  ")
+	b, err := json.MarshalIndent(parked{Slice: slice, Entries: entries}, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(p, append(b, '\n'), 0o600)
 }
 
-// ReadBaseline returns the parked baseline, or nil when none was parked.
-// Absence is the normal case — only a retry parks one — so it is not an
-// error, the same contract as [ReadClose].
-func ReadBaseline(bundleDir string, wave int) ([]bundle.BaselineEntry, error) {
+// ReadBaseline returns the parked baseline and the slice it was captured
+// for, or nil, 0 when none was parked. Absence is the normal case — only a
+// retry parks one — so it is not an error, the same contract as [ReadClose].
+func ReadBaseline(bundleDir string, wave int) ([]bundle.BaselineEntry, int, error) {
 	b, err := os.ReadFile(BaselinePath(bundleDir, wave))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil, 0, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	var entries []bundle.BaselineEntry
-	if uerr := json.Unmarshal(b, &entries); uerr != nil {
-		return nil, fmt.Errorf("baseline.json: %w", uerr)
+	var p parked
+	if uerr := json.Unmarshal(b, &p); uerr != nil {
+		return nil, 0, fmt.Errorf("baseline.json: %w", uerr)
 	}
-	if entries == nil {
-		entries = []bundle.BaselineEntry{}
+	if p.Entries == nil {
+		p.Entries = []bundle.BaselineEntry{}
 	}
-	return entries, nil
+	return p.Entries, p.Slice, nil
 }
 
 // DeleteBaseline drops a parked baseline once the wave has committed: the

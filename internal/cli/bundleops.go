@@ -78,10 +78,11 @@ func waveCommitLanded(ctx context.Context, repo *gitx.Repo, rec *wave.CloseResul
 // max_parallel is dispatched in slices that all run at attempt 1, so the
 // committed record of the previous slice would otherwise be read as this
 // slice's answer — clearing the wave, or making `close-wave` a no-op, before
-// the second slice was ever graded. A record closed before the current
-// dispatch started belongs to an earlier one.
+// the second slice was ever graded. (attempt, slice) is what a dispatch is
+// identified by, and each of the two is written by the same launch the
+// record's own numbers came from.
 func closeMatchesDispatch(c *wave.CloseResult, aw *bundle.ActiveWave) bool {
-	return c != nil && aw != nil && c.Attempt == aw.Attempt && !c.ClosedAt.Before(aw.StartedAt)
+	return c != nil && aw != nil && c.Attempt == aw.Attempt && c.Slice == aw.Slice
 }
 
 // gateStateValue is what state.gates records for a gate at the transition
@@ -108,24 +109,26 @@ func gateStateValue(bdir string, enabled bool, g string) string {
 	return gatePending
 }
 
-// dropClose retires a wave's close record so the next `takt next` runs
+// dropClose retires a slice's close record so the next `takt next` runs
 // close-wave again. The record is renamed, not deleted: the re-close grades
 // only the tasks that are still pending, so the retired copy is where the
 // results of the tasks it will not grade again — their verify output,
 // review findings and files_changed — are carried forward from. A record
 // that is already gone is not an error.
-func dropClose(bdir string, waveN int) error {
-	p := wave.ClosePath(bdir, waveN)
-	if err := os.Rename(p, prevClosePath(bdir, waveN)); err != nil && !errors.Is(err, os.ErrNotExist) {
+func dropClose(bdir string, waveN, slice int) error {
+	p := wave.ClosePath(bdir, waveN, slice)
+	if err := os.Rename(p, prevClosePath(bdir, waveN, slice)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
 }
 
 // prevClosePath is the retired close record dropClose renames to. It is not
-// a close record any command reads by itself — wave.ReadClose looks for
-// close.json — only the source persistClose carries results forward from.
-func prevClosePath(bdir string, waveN int) string { return wave.ClosePath(bdir, waveN) + ".prev" }
+// a close record any command reads by itself — wave.AllCloses skips it —
+// only the source persistClose carries results forward from.
+func prevClosePath(bdir string, waveN, slice int) string {
+	return wave.ClosePath(bdir, waveN, slice) + ".prev"
+}
 
 // briefPath is briefs/<name> (non-task briefs) — waves/<n>/… holds task briefs.
 func briefPath(bdir, name string) string { return filepath.Join(bdir, "briefs", name) }
@@ -235,14 +238,17 @@ func answerWaveGate(bdir string, st *bundle.State, gate, choice, reason string) 
 				st.Tasks[i].Status = bundle.StatusPending
 			}
 		}
-		// Clearing active_wave lets the retry come back as a fresh slice,
-		// but the baseline must survive it: a failed attempt leaves its
-		// half-written files in the tree, and a baseline captured now would
-		// record them as pre-existing — so a retry that gets the file right
-		// without touching it again reads as no_changes and fails a second
-		// time (review M1). Park it for waveBaseline to pick back up.
+		// Clearing active_wave sends the retry back through the launch
+		// path, but two things must survive it, so both are parked
+		// together. The baseline: a failed attempt leaves its half-written
+		// files in the tree, and a baseline captured now would record them
+		// as pre-existing — so a retry that gets the file right without
+		// touching it again reads as no_changes and fails a second time
+		// (review M1). And the slice number: an uncommitted slice retried
+		// is that slice again, not the next one, and active_wave is where
+		// that number normally lives. waveBaseline picks both back up.
 		if aw != nil {
-			if err := wave.SaveBaseline(bdir, aw.N, aw.Baseline); err != nil {
+			if err := wave.SaveBaseline(bdir, aw.N, aw.Slice, aw.Baseline); err != nil {
 				return false, err
 			}
 		}
@@ -257,12 +263,12 @@ func answerWaveGate(bdir string, st *bundle.State, gate, choice, reason string) 
 		if aw == nil {
 			return false, nil
 		}
-		return false, dropClose(bdir, aw.N)
+		return false, dropClose(bdir, aw.N, aw.Slice)
 	case "review_error/retry":
 		if aw == nil {
 			return false, nil
 		}
-		return false, dropClose(bdir, aw.N)
+		return false, dropClose(bdir, aw.N, aw.Slice)
 	case "review_error/skip":
 		return false, skipTaskReviews(bdir, aw, reason)
 	case "wave_failures/stop", "review_error/stop":
@@ -280,7 +286,7 @@ func skipTaskReviews(bdir string, aw *bundle.ActiveWave, reason string) error {
 		return errors.New("skipping reviews needs --reason and an active wave")
 	}
 	tasks := []int{}
-	if c, _ := wave.ReadClose(bdir, aw.N); c != nil {
+	if c, _ := wave.ReadClose(bdir, aw.N, aw.Slice); c != nil {
 		tasks = c.ReviewErrors
 	}
 	err := bundle.AppendEvent(bdir, "review_skipped", map[string]any{
@@ -289,5 +295,5 @@ func skipTaskReviews(bdir string, aw *bundle.ActiveWave, reason string) error {
 	if err != nil {
 		return err
 	}
-	return dropClose(bdir, aw.N)
+	return dropClose(bdir, aw.N, aw.Slice)
 }

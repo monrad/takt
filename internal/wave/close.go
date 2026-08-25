@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/gitx"
 )
+
+// closePrefix starts the name of every per-slice close record.
+const closePrefix = "close.s"
 
 // TaskResult is one task's outcome in a close record.
 type TaskResult struct {
@@ -24,9 +29,14 @@ type TaskResult struct {
 	Review       *backend.ReviewResult `json:"review,omitempty"`
 }
 
-// CloseResult is waves/<n>/close.json.
+// CloseResult is waves/<n>/close.s<slice>.json.
 type CloseResult struct {
-	Wave       int          `json:"wave"`
+	Wave int `json:"wave"`
+	// Slice numbers the dispatch this record answers. A wave larger than
+	// max_parallel goes out in slices that all run at attempt 1, so the
+	// attempt alone cannot tell one slice's record from the next one's —
+	// and each slice commits on its own, so each keeps its own record.
+	Slice      int          `json:"slice"`
 	Attempt    int          `json:"attempt"`
 	Tasks      []TaskResult `json:"tasks"`
 	OutOfScope []string     `json:"out_of_scope"`
@@ -47,18 +57,18 @@ type CloseResult struct {
 	ReviewErrors    []int     `json:"review_errors"`
 }
 
-// ClosePath returns bundleDir/waves/<n>/close.json.
-func ClosePath(bundleDir string, wave int) string {
-	return filepath.Join(bundleDir, "waves", strconv.Itoa(wave), "close.json")
+// ClosePath is where slice s of wave n records its close.
+func ClosePath(bundleDir string, wave, slice int) string {
+	return filepath.Join(bundleDir, "waves", strconv.Itoa(wave), "close.s"+strconv.Itoa(slice)+".json")
 }
 
-// ReadClose returns nil, nil when the wave has no close record: absence of
-// a close.json is not an error condition, it means the wave has not been
-// closed yet, and callers (task 7) branch on the nil to decide that.
+// ReadClose returns nil, nil when the slice has no close record: absence of
+// a record is not an error condition, it means the slice has not been closed
+// yet, and callers branch on the nil to decide that.
 //
 //nolint:nilnil // documented "not closed yet" sentinel, not an oversight
-func ReadClose(bundleDir string, wave int) (*CloseResult, error) {
-	b, err := os.ReadFile(ClosePath(bundleDir, wave))
+func ReadClose(bundleDir string, wave, slice int) (*CloseResult, error) {
+	b, err := os.ReadFile(ClosePath(bundleDir, wave, slice))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -67,14 +77,64 @@ func ReadClose(bundleDir string, wave int) (*CloseResult, error) {
 	}
 	var c CloseResult
 	if uerr := json.Unmarshal(b, &c); uerr != nil {
-		return nil, fmt.Errorf("close.json: %w", uerr)
+		return nil, fmt.Errorf("close.s%d.json: %w", slice, uerr)
 	}
 	return &c, nil
 }
 
-// WriteClose writes the record atomically.
+// AllCloses lists every slice record of a wave in ascending slice order. It
+// reads only close.s<n>.json: the retired .prev copies dropClose leaves
+// behind and the task digests that share the directory are not records of a
+// slice that closed.
+func AllCloses(bundleDir string, wave int) ([]CloseResult, error) {
+	entries, err := os.ReadDir(filepath.Join(bundleDir, "waves", strconv.Itoa(wave)))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []CloseResult
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, closePrefix) || !strings.HasSuffix(name, ".json") {
+			continue // skips .prev and digests
+		}
+		s, convErr := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, closePrefix), ".json"))
+		if convErr != nil {
+			continue
+		}
+		c, rerr := ReadClose(bundleDir, wave, s)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if c != nil {
+			out = append(out, *c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Slice < out[j].Slice })
+	return out, nil
+}
+
+// LatestClose is the wave's highest-numbered slice record, nil when the wave
+// has none.
+func LatestClose(bundleDir string, wave int) (*CloseResult, error) {
+	all, err := AllCloses(bundleDir, wave)
+	if err != nil || len(all) == 0 {
+		return nil, err
+	}
+	return &all[len(all)-1], nil
+}
+
+// WriteClose writes the record atomically, to its own slice's path. A record
+// with no slice number is a caller bug — every close answers a dispatch, and
+// every dispatch has a slice — and is refused rather than written to a path
+// no reader looks at.
 func WriteClose(bundleDir string, c CloseResult) error {
-	p := ClosePath(bundleDir, c.Wave)
+	if c.Slice < 1 {
+		return fmt.Errorf("close record for wave %d has no slice number", c.Wave)
+	}
+	p := ClosePath(bundleDir, c.Wave, c.Slice)
 	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
 		return err
 	}
@@ -82,7 +142,7 @@ func WriteClose(bundleDir string, c CloseResult) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), "close.json.*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
 	if err != nil {
 		return err
 	}

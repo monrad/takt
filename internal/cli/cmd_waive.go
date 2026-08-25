@@ -74,15 +74,31 @@ func waivable(bdir string, t *bundle.Task) bool {
 	return c != nil && slices.Contains(c.Rework, t.ID)
 }
 
-// latestClose is the wave's close record, falling back to the copy dropClose
-// retired: answering the wave_failures gate with `waive` retires the record
+// latestClose is the wave's newest close record: its highest-numbered slice,
+// or — when that slice's record has been retired — the copy dropClose
+// renamed. Answering the wave_failures gate with `waive` retires the record
 // before `takt waive` ever runs, and the retired copy is the only place the
-// rework verdict that made the task waivable still exists.
+// rework verdict that made the task waivable still exists. dropClose only
+// ever retires the slice that is open, which is the one above the newest
+// record still on disk.
 func latestClose(bdir string, waveN int) *wave.CloseResult {
-	if c, err := wave.ReadClose(bdir, waveN); err == nil && c != nil {
-		return c
+	c, err := wave.LatestClose(bdir, waveN)
+	if err != nil {
+		return nil
 	}
-	b, err := os.ReadFile(prevClosePath(bdir, waveN))
+	openSlice := 1
+	if c != nil {
+		openSlice = c.Slice + 1
+	}
+	if retired := readPrevClose(bdir, waveN, openSlice); retired != nil {
+		return retired
+	}
+	return c
+}
+
+// readPrevClose parses one slice's retired record, nil when it has none.
+func readPrevClose(bdir string, waveN, slice int) *wave.CloseResult {
+	b, err := os.ReadFile(prevClosePath(bdir, waveN, slice))
 	if err != nil {
 		return nil
 	}

@@ -127,7 +127,7 @@ func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State) error {
 			f.Wave.Recorded[id] = true
 		}
 	}
-	c, err := wave.ReadClose(bdir, aw.N)
+	c, err := wave.ReadClose(bdir, aw.N, aw.Slice)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

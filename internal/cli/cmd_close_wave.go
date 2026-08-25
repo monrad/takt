@@ -79,7 +79,7 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 		return nil, err
 	}
 	res := wave.CloseResult{
-		Wave: aw.N, Attempt: aw.Attempt, ClosedAt: timeNow(),
+		Wave: aw.N, Slice: aw.Slice, Attempt: aw.Attempt, ClosedAt: timeNow(),
 		Failed: []int{}, Blocked: []int{}, Rework: []int{}, ReviewErrors: []int{},
 	}
 	sc, err := verifyWaveScope(ctx, tgt, &res)
@@ -92,7 +92,7 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 	graded := gradedIDs(res.Tasks) // before persistClose carries earlier rounds forward
 	applyTaskStatuses(tgt.st, &res)
 	res.Committed = sliceDone(tgt.st, aw.N)
-	// state.json and close.json are written before the commit, so the one
+	// state.json and the close record are written before the commit, so the one
 	// commit spec §4.7 asks for carries them. What the commit itself did is
 	// recorded afterwards, by recordCloseOutcome: a sha cannot be written
 	// into the commit that carries it, and a record written first would
@@ -110,16 +110,16 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 	return &res, nil
 }
 
-// landedClose returns the active attempt's close record when its commit is
+// landedClose returns the active dispatch's close record when its commit is
 // already in HEAD, and nil when the wave still has to be closed. It is what
 // makes a repeated `close-wave` a no-op rather than a second grading round
 // that overwrites the record and makes a duplicate wave commit (review I1).
-// A record from an earlier attempt is not this attempt's answer, and one
-// that claims a commit git does not have is not trusted (spec §5.4).
+// A record from an earlier attempt or slice is not this dispatch's answer,
+// and one that claims a commit git does not have is not trusted (spec §5.4).
 //
 //nolint:nilnil // documented "the wave still has to be closed" sentinel, like wave.ReadClose
 func landedClose(ctx context.Context, tgt *runTarget, aw *bundle.ActiveWave) (*wave.CloseResult, error) {
-	c, err := wave.ReadClose(tgt.bdir, aw.N)
+	c, err := wave.ReadClose(tgt.bdir, aw.N, aw.Slice)
 	if err != nil || !closeMatchesDispatch(c, aw) {
 		return nil, err
 	}
@@ -290,12 +290,12 @@ func persistClose(tgt *runTarget, res *wave.CloseResult) error {
 	if err := wave.WriteClose(tgt.bdir, *res); err != nil {
 		return err
 	}
-	_ = os.Remove(prevClosePath(tgt.bdir, res.Wave))
+	_ = os.Remove(prevClosePath(tgt.bdir, res.Wave, res.Slice))
 	return nil
 }
 
 // recordCloseOutcome records what the commit actually did, after it did it:
-// close.json is rewritten with the sha (a value that cannot exist before the
+// the record is rewritten with the sha (a value that cannot exist before the
 // commit it names) and the outcome is appended to the log. Both writes land
 // after the wave commit and therefore sit uncommitted until the next takt
 // commit picks them up — the next slice, or the execute → finish transition
@@ -332,7 +332,7 @@ func recordCloseOutcome(tgt *runTarget, res *wave.CloseResult, ids []int) error 
 // did not grade. Nothing is overwritten: a task graded again keeps its fresh
 // result.
 func carryForward(bdir string, res *wave.CloseResult) {
-	b, err := os.ReadFile(prevClosePath(bdir, res.Wave))
+	b, err := os.ReadFile(prevClosePath(bdir, res.Wave, res.Slice))
 	if err != nil {
 		return
 	}
@@ -351,7 +351,7 @@ func carryForward(bdir string, res *wave.CloseResult) {
 // commitWave commits the finished slice and returns the task ids its subject
 // names. It guarantees the record never outlives a commit that did not
 // happen: ANY failure on the way — resolving the paths, staging them, the
-// commit itself — retires close.json, so the next `takt next` closes the
+// commit itself — retires the record, so the next `takt next` closes the
 // wave again instead of reading committed=true, clearing the wave and
 // stranding the work uncommitted.
 func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) ([]int, error) {
@@ -360,7 +360,7 @@ func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult, grad
 	}
 	ids, err := commitWaveOnce(ctx, tgt, res, graded)
 	if err != nil {
-		return nil, errors.Join(err, dropClose(tgt.bdir, res.Wave))
+		return nil, errors.Join(err, dropClose(tgt.bdir, res.Wave, res.Slice))
 	}
 	return ids, nil
 }

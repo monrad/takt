@@ -153,21 +153,34 @@ func launchWave(ctx context.Context, r *nextRun, d decide.Decision) int {
 	_ = bundle.AppendEvent(r.bdir, "wave_dispatched", map[string]any{
 		keyWave: d.Wave, keyAttempt: attempt, keyTasks: ids,
 	})
-	return printOp(r.env, dispatchOp(r, d.Wave, attempt, agents))
+	return printOp(r.env, dispatchOp(r, d.Wave, slice, attempt, agents))
 }
 
 // dispatchOp is the wave's dispatch op: one agent per task, and the exact
 // `takt record` line the session must run for each of them.
-func dispatchOp(r *nextRun, waveN, attempt int, agents []op.Agent) op.Op {
+func dispatchOp(r *nextRun, waveN, slice, attempt int, agents []op.Agent) op.Op {
 	return op.Op{
 		Op:        op.Dispatch,
-		Narration: fmt.Sprintf("wave %d (attempt %d): %d tasks", waveN, attempt, len(agents)),
+		Narration: dispatchNarration(waveN, slice, attempt, len(agents)),
 		Wave:      new(waveN),
 		Attempt:   attempt,
 		Agents:    agents,
 		Record: fmt.Sprintf("takt record --task <N> --attempt %d --from <file> --slug %s",
 			attempt, r.slug),
 	}
+}
+
+// dispatchNarration is the dispatch op's one-line summary. The slice is named
+// only from the second one on: how many slices a wave will take is not known
+// when the first goes out (it depends on what the ones before it leave
+// pending), so "slice 1 of 1" would be a promise takt cannot keep — and a
+// wave that fits in max_parallel never has a second slice to distinguish it
+// from.
+func dispatchNarration(waveN, slice, attempt, tasks int) string {
+	if slice > 1 {
+		return fmt.Sprintf("wave %d slice %d (attempt %d): %d tasks", waveN, slice, attempt, tasks)
+	}
+	return fmt.Sprintf("wave %d (attempt %d): %d tasks", waveN, attempt, tasks)
 }
 
 // waveAttempt is the attempt the whole slice runs at: the decision's own
@@ -186,30 +199,57 @@ func waveAttempt(st *bundle.State, ids []int, decided int) int {
 	return attempt
 }
 
-// waveBaseline is the wave's baseline: kept as captured when this is another
-// attempt of the same wave (rework or recovery must measure against the same
-// tree the wave started from), taken from the copy a wave_failures retry
-// parked when that retry cleared active_wave, and freshly captured
-// otherwise. takt's own bundle tree is excluded — see bundleTreeRel.
+// waveBaseline is the wave's baseline and the number of the slice it belongs
+// to. The two travel together because the three cases answer both questions
+// at once: recovery and rework keep the active wave's baseline and its slice
+// (they must measure against the same tree, and they are the same dispatch
+// slice re-run); a wave_failures retry takes both from the copy it parked
+// when it cleared active_wave, so an uncommitted slice retried is that slice
+// again; and a fresh launch captures the tree now and counts itself one past
+// the slices of this wave that have already committed. takt's own bundle
+// tree is excluded from the baseline — see bundleTreeRel.
 func waveBaseline(ctx context.Context, r *nextRun, waveN int) ([]bundle.BaselineEntry, int, error) {
 	if aw := r.st.ActiveWave; aw != nil && aw.N == waveN {
 		return aw.Baseline, aw.Slice, nil
 	}
 	if waveHasRun(r.st, waveN) {
-		parked, err := wave.ReadBaseline(r.bdir, waveN)
+		parked, slice, err := wave.ReadBaseline(r.bdir, waveN)
 		if err != nil {
 			return nil, 0, err
 		}
 		if parked != nil {
-			return parked, 0, nil
+			return parked, slice, nil
 		}
 	}
 	base, err := wave.Baseline(ctx, r.ws.Repo)
 	if err != nil {
 		return nil, 0, err
 	}
+	committed, err := committedSlices(r.bdir, waveN)
+	if err != nil {
+		return nil, 0, err
+	}
 	rel := bundleTreeRel(r.ws)
-	return slices.DeleteFunc(base, func(e bundle.BaselineEntry) bool { return underBundle(rel, e.Path) }), 0, nil
+	kept := slices.DeleteFunc(base, func(e bundle.BaselineEntry) bool { return underBundle(rel, e.Path) })
+	return kept, committed + 1, nil
+}
+
+// committedSlices is how many slices of the wave have already committed —
+// the number a fresh launch counts itself from. Only a committed slice is
+// spent: a record that failed to commit is re-closed under its own number,
+// and one whose commit git cannot confirm is retired and closed again.
+func committedSlices(bdir string, waveN int) (int, error) {
+	all, err := wave.AllCloses(bdir, waveN)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, c := range all {
+		if c.Committed {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // waveHasRun reports whether any task of the wave has already been
@@ -265,10 +305,12 @@ func previousAttempt(bdir string, waveN, task, lastAttempt int) (string, string,
 	return model, failure, findings
 }
 
-// previousFailure renders the close record's verdict for one task as the
-// sentence its retry brief quotes back, plus that review's findings.
+// previousFailure renders the newest slice record's verdict for one task as
+// the sentence its retry brief quotes back, plus that review's findings. A
+// retry is always of the wave's latest slice, so that is the record that
+// judged the task.
 func previousFailure(bdir string, waveN, task int) (string, []string) {
-	c, _ := wave.ReadClose(bdir, waveN)
+	c, _ := wave.LatestClose(bdir, waveN)
 	if c == nil {
 		return "", nil
 	}

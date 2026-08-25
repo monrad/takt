@@ -55,7 +55,7 @@ const (
 	ActLoadPlan   Action = "load_plan"  // materialise tasks, phase → execute
 	ActLaunch     Action = "launch"     // Wave, Tasks, Attempt
 	ActRecover    Action = "recover"    // Tasks to reset, then launch with Attempt
-	ActClearWave  Action = "clear_wave" // close.json says committed
+	ActClearWave  Action = "clear_wave" // the slice's close record says committed
 	ActArchive    Action = "archive"    // phase → archived, commit, apply the disposition, stop
 )
 
@@ -76,7 +76,7 @@ type AlignmentFacts struct {
 	ClauseCount      int
 }
 
-// CloseFacts summarises waves/<n>/close.json for the active attempt.
+// CloseFacts summarises the active dispatch's close record.
 type CloseFacts struct {
 	Committed    bool
 	Failed       []int
@@ -88,7 +88,7 @@ type CloseFacts struct {
 // WaveFacts is what is on disk for the active wave attempt.
 type WaveFacts struct {
 	Recorded map[int]bool // task id → digest present for this attempt
-	Close    *CloseFacts  // nil until close-wave wrote close.json
+	Close    *CloseFacts  // nil until close-wave wrote the slice record
 }
 
 // Facts is everything Decide needs beyond the state.
@@ -356,7 +356,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 				ctxSlug: st.Slug,
 				ctxWave: aw.N,
 				"tasks": c.ReviewErrors,
-				"error": "see waves/" + strconv.Itoa(aw.N) + "/close.json",
+				"error": "see waves/" + strconv.Itoa(aw.N) + "/close.s" + strconv.Itoa(aw.Slice) + ".json",
 			},
 		)
 	}

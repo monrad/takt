@@ -152,7 +152,7 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 1, 2" {
 		t.Fatalf("commit = %q", msg)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if c == nil || !c.Committed || len(c.Reverted) != 1 || c.Tasks[0].Review == nil ||
 		c.Tasks[0].Review.Verdict != "approve" {
 		t.Fatalf("close = %+v", c)
@@ -194,7 +194,7 @@ func TestVerifyFailureThenRetryEscalates(t *testing.T) {
 	if code != 0 || o["committed"] != false {
 		t.Fatalf("%d %v", code, o)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if len(c.Failed) != 1 || c.Failed[0] != 2 || c.Tasks[1].Reason != "no_changes" {
 		t.Fatalf("%+v", c)
 	}
@@ -242,7 +242,7 @@ func TestReworkRedispatchesWithFindingsThenApproves(t *testing.T) {
 	if code, o, _ := runIn(t, root, rework, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
 		t.Fatalf("%d %v", code, o)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if len(c.Rework) != 2 {
 		t.Fatalf("both reviewed tasks got rework: %+v", c)
 	}
@@ -285,7 +285,7 @@ func TestReviewErrorGateSkip(t *testing.T) {
 	if code, o, _ := runIn(t, root, broken, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != true {
 		t.Fatalf("%d %v", code, o)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if c.Tasks[0].Review != nil {
 		t.Fatal("skipped tasks are not re-reviewed")
 	}
@@ -397,7 +397,7 @@ func wideRun(t *testing.T, maxParallel int) (string, string) {
 // dispatched — neither blocks that commit nor raises a content-free gate.
 func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	t.Parallel()
-	root, _ := wideRun(t, 2)
+	root, bdir := wideRun(t, 2)
 	_, o, _ := next(t, root, nil)
 	if len(agentsOf(t, o)) != 2 {
 		t.Fatalf("a slice is max_parallel tasks: %v", o)
@@ -412,11 +412,15 @@ func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 1, 2" {
 		t.Fatalf("commit = %q", msg)
 	}
+	first := sliceRecord(t, bdir, 0, 1) // each slice keeps its own record, named by its number
 	// No gate: the wave's remaining task goes out as the next slice.
 	_, o, _ = next(t, root, nil)
 	ags := agentsOf(t, o)
 	if o["op"] != "dispatch" || o["wave"] != float64(0) || len(ags) != 1 || ags[0]["task"] != float64(3) {
 		t.Fatalf("second slice: %v", o)
+	}
+	if n, _ := o["narration"].(string); !strings.Contains(n, "slice 2") {
+		t.Fatalf("the second slice must say so: %q", n)
 	}
 	testutil.WriteFile(t, root, "c.go", "package c\n")
 	record(t, root, 3, 1, "done", "c")
@@ -426,8 +430,100 @@ func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — tasks 3" {
 		t.Fatalf("a slice commit names only the tasks it closed: %q", msg)
 	}
+	sliceRecord(t, bdir, 0, 2)
+	if again := sliceRecord(t, bdir, 0, 1); string(again) != string(first) {
+		t.Fatalf("slice 2 must not rewrite slice 1's record:\n%s\n%s", first, again)
+	}
 	if status := porcelainOutsideBundle(t, root); status != "" {
 		t.Fatalf("tree after the last slice: %q", status)
+	}
+	next(t, root, nil) // clears the finished wave
+	if _, doc, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo"); doc["active_wave"] != nil {
+		t.Fatalf("the last slice's wave must be cleared: %v %s", doc["active_wave"], errb)
+	}
+	assertLogHas(t, root, "wave 0 — tasks 1, 2", "wave 0 — tasks 3")
+}
+
+// sliceRecord asserts that slice s of wave n closed and committed under its
+// own number, and returns the record's bytes — so a later slice can be
+// checked for having left it alone.
+func sliceRecord(t *testing.T, bdir string, waveN, slice int) []byte {
+	t.Helper()
+	c, err := wave.ReadClose(bdir, waveN, slice)
+	if err != nil || c == nil || c.Slice != slice || !c.Committed {
+		t.Fatalf("wave %d slice %d record: %v %+v", waveN, slice, err, c)
+	}
+	b, err := os.ReadFile(wave.ClosePath(bdir, waveN, slice))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// assertLogHas checks every subject is somewhere in the branch's history.
+func assertLogHas(t *testing.T, root string, subjects ...string) {
+	t.Helper()
+	log := testutil.Git(t, root, "log", "--format=%s")
+	for _, want := range subjects {
+		if !strings.Contains(log, want) {
+			t.Fatalf("missing commit %q in:\n%s", want, log)
+		}
+	}
+}
+
+// TestRetryKeepsTheSliceNumber is the other half of the slice counter: a
+// slice that failed and is retried from the wave_failures gate comes back as
+// the same slice, not as a new one. The counter follows what has committed,
+// and an uncommitted slice has not — so its record stays close.s1.json and
+// the retry overwrites it rather than leaving a half-graded s1 behind an s2.
+func TestRetryKeepsTheSliceNumber(t *testing.T) {
+	t.Parallel()
+	root, bdir := wideRun(t, 2)
+	next(t, root, nil) // slice 1: tasks 1 and 2
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	recordReport(t, root, 1, "STATUS: failed\nSUMMARY: ran out of ideas\nBLOCKERS: none\n")
+	record(t, root, 2, 1, "done", "b")
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+		t.Fatalf("%v", o)
+	}
+	if code, _, errb := runIn(t, root, nil,
+		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || o["attempt"] != float64(2) {
+		t.Fatalf("retry dispatch: %v", o)
+	}
+	// Slice 1 renders as the plain narration; "slice 2" would mean the retry
+	// had been counted as a new slice.
+	if n, _ := o["narration"].(string); strings.Contains(n, "slice") {
+		t.Fatalf("a retry of an uncommitted slice keeps its number: %q", n)
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.ActiveWave == nil || st.ActiveWave.Slice != 1 {
+		t.Fatalf("active_wave = %+v", st.ActiveWave)
+	}
+
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "c.go", "package c\n")
+	for _, id := range st.ActiveWave.Tasks {
+		record(t, root, id, 2, "done", "retried")
+	}
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if c, _ := wave.ReadClose(bdir, 0, 1); c == nil || c.Slice != 1 || !c.Committed {
+		t.Fatalf("the retry's record is still slice 1: %+v", c)
+	}
+	if _, err := os.Stat(wave.ClosePath(bdir, 0, 2)); !os.IsNotExist(err) {
+		t.Fatalf("a retry must not open a second slice: %v", err)
+	}
+	if _, err := os.Stat(wave.ClosePath(bdir, 0, 1) + ".prev"); !os.IsNotExist(err) {
+		t.Fatalf("the retired copy must be gone once the slice closes: %v", err)
 	}
 }
 
@@ -455,7 +551,7 @@ func TestRecoveredWaveEarlierFailureBlocksTheCommit(t *testing.T) {
 	if code != 0 || out["committed"] != false {
 		t.Fatalf("a task that ran and failed blocks the slice: %d %v", code, out)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if len(c.Failed) != 1 || c.Failed[0] != 1 {
 		t.Fatalf("%+v", c)
 	}
@@ -482,7 +578,7 @@ func TestCloseWaveCommitFailureDropsTheRecord(t *testing.T) {
 	if code, _, _ := runIn(t, root, nil, "close-wave", "--slug", "demo"); code == 0 {
 		t.Fatal("a close that cannot stage or commit must fail")
 	}
-	if c, _ := wave.ReadClose(bdir, 0); c != nil && c.Committed {
+	if c, _ := wave.ReadClose(bdir, 0, 1); c != nil && c.Committed {
 		t.Fatalf("the record must never outlive the commit it claims: %+v", c)
 	}
 	if err := os.Remove(lock); err != nil {
@@ -525,7 +621,7 @@ func TestReCloseCarriesEarlierResultsForward(t *testing.T) {
 	if code, o, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != true {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if c == nil || len(c.Tasks) != 2 {
 		t.Fatalf("the re-close keeps both tasks' results: %+v", c)
 	}
@@ -589,7 +685,7 @@ func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
 	if code, o, _ := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
 		t.Fatalf("task 2 still holds the wave: %d %v", code, o)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if len(c.Failed) != 1 || c.Failed[0] != 2 || len(c.Blocked) != 0 {
 		t.Fatalf("the record must name the still-failed task and drop the waived one: %+v", c)
 	}
@@ -686,7 +782,7 @@ func TestCloseWaveTwiceIsANoOp(t *testing.T) {
 		t.Fatalf("%d %v %s", code, first, errb)
 	}
 	head := testutil.Git(t, root, "rev-parse", "HEAD")
-	before, err := os.ReadFile(wave.ClosePath(bdir, 0))
+	before, err := os.ReadFile(wave.ClosePath(bdir, 0, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -700,14 +796,14 @@ func TestCloseWaveTwiceIsANoOp(t *testing.T) {
 	if string(a) != string(b) {
 		t.Fatalf("a replayed close must reprint the same record:\n%s\n%s", a, b)
 	}
-	after, err := os.ReadFile(wave.ClosePath(bdir, 0))
+	after, err := os.ReadFile(wave.ClosePath(bdir, 0, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
 		t.Fatalf("the replay rewrote close.json:\n%s\n%s", before, after)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	if c == nil || len(c.Tasks) != 2 {
 		t.Fatalf("the record must keep the tasks it graded: %+v", c)
 	}
@@ -735,7 +831,7 @@ func TestCrashInsideWaveCommitIsReconciled(t *testing.T) {
 	record(t, root, 2, 1, "done", "b")
 	// The state a process killed inside `git commit` leaves behind.
 	if err := wave.WriteClose(bdir, wave.CloseResult{
-		Wave: 0, Attempt: 1, ClosedAt: time.Now().UTC(), Committed: true,
+		Wave: 0, Slice: 1, Attempt: 1, ClosedAt: time.Now().UTC(), Committed: true,
 		Failed: []int{}, Blocked: []int{}, Rework: []int{}, ReviewErrors: []int{},
 	}); err != nil {
 		t.Fatal(err)
@@ -905,7 +1001,7 @@ func TestRetryMeasuresAgainstTheWaveBaseline(t *testing.T) {
 	if code != 0 || out["committed"] != true {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
-	c, _ := wave.ReadClose(bdir, 0)
+	c, _ := wave.ReadClose(bdir, 0, 1)
 	i := slices.IndexFunc(c.Tasks, func(tr wave.TaskResult) bool { return tr.Task == 1 })
 	if i < 0 || c.Tasks[i].Status != bundle.StatusDone {
 		t.Fatalf("task 1 must be done, not no_changes: %+v", c.Tasks)

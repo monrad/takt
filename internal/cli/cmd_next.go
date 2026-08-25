@@ -226,12 +226,16 @@ func (r *nextRun) transition(ctx context.Context, to string) int {
 // and the next turn of the loop re-issues `exec close-wave`, which re-grades
 // nothing (the .prev carry-forward) and commits.
 func (r *nextRun) clearWave(ctx context.Context, n int) int {
-	c, err := wave.ReadClose(r.bdir, n)
+	aw := r.st.ActiveWave
+	if aw == nil {
+		return 0
+	}
+	c, err := wave.ReadClose(r.bdir, n, aw.Slice)
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
-	if !closeMatchesDispatch(c, r.st.ActiveWave) || !waveCommitLanded(ctx, r.ws.Repo, c) {
-		if err = dropClose(r.bdir, n); err != nil {
+	if !closeMatchesDispatch(c, aw) || !waveCommitLanded(ctx, r.ws.Repo, c) {
+		if err = dropClose(r.bdir, n, aw.Slice); err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
 		_ = bundle.AppendEvent(r.bdir, "wave_close_unreconciled", map[string]any{
@@ -545,11 +549,11 @@ func (r *nextRun) writeRetroInputs() error {
 	return finish.WriteRetroInputs(r.bdir, finish.BuildRetroInputs(r.st, idx, events, closes, v, g))
 }
 
-// readCloses collects the close record of every wave the run has tasks in,
-// in wave order; a wave that never wrote one is skipped rather than
-// reported, because a run can reach finish with a wave whose tasks were all
-// waived. Task 8 replaces the one record per wave with one per slice, and
-// this is the reader that widens with it.
+// readCloses collects every slice record of every wave the run has tasks in,
+// in wave then slice order; a wave that never wrote one is skipped rather
+// than reported, because a run can reach finish with a wave whose tasks were
+// all waived. A sliced wave contributes one record per slice, and the retro
+// wants all of them: each slice graded different tasks.
 func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
 	var waves []int
 	for _, t := range tasks {
@@ -560,13 +564,11 @@ func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
 	slices.Sort(waves)
 	out := make([]wave.CloseResult, 0, len(waves))
 	for _, n := range waves {
-		c, err := wave.ReadClose(bdir, n)
+		all, err := wave.AllCloses(bdir, n)
 		if err != nil {
 			return nil, err
 		}
-		if c != nil {
-			out = append(out, *c)
-		}
+		out = append(out, all...)
 	}
 	return out, nil
 }
