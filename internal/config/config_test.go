@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,5 +126,39 @@ func TestValidateRejectsUnknownAutonomyAndClass(t *testing.T) {
 	c.Agents.Implementer.ByClass["weird"] = "haiku"
 	if err := c.Validate(); err == nil {
 		t.Fatal("unknown task class must be rejected")
+	}
+}
+
+// TestLoadRejectsMissingTaktConfig covers review finding 7: the implicit
+// layers may be absent, but an explicit override may not — silently ignoring
+// a TAKT_CONFIG typo means the run is configured by something other than
+// what the user pointed at.
+func TestLoadRejectsMissingTaktConfig(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "typo.json")
+	_, _, err := config.Load(t.TempDir(), t.TempDir(), func(k string) string {
+		if k == "TAKT_CONFIG" {
+			return missing
+		}
+		return ""
+	})
+	if err == nil {
+		t.Fatal("a TAKT_CONFIG pointing at a missing file must be an error")
+	}
+	if !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "TAKT_CONFIG") {
+		t.Fatalf("error must name the path and the variable: %v", err)
+	}
+}
+
+// TestLoadAllowsMissingImplicitLayers keeps the check above from turning an
+// ordinary repo with no config files into an error.
+func TestLoadAllowsMissingImplicitLayers(t *testing.T) {
+	t.Parallel()
+	cfg, sources, err := config.Load(t.TempDir(), t.TempDir(), func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 0 || cfg.MaxParallel != 8 {
+		t.Fatalf("sources = %v, cfg = %+v", sources, cfg)
 	}
 }

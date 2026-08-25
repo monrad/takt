@@ -151,18 +151,26 @@ func Defaults() Config {
 }
 
 // Load merges the config layers. sources lists files read, low→high.
+// A missing implicit layer is normal and skipped; a missing $TAKT_CONFIG is
+// an error, because an override the user typed must not be silently ignored
+// — a typo there would otherwise configure the run from something other than
+// the file they named (review finding 7).
 func Load(repoRoot, home string, getenv func(string) string) (Config, []string, error) {
 	cfg := Defaults()
 	var sources []string
 	layers := []string{filepath.Join(home, ".config", "takt", "config.json")}
-	if alt := getenv("TAKT_CONFIG"); alt != "" {
-		layers = append(layers, alt)
+	explicit := getenv("TAKT_CONFIG")
+	if explicit != "" {
+		layers = append(layers, explicit)
 	} else {
 		layers = append(layers, filepath.Join(repoRoot, ".takt.json"))
 	}
 	for _, p := range layers {
 		b, err := os.ReadFile(p)
 		if errors.Is(err, os.ErrNotExist) {
+			if p == explicit {
+				return cfg, sources, fmt.Errorf("TAKT_CONFIG points at %s, which does not exist", p)
+			}
 			continue
 		}
 		if err != nil {
