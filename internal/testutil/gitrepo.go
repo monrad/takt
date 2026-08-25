@@ -4,6 +4,7 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,4 +62,32 @@ func Commit(t *testing.T, root, msg string) string {
 	Git(t, root, "add", "-A")
 	Git(t, root, "commit", "-q", "-m", msg)
 	return Git(t, root, "rev-parse", "HEAD")
+}
+
+// RunHermetic runs m with a git environment scrubbed of the developer's own
+// configuration and returns the exit code TestMain must pass to [os.Exit].
+// gitx inherits [os.Environ], so without this a global core.excludesFile
+// that ignores docs/ would make takt init fail inside the test suite, and a
+// global core.hooksPath would run the developer's hooks. Setting the
+// environment once, before any test starts, is compatible with t.Parallel.
+func RunHermetic(m *testing.M) int {
+	home, err := os.MkdirTemp("", "takt-test-home")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "testutil: "+err.Error())
+		return 1
+	}
+	defer func() { _ = os.RemoveAll(home) }()
+	env := map[string]string{
+		"GIT_CONFIG_GLOBAL":   os.DevNull,
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_TERMINAL_PROMPT": "0",
+		"HOME":                home,
+	}
+	for k, v := range env {
+		if serr := os.Setenv(k, v); serr != nil {
+			fmt.Fprintln(os.Stderr, "testutil: "+serr.Error())
+			return 1
+		}
+	}
+	return m.Run()
 }
