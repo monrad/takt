@@ -116,3 +116,29 @@ func TestRelToRepo(t *testing.T) {
 		t.Fatal("paths outside the repo must error")
 	}
 }
+
+// TestResolveDirRefusesTheRepoRoot covers review finding I3: a bundle base
+// that resolves to the work-tree root would leave takt's own bookkeeping
+// indistinguishable from the tree it manages, so a wave close would revert
+// the state and digests it is reading.
+func TestResolveDirRefusesTheRepoRoot(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	home := t.TempDir()
+	for _, raw := range []string{".", "./", "docs/..", repo, repo + string(filepath.Separator)} {
+		if _, err := bundle.ResolveDir(repo, home, raw, "", ""); err == nil {
+			t.Fatalf("ResolveDir(%q) must be refused", raw)
+		}
+	}
+	// The same value in the env and config layers is refused too, and a real
+	// subdirectory still resolves.
+	if _, err := bundle.ResolveDir(repo, home, "", ".", ""); err == nil {
+		t.Fatal("TAKT_DIR=. must be refused")
+	}
+	if _, err := bundle.ResolveDir(repo, home, "", "", "."); err == nil {
+		t.Fatal(`"dir": "." must be refused`)
+	}
+	if _, err := bundle.ResolveDir(repo, home, "docs/takt", "", ""); err != nil {
+		t.Fatal(err)
+	}
+}

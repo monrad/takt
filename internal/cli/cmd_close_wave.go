@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -80,8 +81,9 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 	if err = resolveTaskResults(ctx, env, tgt, idx, sc, &res); err != nil {
 		return nil, err
 	}
+	graded := gradedIDs(res.Tasks) // before persistClose carries earlier rounds forward
 	applyTaskStatuses(tgt.st, &res)
-	res.Committed = allDone(tgt.st, aw.N)
+	res.Committed = sliceDone(tgt.st, aw.N)
 	// state.json, close.json and the event are written before the commit, so
 	// the one commit spec §4.7 asks for carries them and leaves the tree
 	// clean. That is also why close.json holds no commit sha: it is inside
@@ -89,10 +91,22 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 	if err = persistClose(tgt, &res); err != nil {
 		return nil, err
 	}
-	if err = commitWave(ctx, tgt, &res); err != nil {
+	if err = commitWave(ctx, tgt, &res, graded); err != nil {
 		return nil, err
 	}
 	return &res, nil
+}
+
+// gradedIDs is the tasks this close round judged, in id order — the ids its
+// commit subject names, so a sliced wave reads `wave 0 — tasks 1, 2` then
+// `wave 0 — tasks 3` instead of repeating the whole wave each time.
+func gradedIDs(tasks []wave.TaskResult) []int {
+	ids := make([]int, 0, len(tasks))
+	for _, tr := range tasks {
+		ids = append(ids, tr.Task)
+	}
+	sort.Ints(ids)
+	return ids
 }
 
 // verifyWaveScope partitions what changed since the baseline by the wave's
@@ -210,14 +224,18 @@ func applyTaskStatuses(st *bundle.State, res *wave.CloseResult) {
 }
 
 // persistClose writes the task statuses, the close record and the event —
-// everything the wave commit has to carry.
+// everything the wave commit has to carry. A close that follows a retired
+// one inherits its results for the tasks this round did not grade, so the
+// record stays the whole wave's story rather than only its last round.
 func persistClose(tgt *runTarget, res *wave.CloseResult) error {
+	carryForward(tgt.bdir, res)
 	if err := bundle.SaveState(tgt.bdir, tgt.st); err != nil {
 		return err
 	}
 	if err := wave.WriteClose(tgt.bdir, *res); err != nil {
 		return err
 	}
+	_ = os.Remove(prevClosePath(tgt.bdir, res.Wave))
 	return bundle.AppendEvent(tgt.bdir, "wave_closed", map[string]any{
 		keyWave: res.Wave, keyAttempt: res.Attempt, keyCommitted: res.Committed,
 		"failed": res.Failed, "blocked": res.Blocked, statusRework: res.Rework,
@@ -225,15 +243,47 @@ func persistClose(tgt *runTarget, res *wave.CloseResult) error {
 	})
 }
 
-// commitWave stages the files of every done task of the wave plus the bundle
-// and commits exactly those (spec §4.7). A wave with nothing left to record
-// is not committed rather than crashing on an empty pathspec, and a commit
-// that fails takes the close record with it, so the next `takt next` closes
-// the wave again instead of believing a commit that never happened.
-func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult) error {
+// carryForward copies the retired record's task results for tasks this round
+// did not grade. Nothing is overwritten: a task graded again keeps its fresh
+// result.
+func carryForward(bdir string, res *wave.CloseResult) {
+	b, err := os.ReadFile(prevClosePath(bdir, res.Wave))
+	if err != nil {
+		return
+	}
+	var prev wave.CloseResult
+	if err = json.Unmarshal(b, &prev); err != nil {
+		return
+	}
+	for _, tr := range prev.Tasks {
+		if !slices.ContainsFunc(res.Tasks, func(x wave.TaskResult) bool { return x.Task == tr.Task }) {
+			res.Tasks = append(res.Tasks, tr)
+		}
+	}
+	sort.Slice(res.Tasks, func(i, j int) bool { return res.Tasks[i].Task < res.Tasks[j].Task })
+}
+
+// commitWave commits the finished slice, and guarantees the record never
+// outlives a commit that did not happen: ANY failure on the way — resolving
+// the paths, staging them, the commit itself — retires close.json, so the
+// next `takt next` closes the wave again instead of reading committed=true,
+// clearing the wave and stranding the work uncommitted.
+func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) error {
 	if !res.Committed {
 		return nil
 	}
+	if err := commitWaveOnce(ctx, tgt, res, graded); err != nil {
+		return errors.Join(err, dropClose(tgt.bdir, res.Wave))
+	}
+	return nil
+}
+
+// commitWaveOnce stages the files of every done task of the wave plus the
+// bundle and commits exactly those (spec §4.7). A wave with nothing left to
+// record is not committed rather than crashing on an empty pathspec — that
+// is a decided outcome, not a failure, so it returns nil and keeps its
+// record.
+func commitWaveOnce(ctx context.Context, tgt *runTarget, res *wave.CloseResult, graded []int) error {
 	paths, ids, err := doneWaveFiles(ctx, tgt, res.Wave)
 	if err != nil {
 		return err
@@ -259,10 +309,14 @@ func commitWave(ctx context.Context, tgt *runTarget, res *wave.CloseResult) erro
 		})
 		return wave.WriteClose(tgt.bdir, *res)
 	}
-	msg := fmt.Sprintf("takt(%s): wave %d — tasks %s", tgt.slug, res.Wave, joinInts(ids))
+	named := graded
+	if len(named) == 0 {
+		named = ids // a re-close that graded nothing still names what it records
+	}
+	msg := fmt.Sprintf("takt(%s): wave %d — tasks %s", tgt.slug, res.Wave, joinInts(named))
 	sha, err := wave.CommitWave(ctx, tgt.ws.Repo, paths, rel, msg)
 	if err != nil {
-		return errors.Join(err, dropClose(tgt.bdir, res.Wave))
+		return err
 	}
 	res.CommitSHA = sha
 	return nil
@@ -322,11 +376,19 @@ func existsOrTracked(ctx context.Context, repo *gitx.Repo, rel string) (bool, er
 	return repo.InHead(ctx, rel)
 }
 
-// allDone reports whether the wave has nothing left to do: every task of it
-// is done, or was waived by the user.
-func allDone(st *bundle.State, waveN int) bool {
+// sliceDone reports whether everything the wave has actually dispatched is
+// finished: every task of it that has ever run (attempt > 0) is done or
+// waived. A wave larger than max_parallel is dispatched in slices, and spec
+// §7.4 commits once per slice, so a task of a later slice — never dispatched,
+// still at attempt 0 — must not hold the finished slice's work hostage;
+// a task that did run and failed must (it is graded by this close even when
+// recovery re-dispatched only its neighbours).
+func sliceDone(st *bundle.State, waveN int) bool {
 	for _, t := range st.Tasks {
-		if t.Wave == waveN && t.Status != bundle.StatusDone && t.Status != bundle.StatusWaived {
+		if t.Wave != waveN || t.Attempt == 0 {
+			continue
+		}
+		if t.Status != bundle.StatusDone && t.Status != bundle.StatusWaived {
 			return false
 		}
 	}
@@ -388,7 +450,7 @@ func reviewTasks(
 		}
 		return
 	}
-	sem := make(chan struct{}, tgt.ws.Cfg.MaxParallel)
+	sem := make(chan struct{}, tgt.st.Config.MaxParallel)
 	var wg sync.WaitGroup
 	for _, i := range at {
 		wg.Add(1)

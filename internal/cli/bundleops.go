@@ -46,14 +46,24 @@ func underBundle(rel, p string) bool {
 	return rel != "" && (p == rel || strings.HasPrefix(p, rel+"/"))
 }
 
-// dropClose deletes a wave's close record so the next `takt next` runs
-// close-wave again; a record that is already gone is not an error.
+// dropClose retires a wave's close record so the next `takt next` runs
+// close-wave again. The record is renamed, not deleted: the re-close grades
+// only the tasks that are still pending, so the retired copy is where the
+// results of the tasks it will not grade again — their verify output,
+// review findings and files_changed — are carried forward from. A record
+// that is already gone is not an error.
 func dropClose(bdir string, waveN int) error {
-	if err := os.Remove(wave.ClosePath(bdir, waveN)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	p := wave.ClosePath(bdir, waveN)
+	if err := os.Rename(p, prevClosePath(bdir, waveN)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
 }
+
+// prevClosePath is the retired close record dropClose renames to. It is not
+// a close record any command reads by itself — wave.ReadClose looks for
+// close.json — only the source persistClose carries results forward from.
+func prevClosePath(bdir string, waveN int) string { return wave.ClosePath(bdir, waveN) + ".prev" }
 
 // briefPath is briefs/<name> (non-task briefs) — waves/<n>/… holds task briefs.
 func briefPath(bdir, name string) string { return filepath.Join(bdir, "briefs", name) }
@@ -168,8 +178,15 @@ func answerWaveGate(
 		st.ActiveWave = nil // the next launch captures a fresh baseline
 		return false, bundle.SaveState(bdir, st)
 	case "wave_failures/waive":
-		st.ActiveWave = nil
-		return false, bundle.SaveState(bdir, st)
+		// The wave stays open: `takt waive` marks the chosen tasks, and the
+		// next `takt next` re-runs close-wave, which then sees the slice
+		// satisfied (a waived task counts as done) and commits the work that
+		// is already in the tree (spec §7.4 step 5). Tasks the user leaves
+		// unwaived simply bring the gate back.
+		if aw == nil {
+			return false, nil
+		}
+		return false, dropClose(bdir, aw.N)
 	case "review_error/retry":
 		if aw == nil {
 			return false, nil

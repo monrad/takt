@@ -38,13 +38,20 @@ func ResolveDir(repoRoot, home, flag, env, cfgDir string) (Dir, error) {
 	if filepath.IsAbs(raw) {
 		d.Base = filepath.Clean(raw)
 		d.InRepo = false
-		return d, nil
+	} else {
+		if err := CheckRelPath(repoRoot, raw); err != nil {
+			return Dir{}, errors.New("bundle dir: " + err.Error())
+		}
+		d.Base = filepath.Join(repoRoot, raw)
+		d.InRepo = true
 	}
-	if err := CheckRelPath(repoRoot, raw); err != nil {
-		return Dir{}, errors.New("bundle dir: " + err.Error())
+	// A base that resolves to the work-tree root would make takt's own
+	// bookkeeping indistinguishable from the tree it manages: nothing could
+	// be excluded from a wave's scope verification any more, so closing a
+	// wave would revert state.json and the digests it is reading.
+	if d.Base == filepath.Clean(repoRoot) {
+		return Dir{}, errors.New("bundle dir must not be the repository root")
 	}
-	d.Base = filepath.Join(repoRoot, raw)
-	d.InRepo = true
 	return d, nil
 }
 

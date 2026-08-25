@@ -457,3 +457,25 @@ func TestInitRollsBackEvenWhenTheDeadlineCausedTheFailure(t *testing.T) {
 		t.Fatalf("run branch must be deleted; got %q", out)
 	}
 }
+
+// TestInitRefusesTheRepoRootAsBundleDir covers review finding I3: `--dir .`
+// is refused, and refused before any branch or file exists, because takt
+// cannot tell its own writes from the work tree when the two are the same
+// directory.
+func TestInitRefusesTheRepoRootAsBundleDir(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	code, _, errb := runIn(t, root, nil, "init", "--dir", ".", "Add a greeting")
+	if code != 1 || !strings.Contains(errb, "repository root") {
+		t.Fatalf("%d %s", code, errb)
+	}
+	if b := testutil.Git(t, root, "rev-parse", "--abbrev-ref", "HEAD"); b != "main" {
+		t.Fatalf("refused before any branch is created, got %s", b)
+	}
+	if _, err := os.Stat(filepath.Join(root, "state.json")); !os.IsNotExist(err) {
+		t.Fatal("no bundle file may be written")
+	}
+	if st := testutil.Git(t, root, "status", "--porcelain"); st != "" {
+		t.Fatalf("tree must be untouched: %q", st)
+	}
+}
