@@ -241,11 +241,13 @@ Field notes:
 
 ### 4.4 `events.jsonl`
 
-One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: `init`, `phase`, `goals_frozen`,
-`goals_amended`, `gate_reviewed`, `gate_skipped`, `gate_overridden`, `plan_loaded`, `wave_dispatched`,
-`task_recorded`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`, `retro`, `pr_pushed`,
-`disposition`, `archived`, `lock_taken`, `recovered`, `wave_committed`, `wave_close_unreconciled`,
-`review_skipped`, `plan_invalid`, `plan_attempts_reset`. Three decisions read events as their durable record —
+One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: `init`, `phase`, `spec_written`,
+`goals_frozen`, `goals_amended`, `gate_opened`, `gate_reviewed`, `gate_skipped`, `gate_overridden`,
+`gate_answered`, `alignment_clauses`, `alignment_verdicts`, `plan_loaded`, `wave_dispatched`,
+`task_recorded`, `digest_ignored`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`,
+`retro`, `pr_pushed`, `disposition`, `archived`, `lock_taken`, `lock_released`, `recovered`,
+`wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
+`plan_invalid`, `plan_attempts_reset`. Three decisions read events as their durable record —
 gate overrides (`gate_overridden`, required by §9), planner attempt counting (`plan_invalid` /
 `plan_attempts_reset`) and per-task review skips (`review_skipped`); everything else is the audit
 trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both carry
@@ -326,7 +328,7 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 **dispatch** — spawn subagents, then record each result, then call `next` again.
 
 ```json
-{ "op": "dispatch", "narration": "wave 0: 3 tasks",
+{ "op": "dispatch", "narration": "wave 0 (attempt 1): 3 tasks",
   "wave": 0, "attempt": 1,
   "agents": [
     { "task": 1, "agent": "implementer", "class": "bounded", "model": "sonnet",
@@ -338,7 +340,8 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 
 For planning and assessment the same shape carries a single agent with `"agent": "planner"` etc.
 `brief` is a file path: the prompt passes the file's contents as the agent prompt verbatim. `model` is
-always present (D19) — for implementers it is resolved from the task's `class` and attempt (D22).
+always present (D19) — for implementers it is resolved from the task's `class` and attempt (D22). A wave
+split into slices (§7.4) names the slice from the second one on: `"wave 0 slice 2 (attempt 1): 4 tasks"`.
 
 **ask** — put a question to the user, then `takt answer`, then `next`.
 
@@ -699,12 +702,13 @@ slice, which keeps every commit verified.
 
    `merge` is offered only when the primary worktree has `base` checked out and is clean; otherwise the
    option renders `disabled` with the reason (§5.2). `discard` always renders but needs
-   `--confirm <slug>` at `answer` time. `answer` records the disposition — `{choice, at, reason, pr_url,
-   applied}` — and nothing else: no git runs yet, so facts that were true when the question was asked but
-   have since gone stale (the primary worktree moved on, went dirty) cannot start work step 5 re-checks
-   before doing. `pr`: `run push_pr` — the session runs `git push -u origin <branch>` and `gh pr create
-   --base <base> --fill`, then `done --step push_pr --url <pr-url>` (§5.1's no-op rule applies: the same
-   URL again is a no-op, a different one replaces it). `keep`: nothing further.
+   `--confirm <slug>` at `answer` time. `answer` re-checks availability for `merge`/`discard` (two git
+   reads) and refuses to record an unavailable choice; once accepted, it records `{choice, at, reason,
+   pr_url, applied}` and does no git work of its own. Step 5 still re-checks before doing, since the
+   primary worktree can go stale again in the gap between `answer` and `archive`. `pr`: `run push_pr` —
+   the session runs `git push -u origin <branch>` and `gh pr create --base <base> --fill`, then
+   `done --step push_pr --url <pr-url>` (§5.1's no-op rule applies: the same URL again is a no-op, a
+   different one replaces it). `keep`: nothing further.
 5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
    before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
    happens here too, before the commit, so the copy predates the branch about to lose it); lock released;
@@ -717,14 +721,15 @@ slice, which keeps every commit verified.
      `cleanup`. A landed merge deletes the branch with `git branch -d` (git's own "really merged" check).
    - **discard** deletes the branch with `git branch -D`, unconditionally — discarding is choosing not to
      merge.
-   - Either way: the branch is deleted directly when no worktree holds it checked out; when this worktree
-     does and `base` is free elsewhere, the hand-off is `git checkout <base> && git branch -d|-D <branch>`
-     (for `discard`, `&& git clean -fd -- <bundle-rel>` too, once the branch's own `.gitignore` has left
-     with it and the reviewer logs it hid become plain untracked litter — already in the `.discarded`
-     copy); when `base` is held elsewhere (the primary, mid-merge), the hand-off is the bare deletion.
-     takt never checks out another branch itself (§4.7): everything it cannot do from here is handed to
-     the session verbatim as `stop archived`'s `cleanup` (§5.2). `pr` and `keep` ask git for nothing at
-     this step.
+   - Either way, git deletion happens directly when no worktree holds the branch, and is otherwise handed
+     off as `cleanup`. The hand-off is the checkout form — `git checkout <base> && git branch -d|-D
+     <branch>` (`discard` appends `&& git clean -fd -- <bundle-rel>`, once the branch's own `.gitignore`
+     has left with it and the reviewer logs it hid become plain untracked litter — already in the
+     `.discarded` copy) — only when *this* worktree holds the branch and `base` is not checked out
+     anywhere else; every other case (the primary mid-merge on `base`, or a third worktree holding the
+     branch) hands off the bare deletion instead. takt never checks out another branch itself (§4.7):
+     everything it cannot do from here is handed to the session verbatim as `stop archived`'s `cleanup`
+     (§5.2). `pr` and `keep` ask git for nothing at this step.
    - None of this is ever recorded in state: there is no `disposition_applied` event and no write after
      the archive commit. `archive`, and every later `takt next` on the archived run, re-derive the same
      outcome from git each time, so an effect that could not land the first try (the primary was busy, the
