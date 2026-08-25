@@ -227,12 +227,15 @@ func TestNextWalksBrainstormAndPlan(t *testing.T) {
 // planLoadFixture builds a bundle in phase plan with a valid two-task index,
 // plan review and alignment gating both off, so a single `next` reaches the
 // load transition (spec §7.3 Load) without walking every earlier gate the
-// way TestNextWalksBrainstormAndPlan does.
+// way TestNextWalksBrainstormAndPlan does. It writes plan.md as well as the
+// index because that is what a planner produces (spec §13) — an index
+// without it is an incomplete plan, and gatherIndexFacts says so.
 func planLoadFixture(t *testing.T) (string, string) {
 	t.Helper()
 	root, bdir := setupRun(t)
 	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
 	specH := specHash(t, bdir)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# plan\n")
 	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", strings.Replace(validIndex, "%s", specH, 1))
 	st, _ := bundle.LoadState(bdir)
 	st.Phase = bundle.PhasePlan

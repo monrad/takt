@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/testutil"
 )
 
@@ -114,18 +115,30 @@ func TestPlanValidateAcceptsPathBeforeFlags(t *testing.T) {
 	}
 }
 
-// TestRecordPlannerRequiresPlanMD covers review M8: the planner writes
-// plan.md as well as plan.index.json (spec §13), and the plan gate hashes
-// it. A planner that wrote only the index was recorded valid, which left the
-// run with a gate that could never be computed — so it is a planner problem
-// like any other, reported back for the retry rather than surfacing later as
-// a failed read inside gate.Hash.
+// TestRecordPlannerRequiresPlanMD covers review M8 and its residual N0: the
+// planner writes plan.md as well as plan.index.json (spec §13), and the plan
+// gate hashes it. A planner that wrote only the index must be invalid at the
+// seam `takt next` decides from — not only in `takt record`'s answer. Judged
+// in record alone, the index still read valid to Decide, which took row 9
+// and emitted `exec takt review plan`; that command dies in gate.Hash on the
+// file nobody wrote, and dies again every turn, because nothing counts a
+// planner attempt or re-dispatches the planner. So the walk below asserts
+// both halves: what `record` says, and what the loop does next.
 func TestRecordPlannerRequiresPlanMD(t *testing.T) {
 	t.Parallel()
 	root, bdir := setupRun(t)
 	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
 	specH := specHash(t, bdir)
 	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", strings.Replace(validIndex, "%s", specH, 1))
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Phase = bundle.PhasePlan
+	st.Config.Alignment = false // the plan review gate is what this test is about
+	if serr := bundle.SaveState(bdir, st); serr != nil {
+		t.Fatal(serr)
+	}
 
 	code, out, errb := runIn(t, root, nil, "record", "--agent", "planner", "--from", "/dev/null", "--slug", "demo")
 	if code != 0 {
@@ -139,9 +152,32 @@ func TestRecordPlannerRequiresPlanMD(t *testing.T) {
 		t.Fatalf("the reason must name plan.md: %v", out)
 	}
 
+	// The decision seam: an invalid plan goes back to the planner (row 8),
+	// counting the attempt. It must never reach `exec takt review plan`.
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" {
+		t.Fatalf("an index with no plan.md must re-dispatch the planner, got %v", o)
+	}
+	ag := agentsOf(t, o)[0]
+	if ag["agent"] != "planner" {
+		t.Fatalf("%v", ag)
+	}
+	if brief, bok := ag["brief"].(string); !bok || !strings.HasSuffix(brief, "planner.a2.md") {
+		t.Fatalf("the planner attempt must be counted, got brief %v", ag["brief"])
+	} else if b, rerr := os.ReadFile(brief); rerr != nil || !strings.Contains(string(b), "plan.md is missing or empty") {
+		t.Fatalf("the planner must be told what it left out: %v %s", rerr, b)
+	}
+
 	testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# plan\n")
 	if code, out, errb = runIn(t, root, nil,
 		"record", "--agent", "planner", "--from", "/dev/null", "--slug", "demo"); code != 0 || out["valid"] != true {
 		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if _, o, _ = next(t, root, nil); o["op"] != "exec" ||
+		!strings.HasPrefix(o["command"].(string), "takt review plan") {
+		t.Fatalf("a complete plan moves on to the plan review: %v", o)
+	}
+	if rc, _, rerrb := runIn(t, root, nil, "review", "plan", "--slug", "demo"); rc != 0 {
+		t.Fatalf("and that review must actually run: %s", rerrb)
 	}
 }

@@ -58,7 +58,10 @@ func gatherFacts(
 }
 
 // gatherIndexFacts fills the plan-index half of the facts: present, parsed,
-// and validated against this bundle's spec and goals.
+// validated against this bundle's spec and goals, and accompanied by the
+// plan.md the same planner was asked to write. This is the single seam every
+// decision about the plan's validity reads from — `takt next` and `takt
+// record --agent planner` both come through here.
 func gatherIndexFacts(f *decide.Facts, ws *workspace, bdir string) {
 	raw, err := os.ReadFile(filepath.Join(bdir, "plan.index.json"))
 	if err != nil {
@@ -71,6 +74,17 @@ func gatherIndexFacts(f *decide.Facts, ws *workspace, bdir string) {
 		for _, p := range plan.Validate(idx, validateOpts(ws, bdir)) {
 			f.IndexProblems = append(f.IndexProblems, p.String())
 		}
+	}
+	// The planner writes plan.md as well as the index (spec §13), and the
+	// plan gate hashes it — so a missing plan.md is a defect of the plan the
+	// planner produced and is judged here with the rest of them. Checked
+	// anywhere else, the index still reads valid to Decide: row 9 then emits
+	// `exec takt review plan`, which dies in gate.Hash on the file nobody
+	// wrote, and keeps dying, because nothing counts a planner attempt or
+	// re-dispatches the planner (review N0). As an index problem it takes
+	// row 8 instead, exactly as a malformed index does.
+	if !fileNonEmpty(filepath.Join(bdir, "plan.md")) {
+		f.IndexProblems = append(f.IndexProblems, "plan.md is missing or empty")
 	}
 	f.IndexValid = len(f.IndexProblems) == 0
 }
