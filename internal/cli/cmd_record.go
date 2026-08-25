@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -168,10 +169,14 @@ func parseReport(text string) (string, string, string) {
 	return status, summary, blockers
 }
 
-// recordTask writes one implementer's digest (spec §7.4 step 3). A digest
-// that does not belong to the active wave's current attempt is ignored, not
-// an error: a crashed agent that reports late must never overwrite the
-// result of the attempt that replaced it.
+// recordTask writes one implementer's digest (spec §7.4 step 3). A stale
+// attempt of a task the wave really did dispatch is ignored rather than an
+// error: a crashed agent that reports late must never overwrite the result
+// of the attempt that replaced it. A digest for a task this run does not
+// have, or for one the active wave never dispatched, is a different thing
+// entirely — a mis-wired session, or a `record` aimed at the wrong run — and
+// spec §13 lists it among the invariant violations that exit 1 rather than
+// being silently swallowed as "ignored" (review M3).
 func recordTask(env Env, ws *workspace, bdir string, st *bundle.State, in digestInput) int {
 	if in.from != "" {
 		b, err := os.ReadFile(in.from)
@@ -189,7 +194,16 @@ func recordTask(env Env, ws *workspace, bdir string, st *bundle.State, in digest
 	}
 	aw := st.ActiveWave
 	t := st.Task(in.task)
-	if aw == nil || aw.Attempt != in.attempt || !slices.Contains(aw.Tasks, in.task) || t == nil {
+	if t == nil {
+		return fail(env.Stderr, exitError, fmt.Sprintf("this run has no task %d", in.task),
+			"run `takt status` for the task ids, and check --slug")
+	}
+	if aw == nil || !slices.Contains(aw.Tasks, in.task) {
+		return fail(env.Stderr, exitError,
+			fmt.Sprintf("task %d is not in the active wave", in.task),
+			"only a task the current wave dispatched can be recorded; run `takt next` for the dispatch")
+	}
+	if aw.Attempt != in.attempt {
 		_ = bundle.AppendEvent(bdir, "digest_ignored", map[string]any{keyTask: in.task, keyAttempt: in.attempt})
 		return printJSON(env, map[string]any{"ignored": true, keyReason: "not the active wave attempt"})
 	}

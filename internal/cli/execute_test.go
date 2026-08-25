@@ -917,3 +917,32 @@ func TestRetryMeasuresAgainstTheWaveBaseline(t *testing.T) {
 		t.Fatalf("the parked baseline must be dropped once the wave commits: %v", err)
 	}
 }
+
+// TestRecordRejectsATaskTheWaveNeverDispatched covers review M3 and spec
+// §13: a `record` for a task this run does not have, or for one the active
+// wave never dispatched, is a mis-wired session, not a late report — it
+// exits 1 rather than being swallowed as "ignored", which hid the mistake
+// and let the wave close as though the task had never been asked for.
+func TestRecordRejectsATaskTheWaveNeverDispatched(t *testing.T) {
+	t.Parallel()
+	root, _ := executeRun(t)
+	next(t, root, nil) // dispatches wave 0: tasks 1 and 2
+	msg := filepath.Join(t.TempDir(), "m.txt")
+	if err := os.WriteFile(msg, []byte("STATUS: done\nSUMMARY: s\nBLOCKERS: none\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, errb := runIn(t, root, nil, "record", "--task", "9", "--attempt", "1", "--from", msg, "--slug", "demo")
+	if code != 1 || !strings.Contains(errb, "no task 9") {
+		t.Fatalf("an unknown task id must exit 1 with a JSON error: %d %s", code, errb)
+	}
+	code, _, errb = runIn(t, root, nil, "record", "--task", "3", "--attempt", "1", "--from", msg, "--slug", "demo")
+	if code != 1 || !strings.Contains(errb, "not in the active wave") {
+		t.Fatalf("a task of a later wave must exit 1 with a JSON error: %d %s", code, errb)
+	}
+	// A stale attempt of a task the wave really did dispatch stays ignored.
+	code, o, errb := runIn(t, root, nil, "record", "--task", "1", "--attempt", "7", "--from", msg, "--slug", "demo")
+	if code != 0 || o["ignored"] != true {
+		t.Fatalf("a late report from a replaced attempt is ignored, not an error: %d %v %s", code, o, errb)
+	}
+}
