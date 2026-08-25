@@ -22,23 +22,37 @@ const (
 // reasonArchived is the stop reason (and the event) of a finished run.
 const reasonArchived = "archived"
 
+// The disposition-outcome keys, shared by the stop op's context and the
+// disposition_applied event.
+const (
+	keyMerged  = "merged"
+	keyDeleted = "deleted"
+)
+
 // The `git branch` flags the two destructive dispositions delete with.
 const (
 	safeDelete  = "-d"
 	forceDelete = "-D"
 )
 
-// archive is row 25: the run is closed on disk first — phase, lock, the
-// disposition marked applied — and committed, and only then does takt do the
-// git work the disposition asks for. That order is what makes a merge carry
-// the archived bundle, and it means a disposition that fails leaves a run
-// that is properly archived rather than one stuck half-way. Whatever takt
-// cannot do from this worktree comes back as cleanup commands for the
-// session (spec §7.5 step 5; §4.7: takt never checks out another branch).
+// archive is row 25: the run is closed on disk first — phase, lock — and
+// committed, and only then does takt do the git work the disposition asks
+// for. That order is what makes a merge carry the archived bundle, and it
+// means a disposition that fails leaves a run that is properly archived
+// rather than one stuck half-way. Whatever takt cannot do from this worktree
+// comes back as cleanup commands for the session (spec §7.5 step 5; §4.7:
+// takt never checks out another branch).
 func (r *nextRun) archive(ctx context.Context) int {
 	r.st.Phase = bundle.PhaseArchived
 	r.st.Session = nil
-	if r.st.Disposition != nil {
+	// `applied` means the disposition's git work has happened, never that
+	// takt intends it to. keep and pr have no git work of their own, so
+	// archiving them applies them, and the archive commit says so. merge and
+	// discard are committed unapplied and marked only once their work has
+	// really landed, so a crash in between leaves a run whose state says what
+	// is still owed instead of one claiming a merge nobody made — and the
+	// next `takt next` finishes the job (see applyAndStop).
+	if r.st.Disposition != nil && !dispositionHasGitWork(r.st.Disposition.Choice) {
 		r.st.Disposition.Applied = true
 	}
 	if err := bundle.SaveState(r.bdir, r.st); err != nil {
@@ -48,16 +62,53 @@ func (r *nextRun) archive(ctx context.Context) int {
 	if _, _, err := commitBundle(ctx, r.ws, r.bdir, r.slug, "archive"); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
-	cleanup, details, err := applyDisposition(ctx, r.ws, r.st, r.bdir)
-	if err != nil {
-		// The run is archived; the disposition is now the user's to finish.
+	return applyAndStop(ctx, r.env, &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st})
+}
+
+// applyAndStop does the disposition's git work — for the first time on the
+// heels of the archive commit, or over again for an archived run whose
+// archive never got that far — records that it happened, and prints the
+// run's stop op. Both entry points share it so a re-applied disposition is
+// answered with the same op the archive itself would have printed.
+func applyAndStop(ctx context.Context, env Env, tgt *runTarget) int {
+	st := tgt.st
+	cleanup, details, err := applyDisposition(ctx, tgt.ws, st, tgt.bdir)
+	switch {
+	case err != nil:
+		// The run is archived either way; `applied` stays false, so the next
+		// `takt next` picks the disposition back up, and cleanup names what
+		// the session can do about it in the meantime.
 		details["error"] = err.Error()
+	case st.Disposition != nil && !st.Disposition.Applied:
+		st.Disposition.Applied = true
+		if serr := bundle.SaveState(tgt.bdir, st); serr != nil {
+			return fail(env.Stderr, exitError, serr.Error(), "")
+		}
+		// Deliberately not committed. The archive commit is the run's last
+		// one: for a merge it has already been carried into the base, and a
+		// receipt committed now would sit on the run branch *after* the merge
+		// — leaving the base behind the branch it just integrated, on a
+		// branch that is being deleted. This worktree is being retired; the
+		// record that matters is the event log and the archived bundle.
+		_ = bundle.AppendEvent(tgt.bdir, "disposition_applied", appliedEvent(st, details))
 	}
-	return printOp(r.env, op.Op{
+	return printOp(env, op.Op{
 		Op: op.Stop, Reason: reasonArchived,
-		Narration: fmt.Sprintf("run %s archived (%s)", r.slug, dispositionChoice(r.st)),
+		Narration: fmt.Sprintf("run %s archived (%s)", tgt.slug, dispositionChoice(st)),
 		Context:   details, Cleanup: cleanup,
 	})
+}
+
+// appliedEvent records the choice and whatever git work it turned out to
+// involve: the merge commit, and whether the run branch is gone.
+func appliedEvent(st *bundle.State, details map[string]any) map[string]any {
+	ev := map[string]any{keyChoice: dispositionChoice(st)}
+	for _, k := range []string{keyMerged, keyDeleted} {
+		if v, ok := details[k]; ok {
+			ev[k] = v
+		}
+	}
+	return ev
 }
 
 // dispositionChoice is what the run was archived as.
@@ -66,6 +117,12 @@ func dispositionChoice(st *bundle.State) string {
 		return "none"
 	}
 	return st.Disposition.Choice
+}
+
+// dispositionHasGitWork reports whether a choice asks takt to touch git at
+// all: keep leaves the branch alone and pr was pushed by the session.
+func dispositionHasGitWork(choice string) bool {
+	return choice == dispositionMerge || choice == dispositionDiscard
 }
 
 // applyDisposition does the git side of merge and discard and reports what
@@ -81,17 +138,7 @@ func applyDisposition(
 	}
 	switch st.Disposition.Choice {
 	case dispositionMerge:
-		prim, err := ws.Repo.PrimaryWorktree(ctx)
-		if err != nil {
-			return cleanup, details, err
-		}
-		msg := fmt.Sprintf("Merge %s (takt run %s)", st.Branch, st.Slug)
-		sha, err := ws.Repo.MergeNoFF(ctx, prim.Path, st.Branch, msg)
-		if err != nil {
-			return append(cleanup, fmt.Sprintf("git -C %s merge --no-ff %s", prim.Path, st.Branch)), details, err
-		}
-		details["merged"] = sha
-		return deleteOrHandOff(ctx, ws, st, cleanup, safeDelete), details, nil
+		return applyMerge(ctx, ws, st, cleanup, details)
 	case dispositionDiscard:
 		if rel := bundleRel(ws, bdir); rel != "" {
 			if err := copyBundle(bdir, ws.Dir.Discarded(st.Slug)); err != nil {
@@ -99,7 +146,52 @@ func applyDisposition(
 			}
 			details["discarded_copy"] = ws.Dir.Discarded(st.Slug)
 		}
-		return deleteOrHandOff(ctx, ws, st, cleanup, forceDelete), details, nil
+		var deleted bool
+		cleanup, deleted = deleteOrHandOff(ctx, ws, st, cleanup, forceDelete)
+		if deleted {
+			details[keyDeleted] = true
+		}
+		return cleanup, details, nil
+	}
+	return cleanup, details, nil
+}
+
+// applyMerge merges the run branch into the base in the primary worktree.
+// Everything it does is conditional on not having been done already: an
+// archive that crashed after its merge must not make a second, empty merge
+// commit when it is picked back up, and one that crashed after deleting the
+// branch has nothing left to merge into anything.
+func applyMerge(
+	ctx context.Context, ws *workspace, st *bundle.State, cleanup []string, details map[string]any,
+) ([]string, map[string]any, error) {
+	exists, err := ws.Repo.BranchExists(ctx, st.Branch)
+	if err != nil {
+		return cleanup, details, err
+	}
+	if !exists {
+		details[keyDeleted] = true
+		return cleanup, details, nil
+	}
+	prim, err := ws.Repo.PrimaryWorktree(ctx)
+	if err != nil {
+		return cleanup, details, err
+	}
+	merged, err := ws.Repo.IsAncestor(ctx, st.Branch, prim.Head)
+	if err != nil {
+		return cleanup, details, err
+	}
+	sha := prim.Head
+	if !merged {
+		msg := fmt.Sprintf("Merge %s (takt run %s)", st.Branch, st.Slug)
+		if sha, err = ws.Repo.MergeNoFF(ctx, prim.Path, st.Branch, msg); err != nil {
+			return append(cleanup, fmt.Sprintf("git -C %s merge --no-ff %s", prim.Path, st.Branch)), details, err
+		}
+	}
+	details[keyMerged] = sha
+	var deleted bool
+	cleanup, deleted = deleteOrHandOff(ctx, ws, st, cleanup, safeDelete)
+	if deleted {
+		details[keyDeleted] = true
 	}
 	return cleanup, details, nil
 }
@@ -108,17 +200,22 @@ func applyDisposition(
 // out; otherwise it appends the command the session must run instead. git
 // refuses to delete a branch a worktree holds, and takt never checks out
 // another branch or touches another worktree (spec §4.7), so this is the
-// part of a disposition that can only ever be handed over.
+// part of a disposition that can only ever be handed over. It reports
+// whether the branch is gone once it returns — a branch that was already
+// deleted (a re-applied disposition) counts, and is not asked for again.
 func deleteOrHandOff(
 	ctx context.Context, ws *workspace, st *bundle.State, cleanup []string, flag string,
-) []string {
+) ([]string, bool) {
+	if exists, err := ws.Repo.BranchExists(ctx, st.Branch); err == nil && !exists {
+		return cleanup, true
+	}
 	held, checkedOut, err := ws.Repo.BranchCheckedOut(ctx, st.Branch)
 	if err == nil && !checkedOut {
 		if delErr := deleteBranch(ctx, ws, st.Branch, flag); delErr == nil {
-			return cleanup
+			return cleanup, true
 		}
 	}
-	return append(cleanup, handOff(ctx, ws, st, held, flag))
+	return append(cleanup, handOff(ctx, ws, st, held, flag)), false
 }
 
 // deleteBranch is `git branch -d` or `git branch -D`, per flag.
@@ -152,6 +249,12 @@ func handOff(ctx context.Context, ws *workspace, st *bundle.State, held, flag st
 // bundle's own commits live on, so this untracked copy is all that is left
 // of the run — which is exactly why it must not be committed to the base.
 func copyBundle(src, dst string) error {
+	// A slug can be reused, so a copy may already be there. It is replaced
+	// wholesale rather than written over: a file the new run does not have
+	// would otherwise survive from the old one and read as part of this run.
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}

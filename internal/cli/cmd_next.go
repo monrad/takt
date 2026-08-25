@@ -66,8 +66,15 @@ func cmdNext(env Env) int {
 	// answer must not cost it a state write: acquireLock would stamp a fresh
 	// holder on the run takt just released and rewrite state.json — a tracked
 	// file — leaving the worktree dirty with nothing to commit, every time
-	// anyone asks a finished run what is next.
+	// anyone asks a finished run what is next. The one thing that may still
+	// be owed is the disposition's own git work: `applied` is only recorded
+	// once it has really happened, so an archive that died between its commit
+	// and its merge is finished here instead of being lost. Neither path
+	// takes the lock.
 	if tgt.st.Phase == bundle.PhaseArchived {
+		if tgt.st.Disposition != nil && !tgt.st.Disposition.Applied {
+			return applyAndStop(ctx, env, tgt)
+		}
 		return printOp(env, op.Op{Op: op.Stop, Narration: "run archived", Reason: reasonArchived})
 	}
 	id, generated := sessionID(env.Getenv)
