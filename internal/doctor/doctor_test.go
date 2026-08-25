@@ -345,3 +345,28 @@ func TestRunWrapperUsesRealDurations(t *testing.T) {
 		t.Fatalf("a five-minute wave with a live session is not stale: %+v", fs)
 	}
 }
+
+// TestSliceLessActiveWaveWarnDoesNotMaskAnError covers the ordering inside
+// state-schema: the slice-less-active-wave WARN returned as soon as it
+// fired, so a bundle that also had something wrong the user must act on —
+// here a pending gate with no id — was reported as a WARN about an old
+// build and nothing else. The WARN is the level only while no ERROR fires.
+func TestSliceLessActiveWaveWarnDoesNotMaskAnError(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("both")
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: time.Now(), Tasks: []int{1}}
+	st.PendingGate = &bundle.PendingGate{OpenedAt: time.Now()}
+	if err := bundle.SaveState(d.Bundle("both"), st); err != nil {
+		t.Fatal(err)
+	}
+	fs := doctor.Run(context.Background(), d, false, []doctor.Check{doctor.StateSchema}, noOpts)
+	if l := levels(fs, "state-schema"); len(l) != 1 || l[0] != "ERROR" {
+		t.Fatalf("an ERROR must win over the slice WARN: %+v", fs)
+	}
+	for _, f := range fs {
+		if f.Check == "state-schema" && !strings.Contains(f.Message, "pending_gate") {
+			t.Fatalf("the finding must name what has to be fixed: %+v", f)
+		}
+	}
+}
