@@ -33,7 +33,17 @@ func Git(t *testing.T, dir string, args ...string) string {
 // NewRepo creates a temp repository on branch main with one commit.
 func NewRepo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	return NewRepoAt(t, t.TempDir())
+}
+
+// NewRepoAt is [NewRepo] in a directory the caller names — for a test that
+// needs the repository at a particular path, a path with a space in it say.
+// The directory is created when it does not exist.
+func NewRepoAt(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	Git(t, dir, "init", "-q", "-b", "main")
 	Git(t, dir, "config", "user.name", "takt test")
 	Git(t, dir, "config", "user.email", "takt@example.invalid")

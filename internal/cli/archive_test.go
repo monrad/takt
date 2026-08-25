@@ -106,6 +106,14 @@ func TestBranchFinishInPlainCheckoutDisablesMergeAndHandsOff(t *testing.T) {
 func linkedWorktreeRun(t *testing.T) (*driver, string, map[string]any) {
 	t.Helper()
 	root, _ := setupRunWith(t, "--no-goals")
+	return linkedWorktreeRunFrom(t, root)
+}
+
+// linkedWorktreeRunFrom is linkedWorktreeRun over a repository a run has
+// already been initialised in, so a test can put the primary worktree
+// somewhere awkward.
+func linkedWorktreeRunFrom(t *testing.T, root string) (*driver, string, map[string]any) {
+	t.Helper()
 	testutil.Git(t, root, "checkout", "main")
 	linked := filepath.Join(t.TempDir(), "wt")
 	testutil.Git(t, root, "worktree", "add", linked, "takt/demo")
@@ -420,5 +428,38 @@ func TestBranchFinishAdoptedOffersPrAndKeepOnly(t *testing.T) {
 	}
 	if b := testutil.Git(t, root, "rev-parse", "--abbrev-ref", "HEAD"); b != "feature" {
 		t.Fatalf("the adopted branch must still be checked out: %s", b)
+	}
+}
+
+// TestMergeHandOffRunsFromAPathWithASpace covers the hand-off strings: takt
+// prints these for a session to run through a shell, so every path it
+// interpolates has to survive word splitting. Here the primary worktree —
+// the path the merge command names — sits under a directory with a space in
+// its name, and the printed command is run verbatim.
+func TestMergeHandOffRunsFromAPathWithASpace(t *testing.T) {
+	t.Parallel()
+	spaced := testutil.NewRepoAt(t, filepath.Join(t.TempDir(), "my worktrees", "primary"))
+	root, _ := setupRunIn(t, spaced, "--no-goals")
+	d, _, _ := linkedWorktreeRunFrom(t, root)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "merge", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	// The primary moves off the base, so takt hands the merge over rather
+	// than making it — which is the command under test.
+	testutil.Git(t, root, "checkout", "-b", "release/1.0")
+	o := d.nextOp()
+	cleanup, _ := o["cleanup"].([]any)
+	if len(cleanup) != 1 || !strings.Contains(cleanup[0].(string), "merge --no-ff takt/demo") {
+		t.Fatalf("the merge is handed to the session: %v", o)
+	}
+	testutil.Git(t, root, "checkout", "main")
+	if code, out := runShell(t, root, cleanup[0].(string)); code != 0 {
+		t.Fatalf("the printed cleanup must run as-is: exit %d\n%s", code, out)
+	}
+	// git's own subject for a hand-run merge, not takt's — what matters is
+	// that the command ran and main took the run.
+	if s := testutil.Git(t, root, "log", "-1", "--format=%s"); !strings.HasPrefix(s, "Merge") ||
+		!strings.Contains(s, "takt/demo") {
+		t.Fatalf("the hand-off must merge the run into main: %s", s)
 	}
 }

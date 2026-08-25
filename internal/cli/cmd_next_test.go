@@ -36,7 +36,13 @@ func setupRun(t *testing.T) (string, string) {
 // and --no-alignment switches a run freezes into its config (spec §12).
 func setupRunWith(t *testing.T, initFlags ...string) (string, string) {
 	t.Helper()
-	root := testutil.NewRepo(t)
+	return setupRunIn(t, testutil.NewRepo(t), initFlags...)
+}
+
+// setupRunIn is setupRunWith in a repository the caller built, so a test can
+// have the run live somewhere particular.
+func setupRunIn(t *testing.T, root string, initFlags ...string) (string, string) {
+	t.Helper()
 	testutil.WriteFile(t, root, ".takt.json", fakeCfg)
 	testutil.Commit(t, root, "config")
 	args := append([]string{"init", "--slug", "demo"}, initFlags...)

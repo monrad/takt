@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/op"
@@ -192,7 +193,7 @@ func mergeIntoPrimary(
 	if prim == "" {
 		prim = ws.Repo.Root // unreachable for merge (adopted runs cannot choose it), but never print `git -C `
 	}
-	byHand := fmt.Sprintf("git -C %s merge --no-ff %s", prim, st.Branch)
+	byHand := fmt.Sprintf("git -C %s merge --no-ff %s", shellQuote(prim), st.Branch)
 	if !df.MergeAllowed {
 		return append(cleanup, byHand), errors.New(df.MergeBlocked)
 	}
@@ -281,7 +282,18 @@ func discardSweep(ws *workspace, bdir string) string {
 	if rel == "" {
 		return ""
 	}
-	return "git clean -fd -- " + rel
+	return "git clean -fd -- " + shellQuote(rel)
+}
+
+// shellQuote wraps a path for the cleanup commands takt prints. They are
+// handed to a session that runs them through a shell, verbatim, and a
+// worktree path is whatever the user's filesystem says — a space in it would
+// otherwise split the command into arguments git cannot use. Single quotes
+// are literal in POSIX shells, so only an embedded single quote needs the
+// close-escape-reopen dance; nothing inside them is expanded either, which
+// double quotes would not give.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // copyBundle copies the bundle tree to dst and drops a .gitignore beside it
