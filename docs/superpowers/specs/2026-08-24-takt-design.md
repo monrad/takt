@@ -160,10 +160,21 @@ external directory serves many repos. A bundle is `<dir>/<slug>/`.
   reviews/wave-<n>/task-<id>.md
   waves/<n>/task-<id>.a<attempt>.md          the brief the agent was given
   waves/<n>/task-<id>.a<attempt>.digest.json
-  waves/<n>/close.json                       scope/verify/review results for the wave
+  waves/<n>/close.s<slice>.json              scope/verify/review results for the slice; a re-close
+                                              retires the previous record to close.s<slice>.json.prev
+  waves/<n>/baseline.json                    {slice, entries} — the wave's baseline, parked while a
+                                              retry has no active_wave to hold it on
+  finish/verify.json · finish/verify-extra.json   `takt verify`'s record; user-supplied extra commands
+                                              from `no_verification`'s *specify* (§7.5 step 1)
+  finish/goals.json                          goal-assessor verdicts (and waivers) at the checked HEAD
+  finish/retro-inputs.json                   inputs `next` re-derives for the `retro` run op (§7.5 step 3)
   alignment.json                             confirmed clauses + verdicts
   logs/                                      reviewer stdout/stderr (gitignored)
 ```
+
+An in-repo bundle also has a sibling outside the tracked tree: `<dir>/.discarded/<slug>/`, a gitignored
+copy taken just before a `discard` disposition deletes the branch that held the bundle's own commits
+(§7.5 step 5).
 
 ### 4.3 `state.json`
 
@@ -194,6 +205,7 @@ external directory serves many repos. A bundle is `<dir>/<slug>/`.
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
+  "disposition": null,
   "session": { "id": "…", "host": "…", "heartbeat": "2026-08-24T18:02:11Z" }
 }
 ```
@@ -210,7 +222,9 @@ Field notes:
 - `active_wave` — `{n, slice, attempt, started_at, session_id, baseline: [{path, hash}]}` or null.
   `baseline` is every path dirty or untracked before launch with its content hash, so a user-dirty file
   that an agent also edits is still detected. Written before a `dispatch` op is returned; cleared by a
-  successful `close-wave`.
+  successful `close-wave`. `slice` is the committed slices of the wave plus 1 at a fresh launch (§7.4
+  chunking); a retry of an uncommitted slice — from `wave_failures`'s *retry*, or from crash recovery —
+  keeps that slice's own number rather than advancing.
 - A close result of `rework` is **not** a task status: the task returns to `pending` with the review
   findings attached to its last digest, and `attempt` increments on re-dispatch.
 - `pending_gate` — `{id, opened_at, payload}` or null. While set, `takt next` re-renders the same `ask`.
@@ -218,18 +232,26 @@ Field notes:
   approve receipt, `skipped` for an evidenced skip, `disabled` when the frozen config turned that review off),
   cached here for `status`; doctor never flags a `disabled` gate.
 - `verified_sha` / `goals_checked_sha` — the HEAD at which finish-time verification / goal check passed;
-  a new commit invalidates them.
+  a new commit invalidates them — a commit that touches only the bundle directory does not (takt's own
+  `answer`/`done` commits, §4.7).
+- `disposition` — `{choice ∈ merge | pr | keep | discard, at, reason, pr_url, applied}`; null until
+  `branch_finish` is answered (§7.5 step 4). `applied` means takt's own bookkeeping for the choice is
+  done; it is set before the archive commit for every choice and is never a record of the git effects —
+  those are re-derived from git on every archived `next` instead (§7.5 step 5).
 
 ### 4.4 `events.jsonl`
 
 One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: `init`, `phase`, `goals_frozen`,
 `goals_amended`, `gate_reviewed`, `gate_skipped`, `gate_overridden`, `plan_loaded`, `wave_dispatched`,
-`task_recorded`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`, `retro`,
+`task_recorded`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`, `retro`, `pr_pushed`,
 `disposition`, `archived`, `lock_taken`, `recovered`, `wave_committed`, `wave_close_unreconciled`,
 `review_skipped`, `plan_invalid`, `plan_attempts_reset`. Three decisions read events as their durable record —
 gate overrides (`gate_overridden`, required by §9), planner attempt counting (`plan_invalid` /
 `plan_attempts_reset`) and per-task review skips (`review_skipped`); everything else is the audit
-trail and the input for `takt status --history`.
+trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both carry
+`slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true` when `next` reconstructs a
+commit sha from git rather than recording it live — the repair for a crash between the wave commit and
+the write that would otherwise have recorded it (§5.4).
 
 ### 4.5 Path rules
 
@@ -263,9 +285,9 @@ driving one bundle by accident; it does not try to be NFS-safe.
   is inside the repo. Never `add -A`, never the user's unrelated dirty files (they are in the wave
   baseline and are excluded from scope verification).
 - **Commits.** `takt(<slug>): wave <n> — tasks 1, 2` after a successful close; `takt(<slug>): plan →
-  execute` at phase transitions; `takt(<slug>): finish — verified <sha>` after finish steps;
-  `takt(<slug>): archive`. Commits are made by takt with `git commit` in the cwd worktree; the user's git
-  identity applies.
+  execute` at phase transitions; `takt(<slug>): archive`. `takt(<slug>): archive` is the run's last
+  commit; the merge disposition is applied only after it, in the primary worktree (§7.5 step 5).
+  Commits are made by takt with `git commit` in the cwd worktree; the user's git identity applies.
 - **Agents never commit.** That is what makes re-dispatch after a crash safe.
 
 ---
@@ -284,11 +306,11 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 | `takt next [--force] [--recover]` | Heartbeat (persisted only when the lease needs renewing — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the bundle byte-identical on disk. Always returns in < 1 s. |
 | `takt record --task N --attempt A (--status done\|failed\|blocked --summary "…" [--blockers "…"] \| --from <file>)` | Records an implementer result. `--from` parses the trailing `STATUS:` / `SUMMARY:` / `BLOCKERS:` lines of the agent's final message. A stale attempt is logged and ignored (exit 0, `"ignored": true`). |
 | `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor JSON; returns validation errors instead of failing. |
-| `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). |
-| `takt done --step <id>` | Marks an LLM-side `run` step complete (brainstorm, goals, retro, push_pr). For `goals`, freezes `goals.md` (hash). |
+| `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>] [--confirm <slug>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). `--confirm <slug>` is required for `branch_finish`'s `discard` — typing the slug back. |
+| `takt done --step <id> [--url <pr-url>]` | Marks an LLM-side `run` step complete (brainstorm, goals, retro, push_pr). For `goals`, freezes `goals.md` (hash). `push_pr` requires `--url`. A `done` for a step already closed against the same artifact is a no-op (`ignored: true`); `push_pr` is the one exception — a repeat with the *same* URL is the no-op, a *different* URL (a re-opened or replaced pull request) is a new `done`, since the URL is `push_pr`'s only artifact. |
 | `takt close-wave` | The long half of a wave (§7.4): scope verify, verify commands, reviews, commit. Launched by the session in the background from an `exec` op. |
 | `takt review spec\|plan [--skip --reason "…"]` | Runs the gate review headless and writes the receipt (`exec` op). `--skip` records an evidenced skip (§9) instead of running. |
-| `takt verify` | Runs the union of all tasks' verify commands at HEAD; records `verified_sha`. `exec` op. |
+| `takt verify` | Runs the union of all tasks' verify commands (plus any the user supplied through `no_verification`'s *specify*) at HEAD; records `finish/verify.json` and, on pass, `verified_sha`. `exec` op. |
 | `takt waive --task N --reason "…"` | Marks a blocked/failed task waived. |
 | `takt status [--json] [--history]` | One-screen report; no writes. |
 | `takt doctor [--dir …]` | §11. No writes. |
@@ -333,6 +355,10 @@ always present (D19) — for implementers it is resolved from the task's `class`
   "answer": "takt answer --gate verification_failed --choice <choice>" }
 ```
 
+An option may carry `disabled`: a reason string, present exactly when that choice cannot be taken right
+now. The prompt shows the option anyway, greyed out with the reason, rather than dropping it from the
+list — `branch_finish` disables `merge`/`discard` this way (§7.5 step 4).
+
 **run** — LLM-only work, then `takt done --step <id>`, then `next`.
 
 ```json
@@ -361,6 +387,11 @@ user; the anchor is the verbatim topic), `retro`, `push_pr`.
 
 Reasons: `wave_in_flight` (agents of this session may still be running — wait for their results),
 `archived`, `read_only`.
+
+An archived run's `stop` also carries `context` — git-derived facts about what the disposition did just
+now (e.g. `{"merged": "<sha>"}`, `{"deleted": true}`), read fresh from git on every call rather than
+remembered — and, whenever something git would not let takt do from this worktree, `cleanup`: the exact
+git commands takt could not run itself, for the session to run (§7.5 step 5).
 
 ### 5.3 `Decide` — precedence
 
@@ -639,33 +670,66 @@ A wave, end to end:
    wave is done); *stop* ends the turn with the wave open.
 6. Loop until no task is pending → `finish`.
 
-Chunking: a wave larger than `max_parallel` is dispatched in slices; `active_wave` tracks the slice, and
-the wave commits once per slice (`wave 0 (1/2)`), which keeps every commit verified.
+Chunking: a wave larger than `max_parallel` is dispatched in slices. `active_wave.slice` is the committed
+slices of the wave plus 1 at a fresh launch; a retry of an uncommitted slice — from `wave_failures`'s
+*retry*, or from crash recovery — keeps that slice's own number rather than advancing (§4.3). The
+narration names the slice from the second one on (e.g. `wave 0 slice 2`; the first slice of a wave is
+never distinguishable from a wave that never splits, so it stays unnamed); the wave commits once per
+slice, which keeps every commit verified.
 
 ### 7.5 `finish`
 
-1. **Verify** (`exec takt verify`): the union of all tasks' verify commands, deduplicated, at HEAD;
-   pass → `verified_sha = HEAD`, event `verify`. Fail → `ask verification_failed` (*fix first* — the
-   session fixes and commits, `next` re-verifies · *override* with reason → `verified_sha` set, event
-   records the override · *abort*). No commands at all → `ask no_verification` (*specify one* / *proceed
-   without*).
+1. **Verify** (`exec takt verify`): the union of all tasks' verify commands (plus any the user supplied
+   through `no_verification`'s *specify*), deduplicated, at HEAD; pass → `verified_sha = HEAD`, event
+   `verify`. Fail → `ask verification_failed` (*fix first* — the session fixes and commits, `next`
+   re-verifies · *override* with reason → `verified_sha` set, event records the override · *abort* only
+   ends the turn — the question returns on the next `takt next`). No commands at all → `ask
+   no_verification`: *specify one* (the command is appended to `finish/verify-extra.json` and run at HEAD
+   next) · *proceed without* (`verified_sha` set with no commands run, event records the skip).
 2. **Goals** (if `config.goals`): `dispatch goal-assessor` with `goals.md`, `git diff base_sha..HEAD
    --stat` and the verify results; it returns per goal `{id, verdict: achieved|partial|missed, evidence,
    citations}` as a fenced JSON block; `record --agent goal-assessor` parses it. All achieved →
    `goals_checked_sha = HEAD`. Otherwise `ask goals_unmet` (*fix and continue* · *waive* with reason →
-   event `goal_waived` per goal · *abort*).
+   event `goal_waived` per goal · *abort*, which — as at step 1 — only ends the turn).
 3. **Retro** (`run retro`): the session writes `retro.md` from `inputs` (the plan summary, wave
    timings, failures and retries, review findings count, goal verdicts). `done --step retro`.
 4. **Disposition** (`ask branch_finish`): options depend on `branch_adopted`:
-   - not adopted: **merge** into `base` (only if the base branch is checked out in the primary
-     worktree and it is clean; otherwise the option is shown disabled with the reason) · **pr** ·
-     **keep** · **discard** (requires typing the slug).
-   - adopted: **pr** · **keep**.
-   `answer` records the disposition. `merge`: `git -C <primary> merge --no-ff takt/<slug>`, then delete
-   the branch. `pr`: `run push_pr` — the session runs `git push -u origin <branch>` and `gh pr create
-   --base <base> --fill`, then `done --step push_pr` with the PR URL. `keep`: nothing. `discard`: the
-   run branch is deleted (`-D`) after the bundle is copied to `<dir>/.discarded/<slug>/` when in-repo.
-5. **Archive:** `phase = archived`, commit `takt(<slug>): archive`, lock released, `stop archived`.
+   - not adopted: **merge** into `base` · **pr** · **keep** · **discard**.
+   - adopted: **pr** · **keep** — the branch belongs to the user; `merge` and `discard` are never offered.
+
+   `merge` is offered only when the primary worktree has `base` checked out and is clean; otherwise the
+   option renders `disabled` with the reason (§5.2). `discard` always renders but needs
+   `--confirm <slug>` at `answer` time. `answer` records the disposition — `{choice, at, reason, pr_url,
+   applied}` — and nothing else: no git runs yet, so facts that were true when the question was asked but
+   have since gone stale (the primary worktree moved on, went dirty) cannot start work step 5 re-checks
+   before doing. `pr`: `run push_pr` — the session runs `git push -u origin <branch>` and `gh pr create
+   --base <base> --fill`, then `done --step push_pr --url <pr-url>` (§5.1's no-op rule applies: the same
+   URL again is a no-op, a different one replaces it). `keep`: nothing further.
+5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
+   before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
+   happens here too, before the commit, so the copy predates the branch about to lose it); lock released;
+   commit `takt(<slug>): archive`. That commit is the run's last one, which is what lets a merge carry the
+   archived bundle: only after it does takt do the git side of the disposition.
+   - **merge** re-checks — not just re-reads the answer-time facts — that the primary worktree is still on
+     `base` and clean, and skips the merge entirely when `takt/<slug>` is already an ancestor of `base`.
+     Otherwise `git -C <primary> merge --no-ff takt/<slug>`; a conflict runs `git -C <primary> merge
+     --abort` first, so the primary is never left mid-merge, and hands the merge command back as
+     `cleanup`. A landed merge deletes the branch with `git branch -d` (git's own "really merged" check).
+   - **discard** deletes the branch with `git branch -D`, unconditionally — discarding is choosing not to
+     merge.
+   - Either way: the branch is deleted directly when no worktree holds it checked out; when this worktree
+     does and `base` is free elsewhere, the hand-off is `git checkout <base> && git branch -d|-D <branch>`
+     (for `discard`, `&& git clean -fd -- <bundle-rel>` too, once the branch's own `.gitignore` has left
+     with it and the reviewer logs it hid become plain untracked litter — already in the `.discarded`
+     copy); when `base` is held elsewhere (the primary, mid-merge), the hand-off is the bare deletion.
+     takt never checks out another branch itself (§4.7): everything it cannot do from here is handed to
+     the session verbatim as `stop archived`'s `cleanup` (§5.2). `pr` and `keep` ask git for nothing at
+     this step.
+   - None of this is ever recorded in state: there is no `disposition_applied` event and no write after
+     the archive commit. `archive`, and every later `takt next` on the archived run, re-derive the same
+     outcome from git each time, so an effect that could not land the first try (the primary was busy, the
+     merge conflicted) is simply retried, and `stop`'s `context` always reflects git as it stands right
+     now rather than a stale claim. The working tree is clean after archive for every choice.
 
 ---
 
@@ -805,16 +869,19 @@ maps it to a model, and a retry escalates a tier (D22).
 
 ## 11. Doctor and status
 
-`takt doctor` runs five checks over every non-archived bundle in the resolved directory (and, with
-`--all`, archived ones), printing `PASS | WARN | ERROR <check>: <message>` lines and exiting 1 on any ERROR:
+`takt doctor` runs six checks over every non-archived bundle in the resolved directory (and, with
+`--all`, archived ones), printing `PASS | WARN | ERROR <check>: <message>` lines and exiting 1 on any
+ERROR. `index-lock` is the exception: `.git/index.lock` governs the whole repository, not one bundle, so
+it runs once per invocation rather than once per bundle.
 
 | check | condition |
 |---|---|
-| `state-schema` | `state.json` parses and validates; `phase` is a known value; tasks reference existing waves |
+| `state-schema` | `state.json` parses and validates; `phase` is a known value; tasks reference existing waves; WARNs when `active_wave.slice` is 0 — the bundle predates per-slice close records; the next `close-wave` records it as slice 1 |
 | `stale-wave` | `active_wave` older than `wave_stale_after` with a dead session (heartbeat > `lock_ttl`) |
-| `index-staleness` | `plan.index.json.spec_hash` ≠ `sha256(spec.md)`, or a gate receipt hash ≠ current hash while `state.gates` says `ok` |
+| `index-staleness` | `plan.index.json.spec_hash` ≠ `sha256(spec.md)`, or a gate receipt hash ≠ current hash while `state.gates` says `ok`; skipped for an archived run — its artifacts are frozen history, so a later edit on the same branch must not re-arm its gates |
 | `branch` | `state.branch` and `base_sha` resolve; the cwd worktree is on `state.branch` (WARN if not) |
 | `plan-disjoint` | re-validates the index (same-wave overlap, path rules) |
+| `index-lock` | `.git/index.lock` older than 2 minutes — a killed git command left it; WARN; fix: remove it once no git command is running |
 
 `takt status` prints: slug, phase, branch/base, task counts per status, the current wave and attempt,
 open gate, gate states, goals (with verdicts once checked), and the alignment digest. `--json` returns
