@@ -165,11 +165,12 @@ func LoadState(bundleDir string) (*State, error) {
 	return &s, nil
 }
 
-// renameFile is a seam for the atomicity test.
+// renameFile is the rename every atomic write in this package finishes with,
+// and the seam the atomicity test makes fail.
 var renameFile = os.Rename
 
-// SaveState writes state.json atomically: temp file in the same directory,
-// fsync, rename (spec §13). Nil slices are normalised so JSON shows [] not null.
+// SaveState writes state.json atomically, through [WriteJSONAtomic] (spec
+// §13). Nil slices are normalised so JSON shows [] not null.
 func SaveState(bundleDir string, s *State) error {
 	if err := s.Validate(); err != nil {
 		return err
@@ -180,39 +181,7 @@ func SaveState(bundleDir string, s *State) error {
 	if s.Gates == nil {
 		s.Gates = map[string]string{}
 	}
-	if err := os.MkdirAll(bundleDir, 0o750); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return err
-	}
-	b = append(b, '\n')
-	tmp, err := os.CreateTemp(bundleDir, "state.json.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-	if _, werr := tmp.Write(b); werr != nil {
-		_ = tmp.Close()
-		cleanup()
-		return werr
-	}
-	if serr := tmp.Sync(); serr != nil {
-		_ = tmp.Close()
-		cleanup()
-		return serr
-	}
-	if cerr := tmp.Close(); cerr != nil {
-		cleanup()
-		return cerr
-	}
-	if rerr := renameFile(tmpName, StatePath(bundleDir)); rerr != nil {
-		cleanup()
-		return rerr
-	}
-	return nil
+	return WriteJSONAtomic(StatePath(bundleDir), s)
 }
 
 // Validate checks closed sets and path rules; it does not touch the filesystem.

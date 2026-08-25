@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/monrad/takt/internal/brief"
+	"github.com/monrad/takt/internal/bundle"
 )
 
 type alignmentVerdict struct {
@@ -56,13 +57,5 @@ func readAlignment(bdir string) (*alignmentFile, error) {
 
 // writeAlignment replaces alignment.json atomically.
 func writeAlignment(bdir string, a alignmentFile) error {
-	b, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := alignmentPath(bdir) + ".tmp"
-	if err = os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, alignmentPath(bdir))
+	return bundle.WriteJSONAtomic(alignmentPath(bdir), a)
 }

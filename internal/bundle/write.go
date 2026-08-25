@@ -13,7 +13,9 @@ import (
 // records takt keeps (a wave's close record and parked baseline, the gate
 // receipts, the finish records) all go through here, so that rule has one
 // implementation rather than one per package. The directory is created when
-// it does not exist, and the temporary file is removed on any failure.
+// it does not exist, and the temporary file is removed on any failure. The
+// rename goes through the package's [renameFile] seam, so a test can make it
+// fail and check what the caller is left with.
 func WriteJSONAtomic(path string, v any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -43,7 +45,7 @@ func WriteJSONAtomic(path string, v any) error {
 		cleanup()
 		return err
 	}
-	if err = os.Rename(name, path); err != nil {
+	if err = renameFile(name, path); err != nil {
 		cleanup()
 		return err
 	}

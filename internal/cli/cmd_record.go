@@ -319,15 +319,13 @@ func writeDigest(env Env, ws *workspace, bdir string, waveN int, t *bundle.Task,
 		Task: in.task, Attempt: in.attempt, Status: in.status, Summary: in.summary,
 		Blockers: in.blockers, Model: digestModel(ws.Cfg, bdir, waveN, t), RecordedAt: timeNow(),
 	}
+	if err := bundle.WriteJSONAtomic(digestPath(bdir, waveN, in.task, in.attempt), d); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	// The same bytes the file holds, hung on the task so `takt status` can
+	// show the last result without re-reading the wave directory.
 	b, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
-		return fail(env.Stderr, exitError, err.Error(), "")
-	}
-	p := digestPath(bdir, waveN, in.task, in.attempt)
-	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return fail(env.Stderr, exitError, err.Error(), "")
-	}
-	if err = os.WriteFile(p, append(b, '\n'), 0o600); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	t.LastDigest = b

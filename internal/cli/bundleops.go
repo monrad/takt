@@ -184,17 +184,7 @@ func indexPath(bdir string) string { return filepath.Join(bdir, "plan.index.json
 // writeIndex replaces plan.index.json atomically, so a crash mid-write can
 // never leave the run with a half-written plan.
 func writeIndex(bdir string, idx plan.Index) error {
-	b, err := json.MarshalIndent(idx, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := indexPath(bdir) + ".tmp"
-	//nolint:gosec // G703: tmp is inside the run's bundle dir, and the slug it comes from is validated by
-	// bundle.ValidSlug before it ever reaches the filesystem (see selectSlug), so no caller can steer this write.
-	if err = os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, indexPath(bdir))
+	return bundle.WriteJSONAtomic(indexPath(bdir), idx)
 }
 
 // commitBundle stages the bundle directory when it is in-repo and commits
