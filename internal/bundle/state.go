@@ -91,6 +91,17 @@ type PendingGate struct {
 	Payload  json.RawMessage `json:"payload,omitempty"`
 }
 
+// Disposition is the user's answer to branch_finish (spec §7.5). Applied
+// is set by the archive step once takt has done its part (merge, discard
+// copy, branch deletion where possible).
+type Disposition struct {
+	Choice  string    `json:"choice"` // merge | pr | keep | discard
+	At      time.Time `json:"at"`
+	Reason  string    `json:"reason,omitempty"`
+	PRURL   string    `json:"pr_url,omitempty"`
+	Applied bool      `json:"applied"`
+}
+
 // Session is the advisory lock holder (spec §4.6). Generated records how
 // the id was obtained: false when the environment supplied it
 // (CLAUDE_CODE_SESSION_ID / TAKT_SESSION), true when takt invented one
@@ -124,6 +135,7 @@ type State struct {
 	PendingGate     *PendingGate      `json:"pending_gate"`
 	VerifiedSHA     *string           `json:"verified_sha"`
 	GoalsCheckedSHA *string           `json:"goals_checked_sha"`
+	Disposition     *Disposition      `json:"disposition"`
 	Session         *Session          `json:"session"`
 }
 
