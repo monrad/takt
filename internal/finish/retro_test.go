@@ -20,20 +20,26 @@ func TestBuildRetroInputs(t *testing.T) {
 		{ID: 3, Wave: 1, Status: "done", Attempt: 1},
 	}}
 	idx := plan.Index{Tasks: []plan.Task{{ID: 1}, {ID: 2}, {ID: 3}}}
-	// wave/attempt arrive from events.jsonl as JSON numbers, so the fixture
-	// spells them float64 exactly as bundle.ReadEvents would hand them over.
-	ev := func(after time.Duration, typ string, w, a int) bundle.Event {
+	// wave/slice/attempt arrive from events.jsonl as JSON numbers, so the
+	// fixture spells them float64 exactly as bundle.ReadEvents would hand
+	// them over.
+	ev := func(after time.Duration, typ string, w, sl, a int) bundle.Event {
 		return bundle.Event{
 			TS: t0.Add(after), Type: typ,
-			Data: map[string]any{"wave": float64(w), "attempt": float64(a)},
+			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
 		}
 	}
+	// Wave 0 was retried (slice 1 lands at attempt 2), then went out a second
+	// slice — which runs at attempt 1 again, so wave+attempt alone would
+	// collapse it into slice 1's timing.
 	events := []bundle.Event{
-		ev(0, "wave_dispatched", 0, 1),
-		ev(5*time.Minute, "wave_dispatched", 0, 2),
-		ev(9*time.Minute, "wave_committed", 0, 2),
-		ev(10*time.Minute, "wave_dispatched", 1, 1),
-		ev(12*time.Minute, "wave_committed", 1, 1),
+		ev(0, "wave_dispatched", 0, 1, 1),
+		ev(5*time.Minute, "wave_dispatched", 0, 1, 2),
+		ev(9*time.Minute, "wave_committed", 0, 1, 2),
+		ev(10*time.Minute, "wave_dispatched", 0, 2, 1),
+		ev(13*time.Minute, "wave_committed", 0, 2, 1),
+		ev(14*time.Minute, "wave_dispatched", 1, 1, 1),
+		ev(16*time.Minute, "wave_committed", 1, 1, 1),
 	}
 	findings := []backend.Finding{
 		{Severity: "major", File: "a.go", Line: 12, Title: "unchecked error", Detail: "err is dropped"},
@@ -57,9 +63,26 @@ func TestBuildRetroInputs(t *testing.T) {
 		in.Failures[0].Status != "waived" || in.Failures[0].Reason != "needs schema" {
 		t.Fatalf("failures: %+v", in.Failures)
 	}
-	if len(in.WaveTimings) != 2 || in.WaveTimings[0].Attempt != 2 ||
-		in.WaveTimings[0].CommittedAt.Sub(in.WaveTimings[0].DispatchedAt) != 4*time.Minute {
+	// Three spans: wave 0 slice 1 (the attempt that landed), wave 0 slice 2,
+	// wave 1. The two slices of wave 0 both ran at attempt 1 at some point,
+	// so keying the pairing on the slice too is what keeps them apart.
+	if len(in.WaveTimings) != 3 {
 		t.Fatalf("timings: %+v", in.WaveTimings)
+	}
+	for i, want := range []finish.WaveTiming{
+		{Wave: 0, Slice: 1, Attempt: 2}, {Wave: 0, Slice: 2, Attempt: 1}, {Wave: 1, Slice: 1, Attempt: 1},
+	} {
+		got := in.WaveTimings[i]
+		if got.Wave != want.Wave || got.Slice != want.Slice || got.Attempt != want.Attempt {
+			t.Fatalf("timing %d = %+v, want wave %d slice %d attempt %d",
+				i, got, want.Wave, want.Slice, want.Attempt)
+		}
+	}
+	if d := in.WaveTimings[0].CommittedAt.Sub(in.WaveTimings[0].DispatchedAt); d != 4*time.Minute {
+		t.Fatalf("wave 0 slice 1 spans its landing attempt only, got %s", d)
+	}
+	if d := in.WaveTimings[1].CommittedAt.Sub(in.WaveTimings[1].DispatchedAt); d != 3*time.Minute {
+		t.Fatalf("wave 0 slice 2 span = %s", d)
 	}
 	if in.Verify == nil || !in.Verify.Passed || in.Goals != nil {
 		t.Fatalf("%+v", in)

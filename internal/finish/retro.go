@@ -38,20 +38,22 @@ type RetroFailure struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// WaveTiming is dispatch → commit for the attempt that committed.
+// WaveTiming is dispatch → commit for the slice-attempt that committed.
 type WaveTiming struct {
 	Wave         int       `json:"wave"`
+	Slice        int       `json:"slice"`
 	Attempt      int       `json:"attempt"`
 	DispatchedAt time.Time `json:"dispatched_at"`
 	CommittedAt  time.Time `json:"committed_at"`
 }
 
 // The event types the wave timings are paired from, and the data keys that
-// identify which wave and attempt each one belongs to.
+// identify which dispatch each one belongs to.
 const (
 	evDispatched = "wave_dispatched"
 	evCommitted  = "wave_committed"
 	keyWave      = "wave"
+	keySlice     = "slice"
 	keyAttempt   = "attempt"
 )
 
@@ -104,23 +106,29 @@ func lastReasons(closes []wave.CloseResult) map[int]string {
 	return out
 }
 
-// waveTimings pairs each wave_committed with the wave_dispatched of the
-// same wave and attempt. A wave that was retried therefore reports the
-// attempt that actually landed, not the whole span of the wave.
+// waveTimings pairs each wave_committed with the wave_dispatched of the same
+// dispatch — wave, slice and attempt. A wave that was retried therefore
+// reports the attempt that actually landed, not the whole span of the wave,
+// and a wave larger than max_parallel reports one span per slice: its slices
+// all run at attempt 1, so wave and attempt alone would collapse them into
+// one. Events written before slices were recorded carry no slice key and
+// decode to 0, which still pairs them with each other.
 func waveTimings(events []bundle.Event) []WaveTiming {
-	type key struct{ w, a int }
+	type key struct{ w, s, a int }
 	dispatched := map[key]time.Time{}
 	out := []WaveTiming{}
 	for _, e := range events {
 		w, _ := e.Data[keyWave].(float64)
+		sl, _ := e.Data[keySlice].(float64)
 		a, _ := e.Data[keyAttempt].(float64)
-		k := key{int(w), int(a)}
+		k := key{int(w), int(sl), int(a)}
 		switch e.Type {
 		case evDispatched:
 			dispatched[k] = e.TS
 		case evCommitted:
 			if d, ok := dispatched[k]; ok {
-				out = append(out, WaveTiming{Wave: k.w, Attempt: k.a, DispatchedAt: d, CommittedAt: e.TS})
+				out = append(out,
+					WaveTiming{Wave: k.w, Slice: k.s, Attempt: k.a, DispatchedAt: d, CommittedAt: e.TS})
 			}
 		}
 	}

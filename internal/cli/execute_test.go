@@ -471,6 +471,46 @@ func assertLogHas(t *testing.T, root string, subjects ...string) {
 	}
 }
 
+// TestOldActiveWaveWithoutASliceHeals covers the upgrade path into per-slice
+// close records. A wave dispatched by a build from before them has
+// active_wave.slice = 0 — the number the old waveBaseline returned — and no
+// close record can be written under it, so `next` would keep asking for a
+// close-wave that exits 1 with nothing on disk explaining why. takt heals it
+// to slice 1, which is the right answer for a wave that has committed
+// nothing yet, and `takt doctor` WARNs about the state it came from.
+func TestOldActiveWaveWithoutASliceHeals(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	next(t, root, nil)
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "b.go", "package b\n")
+	record(t, root, 1, 1, "done", "a")
+	record(t, root, 2, 1, "done", "b")
+	// What the older build left behind.
+	st, _ := bundle.LoadState(bdir)
+	st.ActiveWave.Slice = 0
+	if err := bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, o, _ := next(t, root, nil); o["op"] != "exec" ||
+		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
+		t.Fatalf("a fully recorded wave is closed: %v", o)
+	}
+	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
+		t.Fatalf("a slice-less wave must still close: %d %v %s", code, out, errb)
+	}
+	if c, _ := wave.ReadClose(bdir, 0, 1); c == nil || c.Slice != 1 || !c.Committed {
+		t.Fatalf("the healed close records itself as slice 1: %+v", c)
+	}
+	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+		t.Fatalf("the healed wave clears and the run moves on: %v", o)
+	}
+	if st, _ = bundle.LoadState(bdir); st.ActiveWave == nil || st.ActiveWave.N != 1 {
+		t.Fatalf("wave 0 must have been cleared: %+v", st.ActiveWave)
+	}
+}
+
 // TestRetryKeepsTheSliceNumber is the other half of the slice counter: a
 // slice that failed and is retried from the wave_failures gate comes back as
 // the same slice, not as a new one. The counter follows what has committed,
@@ -801,7 +841,7 @@ func TestCloseWaveTwiceIsANoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
-		t.Fatalf("the replay rewrote close.json:\n%s\n%s", before, after)
+		t.Fatalf("the replay rewrote close.s1.json:\n%s\n%s", before, after)
 	}
 	c, _ := wave.ReadClose(bdir, 0, 1)
 	if c == nil || len(c.Tasks) != 2 {

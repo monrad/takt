@@ -230,12 +230,12 @@ func (r *nextRun) clearWave(ctx context.Context, n int) int {
 	if aw == nil {
 		return 0
 	}
-	c, err := wave.ReadClose(r.bdir, n, aw.Slice)
+	c, err := wave.ReadClose(r.bdir, n, sliceOf(aw))
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	if !closeMatchesDispatch(c, aw) || !waveCommitLanded(ctx, r.ws.Repo, c) {
-		if err = dropClose(r.bdir, n, aw.Slice); err != nil {
+		if err = dropClose(r.bdir, n, sliceOf(aw)); err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
 		_ = bundle.AppendEvent(r.bdir, "wave_close_unreconciled", map[string]any{

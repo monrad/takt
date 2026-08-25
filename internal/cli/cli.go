@@ -59,6 +59,7 @@ const (
 	keyTask          = "task"
 	keyAttempt       = "attempt"
 	keyWave          = "wave"
+	keySlice         = "slice"
 	keyStatus        = "status"
 	keyCommitted     = "committed"
 	keySHA           = "sha"

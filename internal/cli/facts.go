@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,8 +126,8 @@ func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State) error {
 			f.Wave.Recorded[id] = true
 		}
 	}
-	c, err := wave.ReadClose(bdir, aw.N, aw.Slice)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	c, err := wave.ReadClose(bdir, aw.N, sliceOf(aw))
+	if err != nil {
 		return err
 	}
 	if closeMatchesDispatch(c, aw) {

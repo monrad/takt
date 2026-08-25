@@ -29,6 +29,17 @@ var StateSchema = Check{Name: stateSchemaCheckName, Run: func(_ context.Context,
 			f.Fix = "run `takt next --recover` once plan 2 lands; until then inspect state.json"
 			return []Finding{f}
 		}
+		// A wave dispatched before close records were kept per slice has no
+		// slice number. takt heals it — the next close records it as slice 1,
+		// which is right for a wave that has committed nothing — but the
+		// state on disk is still from an older build, and saying so is what
+		// stops the user hunting for the cause of a renumbered record.
+		if st.ActiveWave.Slice < 1 {
+			f.Level = levelWarn
+			f.Message = "active_wave.slice is 0 (bundle predates per-slice close records)"
+			f.Fix = "run `takt next`; the next close-wave records it as slice 1"
+			return []Finding{f}
+		}
 	}
 	if st.PendingGate != nil && st.PendingGate.ID == "" {
 		f.Level, f.Message, f.Fix = levelError, "pending_gate has no id", "clear it with `takt answer` once plan 2 lands"

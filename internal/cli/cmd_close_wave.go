@@ -79,7 +79,7 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 		return nil, err
 	}
 	res := wave.CloseResult{
-		Wave: aw.N, Slice: aw.Slice, Attempt: aw.Attempt, ClosedAt: timeNow(),
+		Wave: aw.N, Slice: sliceOf(aw), Attempt: aw.Attempt, ClosedAt: timeNow(),
 		Failed: []int{}, Blocked: []int{}, Rework: []int{}, ReviewErrors: []int{},
 	}
 	sc, err := verifyWaveScope(ctx, tgt, &res)
@@ -119,7 +119,7 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 //
 //nolint:nilnil // documented "the wave still has to be closed" sentinel, like wave.ReadClose
 func landedClose(ctx context.Context, tgt *runTarget, aw *bundle.ActiveWave) (*wave.CloseResult, error) {
-	c, err := wave.ReadClose(tgt.bdir, aw.N, aw.Slice)
+	c, err := wave.ReadClose(tgt.bdir, aw.N, sliceOf(aw))
 	if err != nil || !closeMatchesDispatch(c, aw) {
 		return nil, err
 	}
@@ -314,7 +314,8 @@ func recordCloseOutcome(tgt *runTarget, res *wave.CloseResult, ids []int) error 
 	}
 	if res.CommitSHA != "" {
 		err := bundle.AppendEvent(tgt.bdir, "wave_committed", map[string]any{
-			keyWave: res.Wave, keyAttempt: res.Attempt, keySHA: res.CommitSHA, keyTasks: ids,
+			keyWave: res.Wave, keySlice: res.Slice, keyAttempt: res.Attempt,
+			keySHA: res.CommitSHA, keyTasks: ids,
 		})
 		if err != nil {
 			return err

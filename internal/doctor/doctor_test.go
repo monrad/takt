@@ -99,6 +99,38 @@ func TestActiveWaveReferencingMissingWaveIsError(t *testing.T) {
 	}
 }
 
+// TestActiveWaveWithoutASliceWarns covers the upgrade path: a wave
+// dispatched before close records were kept per slice has slice 0. takt
+// heals it (the next close records it as slice 1), so this is a WARN and not
+// an ERROR — but the state is still from an older build, and saying so is
+// what stops the user hunting for the cause of a renumbered record.
+func TestActiveWaveWithoutASliceWarns(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("old")
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: time.Now(), Tasks: []int{1}}
+	if err := bundle.SaveState(d.Bundle("old"), st); err != nil {
+		t.Fatal(err)
+	}
+	fs := doctor.Run(context.Background(), d, false, doctor.Default, noOpts)
+	if l := levels(fs, "state-schema"); len(l) != 1 || l[0] != "WARN" {
+		t.Fatalf("state-schema = %v (%+v)", l, fs)
+	}
+	for _, f := range fs {
+		if f.Check == "state-schema" && !strings.Contains(f.Message, "active_wave.slice is 0") {
+			t.Fatalf("the warning must name the field: %+v", f)
+		}
+	}
+	// A wave that does have a slice is not warned about.
+	st.ActiveWave.Slice = 1
+	if err := bundle.SaveState(d.Bundle("old"), st); err != nil {
+		t.Fatal(err)
+	}
+	if l := levels(doctor.Run(context.Background(), d, false, doctor.Default, noOpts), "state-schema"); l[0] != "PASS" {
+		t.Fatalf("state-schema = %v", l)
+	}
+}
+
 func TestPlanDisjointFindsUnorderedOverlap(t *testing.T) {
 	t.Parallel()
 	d := newDir(t)

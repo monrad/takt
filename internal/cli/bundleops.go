@@ -82,7 +82,25 @@ func waveCommitLanded(ctx context.Context, repo *gitx.Repo, rec *wave.CloseResul
 // identified by, and each of the two is written by the same launch the
 // record's own numbers came from.
 func closeMatchesDispatch(c *wave.CloseResult, aw *bundle.ActiveWave) bool {
-	return c != nil && aw != nil && c.Attempt == aw.Attempt && c.Slice == aw.Slice
+	return c != nil && aw != nil && c.Attempt == aw.Attempt && c.Slice == sliceOf(aw)
+}
+
+// sliceOf is the active wave's slice number, healed. A wave dispatched by a
+// build from before per-slice close records has slice 0 — the number the old
+// waveBaseline returned — and a close record cannot be written under it
+// (wave.WriteClose refuses it, which would leave `next` asking for a
+// close-wave that always exits 1). Such a wave is by definition uncommitted,
+// so slice 1 is the right answer for it: nothing has committed under this
+// wave yet, and close-wave is idempotent. Every read of the active wave's
+// slice goes through here so the healing is the same one everywhere —
+// crucially including closeMatchesDispatch, which would otherwise refuse the
+// slice-1 record the healed close had just written. `takt doctor` WARNs
+// about the same state (doctor.StateSchema).
+func sliceOf(aw *bundle.ActiveWave) int {
+	if aw == nil || aw.Slice < 1 {
+		return 1
+	}
+	return aw.Slice
 }
 
 // gateStateValue is what state.gates records for a gate at the transition
@@ -248,7 +266,7 @@ func answerWaveGate(bdir string, st *bundle.State, gate, choice, reason string) 
 		// is that slice again, not the next one, and active_wave is where
 		// that number normally lives. waveBaseline picks both back up.
 		if aw != nil {
-			if err := wave.SaveBaseline(bdir, aw.N, aw.Slice, aw.Baseline); err != nil {
+			if err := wave.SaveBaseline(bdir, aw.N, sliceOf(aw), aw.Baseline); err != nil {
 				return false, err
 			}
 		}
@@ -263,12 +281,12 @@ func answerWaveGate(bdir string, st *bundle.State, gate, choice, reason string) 
 		if aw == nil {
 			return false, nil
 		}
-		return false, dropClose(bdir, aw.N, aw.Slice)
+		return false, dropClose(bdir, aw.N, sliceOf(aw))
 	case "review_error/retry":
 		if aw == nil {
 			return false, nil
 		}
-		return false, dropClose(bdir, aw.N, aw.Slice)
+		return false, dropClose(bdir, aw.N, sliceOf(aw))
 	case "review_error/skip":
 		return false, skipTaskReviews(bdir, aw, reason)
 	case "wave_failures/stop", "review_error/stop":
@@ -286,7 +304,7 @@ func skipTaskReviews(bdir string, aw *bundle.ActiveWave, reason string) error {
 		return errors.New("skipping reviews needs --reason and an active wave")
 	}
 	tasks := []int{}
-	if c, _ := wave.ReadClose(bdir, aw.N, aw.Slice); c != nil {
+	if c, _ := wave.ReadClose(bdir, aw.N, sliceOf(aw)); c != nil {
 		tasks = c.ReviewErrors
 	}
 	err := bundle.AppendEvent(bdir, "review_skipped", map[string]any{
@@ -295,5 +313,5 @@ func skipTaskReviews(bdir string, aw *bundle.ActiveWave, reason string) error {
 	if err != nil {
 		return err
 	}
-	return dropClose(bdir, aw.N, aw.Slice)
+	return dropClose(bdir, aw.N, sliceOf(aw))
 }

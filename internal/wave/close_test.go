@@ -70,6 +70,9 @@ func TestClosePathsPerSlice(t *testing.T) {
 	if c, _ := wave.ReadClose(dir, 0, 3); c != nil {
 		t.Fatal("missing slice → nil")
 	}
+	if werr := wave.WriteClose(dir, wave.CloseResult{Wave: 0, Attempt: 1}); werr == nil {
+		t.Fatal("a record with no slice number has no path to be written to; it must be refused")
+	}
 }
 
 func TestCommitWaveStagesOnlyTaskFilesAndBundle(t *testing.T) {

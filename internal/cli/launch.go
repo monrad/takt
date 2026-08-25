@@ -151,7 +151,7 @@ func launchWave(ctx context.Context, r *nextRun, d decide.Decision) int {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	_ = bundle.AppendEvent(r.bdir, "wave_dispatched", map[string]any{
-		keyWave: d.Wave, keyAttempt: attempt, keyTasks: ids,
+		keyWave: d.Wave, keySlice: slice, keyAttempt: attempt, keyTasks: ids,
 	})
 	return printOp(r.env, dispatchOp(r, d.Wave, slice, attempt, agents))
 }
@@ -210,7 +210,7 @@ func waveAttempt(st *bundle.State, ids []int, decided int) int {
 // tree is excluded from the baseline — see bundleTreeRel.
 func waveBaseline(ctx context.Context, r *nextRun, waveN int) ([]bundle.BaselineEntry, int, error) {
 	if aw := r.st.ActiveWave; aw != nil && aw.N == waveN {
-		return aw.Baseline, aw.Slice, nil
+		return aw.Baseline, sliceOf(aw), nil
 	}
 	if waveHasRun(r.st, waveN) {
 		parked, slice, err := wave.ReadBaseline(r.bdir, waveN)
@@ -238,6 +238,13 @@ func waveBaseline(ctx context.Context, r *nextRun, waveN int) ([]bundle.Baseline
 // the number a fresh launch counts itself from. Only a committed slice is
 // spent: a record that failed to commit is re-closed under its own number,
 // and one whose commit git cannot confirm is retired and closed again.
+//
+// The Committed filter is defence in depth rather than a live branch: an
+// uncommitted slice never reaches this path today, because the two ways it
+// can come back both bypass the count — a wave_failures retry parks its
+// slice number with the baseline, and clearWave only clears the wave (which
+// is what lets the next launch count at all) once it has a committed record
+// git confirms. The filter is what keeps that true if either ever changes.
 func committedSlices(bdir string, waveN int) (int, error) {
 	all, err := wave.AllCloses(bdir, waveN)
 	if err != nil {

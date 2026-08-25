@@ -85,7 +85,7 @@ type CloseFacts struct {
 	ReviewErrors []int
 }
 
-// WaveFacts is what is on disk for the active wave attempt.
+// WaveFacts is what is on disk for the active wave attempt and slice.
 type WaveFacts struct {
 	Recorded map[int]bool // task id → digest present for this attempt
 	Close    *CloseFacts  // nil until close-wave wrote the slice record
@@ -356,7 +356,11 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 				ctxSlug: st.Slug,
 				ctxWave: aw.N,
 				"tasks": c.ReviewErrors,
-				"error": "see waves/" + strconv.Itoa(aw.N) + "/close.s" + strconv.Itoa(aw.Slice) + ".json",
+				// max(1, …): a wave dispatched before per-slice records has
+				// slice 0, and the close that answers it is healed to 1
+				// (cli.sliceOf) — so that is the file to point the user at.
+				"error": "see waves/" + strconv.Itoa(aw.N) +
+					"/close.s" + strconv.Itoa(max(1, aw.Slice)) + ".json",
 			},
 		)
 	}
