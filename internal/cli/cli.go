@@ -45,6 +45,7 @@ var commands = map[string]command{
 	"init":    cmdInit,
 	"status":  cmdStatus,
 	"plan":    cmdPlan,
+	"doctor":  cmdDoctor,
 }
 
 // Main dispatches args[0] to a subcommand and returns the process exit code.
