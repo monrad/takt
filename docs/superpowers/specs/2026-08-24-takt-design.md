@@ -214,7 +214,9 @@ Field notes:
 - A close result of `rework` is **not** a task status: the task returns to `pending` with the review
   findings attached to its last digest, and `attempt` increments on re-dispatch.
 - `pending_gate` — `{id, opened_at, payload}` or null. While set, `takt next` re-renders the same `ask`.
-- `gates.<name> ∈ pending | ok | skipped`; derived from receipts, cached here for `status`.
+- `gates.<name> ∈ pending | ok | skipped | disabled`; derived from receipts at the phase transition (`ok` for an
+  approve receipt, `skipped` for an evidenced skip, `disabled` when the frozen config turned that review off),
+  cached here for `status`; doctor never flags a `disabled` gate.
 - `verified_sha` / `goals_checked_sha` — the HEAD at which finish-time verification / goal check passed;
   a new commit invalidates them.
 
@@ -223,7 +225,10 @@ Field notes:
 One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: `init`, `phase`, `goals_frozen`,
 `goals_amended`, `gate_reviewed`, `gate_skipped`, `gate_overridden`, `plan_loaded`, `wave_dispatched`,
 `task_recorded`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`, `retro`,
-`disposition`, `archived`, `lock_taken`, `recovered`. Nothing reads events to decide; they are the audit
+`disposition`, `archived`, `lock_taken`, `recovered`, `wave_committed`, `wave_close_unreconciled`,
+`review_skipped`, `plan_invalid`, `plan_attempts_reset`. Three decisions read events as their durable record —
+gate overrides (`gate_overridden`, required by §9), planner attempt counting (`plan_invalid` /
+`plan_attempts_reset`) and per-task review skips (`review_skipped`); everything else is the audit
 trail and the input for `takt status --history`.
 
 ### 4.5 Path rules
@@ -235,7 +240,15 @@ trail and the input for `takt status --history`.
 ### 4.6 Session lock
 
 `state.session = {id, host, heartbeat}`. `id` is `CLAUDE_CODE_SESSION_ID` when set, else a random id
-persisted in `TAKT_SESSION` for the process tree. Every `takt next` refreshes the heartbeat. If another
+persisted in `TAKT_SESSION` for the process tree. Every `takt next` refreshes the heartbeat in memory and
+persists it when the recorded one has aged past `lock_ttl / 2` (the lease-renewal window) or when anything
+else about the holder changed; any call that writes `state.json` for its own reasons — a phase transition, a
+wave launch or recovery, opening a gate, a lock takeover — carries the fresh heartbeat with it. A `next` that
+decides nothing writes nothing, so it leaves the bundle byte-identical; the cost is that a holder that has
+gone quiet is seen as live for between `lock_ttl / 2` and `lock_ttl` after its last call. A wave dispatch
+always persists, so the window in which a takeover would reset an in-flight wave (row 14) is unaffected.
+When neither variable is set takt invents an id per process; such a holder is treated as orphaned and taken
+over on the next call, which does rewrite `state.json`. If another
 id holds the lock with a heartbeat younger than `lock_ttl` (default 10 m), `next` returns
 `ask: owner` (take over with `--force` / abort / read-only). Advisory: it prevents two live sessions from
 driving one bundle by accident; it does not try to be NFS-safe.
@@ -268,7 +281,7 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 | command | effect |
 |---|---|
 | `takt init <topic…> [--slug s] [--autonomy auto\|step] [--no-review-…] [--no-goals] [--no-alignment]` | Creates the bundle in phase `brainstorm`, applies the branch rule, commits the bundle (if in-repo). Refuses if the slug exists. |
-| `takt next [--force] [--recover]` | Heartbeat, recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). Always returns in < 1 s. |
+| `takt next [--force] [--recover]` | Heartbeat (persisted only when the lease needs renewing — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the bundle byte-identical on disk. Always returns in < 1 s. |
 | `takt record --task N --attempt A (--status done\|failed\|blocked --summary "…" [--blockers "…"] \| --from <file>)` | Records an implementer result. `--from` parses the trailing `STATUS:` / `SUMMARY:` / `BLOCKERS:` lines of the agent's final message. A stale attempt is logged and ignored (exit 0, `"ignored": true`). |
 | `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor JSON; returns validation errors instead of failing. |
 | `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). |
