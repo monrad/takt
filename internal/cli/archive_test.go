@@ -282,6 +282,13 @@ func TestArchivedDiscardCleanupRunsAsPrinted(t *testing.T) {
 	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
 		t.Fatalf("the tree is clean before the hand-off runs: %q", s)
 	}
+	// The sweep clears the run's own untracked litter, nothing else: -x
+	// would add the power to delete files the base branch ignores under that
+	// path, which are not this run's to remove.
+	if sweep := cleanup[0].(string); !strings.Contains(sweep, "git clean -fd --") ||
+		strings.Contains(sweep, "-fdx") {
+		t.Fatalf("the discard sweep must not be forced past the base's ignores: %q", sweep)
+	}
 	if code, out := runShell(t, d.root, cleanup[0].(string)); code != 0 {
 		t.Fatalf("the printed cleanup must run as-is: exit %d\n%s", code, out)
 	}

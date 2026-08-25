@@ -271,12 +271,17 @@ func handOff(ctx context.Context, ws *workspace, st *bundle.State, held, flag, s
 // from a branch that no longer exists. Everything in them is already in the
 // .discarded copy. Scoped to the run's own bundle by pathspec; empty for an
 // external bundle, which the checkout never touches in the first place.
+//
+// -fd, not -fdx: with the run branch's .gitignore gone, the litter this
+// exists for is plain untracked. All -x would add is the power to delete
+// whatever the base branch ignores under that path — files this run never
+// made and has no business removing.
 func discardSweep(ws *workspace, bdir string) string {
 	rel := bundleRel(ws, bdir)
 	if rel == "" {
 		return ""
 	}
-	return "git clean -fdx -- " + rel
+	return "git clean -fd -- " + rel
 }
 
 // copyBundle copies the bundle tree to dst and drops a .gitignore beside it
