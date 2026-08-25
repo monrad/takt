@@ -129,3 +129,26 @@ func TestSkipAndOverrideSatisfy(t *testing.T) {
 		t.Fatal("a stale override must not satisfy")
 	}
 }
+
+func TestOverrideEventMalformedDataDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write(t, dir, "spec.md", "# spec\n")
+	h, _, _ := gate.Hash(gate.Spec, dir)
+	malformed := bundle.Event{
+		Type: "gate_overridden",
+		Data: map[string]any{"gate": []any{"spec"}, "hash": map[string]any{}},
+	}
+	if st, err := gate.Compute(dir, gate.Spec, []bundle.Event{malformed}); err != nil || st.Satisfied {
+		t.Fatalf("a malformed override must fail the match, not panic: %+v %v", st, err)
+	}
+	wellFormed := bundle.Event{Type: "gate_overridden", Data: map[string]any{"gate": "spec", "hash": h}}
+	if st, _ := gate.Compute(
+		dir,
+		gate.Spec,
+		[]bundle.Event{malformed, wellFormed},
+	); !st.Satisfied ||
+		st.Verdict != "overridden" {
+		t.Fatalf("a well-formed override alongside a malformed one must still satisfy: %+v", st)
+	}
+}

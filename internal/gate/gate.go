@@ -158,6 +158,16 @@ func WriteReceipt(bundleDir string, r Receipt) error {
 	return os.Rename(tmpName, receiptPath(bundleDir, r.Gate))
 }
 
+// eventString reads a string field out of an event's data map. Data is
+// map[string]any decoded from arbitrary JSON, so a malformed event can carry
+// a non-scalar value (an array or object) under a key we expect to be a
+// string; that dynamic type is not comparable, so a plain == on it would
+// panic. The comma-ok type assertion below fails the match instead.
+func eventString(e bundle.Event, key string) (string, bool) {
+	s, ok := e.Data[key].(string)
+	return s, ok
+}
+
 // Compute derives the gate's status from the current hash, the receipt and
 // any gate_overridden event (spec §9).
 func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
@@ -167,7 +177,9 @@ func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	}
 	st := Status{Hash: cur}
 	for _, e := range events {
-		if e.Type == "gate_overridden" && e.Data["gate"] == gate && e.Data["hash"] == cur {
+		g, gok := eventString(e, "gate")
+		hh, hok := eventString(e, "hash")
+		if e.Type == "gate_overridden" && gok && g == gate && hok && hh == cur {
 			return Status{Satisfied: true, Verdict: "overridden", Hash: cur}, nil
 		}
 	}
