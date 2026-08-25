@@ -292,10 +292,11 @@ func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, 
 // prompts, stdout and stderr land there and quote repo content, and spec
 // §13 says they are gitignored — but the bundle tree is staged wholesale by
 // every takt commit, so without an ignore file they are committed with it
-// (review I4). The pattern covers the .gitignore itself, which is the point:
-// nothing under logs/ is ever tracked, so a stray reviewer log can never
-// turn up in a diff.
-const logsIgnore = "*\n"
+// (review I4). `*` ignores everything under logs/, and `!.gitignore`
+// re-includes the rule file itself so it is committed with the bundle: an
+// ignore file that ignored itself would exist only on the machine that ran
+// init, and the first review after a clone would commit that clone's logs.
+const logsIgnore = "*\n!.gitignore\n"
 
 // writeLogsIgnore creates <bundle>/logs/.gitignore. The directory is created
 // here rather than waiting for the first review, so the ignore rule is in

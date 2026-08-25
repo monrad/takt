@@ -347,13 +347,17 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 	}
 	// Review I4 / spec §13: reviewer logs quote repo content and are
 	// gitignored. Every takt commit stages the bundle tree wholesale, so
-	// this is the assertion that keeps them out of it.
-	if logs := testutil.Git(t, root, "ls-files", "docs/takt/demo/logs"); logs != "" {
-		t.Fatalf("reviewer logs must never be committed: %q", logs)
+	// this is the assertion that keeps them out of it — the ignore file
+	// itself is the one thing under logs/ that is tracked, so that the rule
+	// travels with the bundle instead of living only on the machine that ran
+	// init.
+	if logs := testutil.Git(t, root, "ls-files", "docs/takt/demo/logs"); logs != "docs/takt/demo/logs/.gitignore" {
+		t.Fatalf("logs/ must hold exactly the tracked ignore rule, got %q", logs)
 	}
 	if _, serr := os.Stat(filepath.Join(bdir, "logs")); serr != nil {
 		t.Fatalf("the walk must have written reviewer logs at all: %v", serr)
 	}
+	assertCloneIgnoresLogs(t, root)
 	joined := strings.Join(d.ops, " ")
 	for _, kind := range []string{"run", "exec", "dispatch", "ask"} {
 		if !strings.Contains(joined, kind) {
@@ -459,5 +463,27 @@ func TestDisabledReviewsRecordDisabledGates(t *testing.T) {
 	dcode, findings, derrb := runIn(t, root, nil, "doctor", "--json")
 	if dcode != 0 {
 		t.Fatalf("doctor must not ask for a review this run switched off: %d %v %s", dcode, findings, derrb)
+	}
+}
+
+// assertCloneIgnoresLogs is the other half of the tracked-ignore rule: clone
+// the repo somewhere fresh, drop a reviewer log into the bundle's logs
+// directory, and the clone must still consider its tree clean. An ignore
+// file that ignored itself would never have been committed, so the clone
+// would have no rule at all and the next review there would commit its logs.
+func assertCloneIgnoresLogs(t *testing.T, root string) {
+	t.Helper()
+	clone := filepath.Join(t.TempDir(), "clone")
+	testutil.Git(t, root, "clone", "--quiet", root, clone)
+	rule, err := os.ReadFile(filepath.Join(clone, "docs", "takt", "demo", "logs", ".gitignore"))
+	if err != nil {
+		t.Fatalf("the ignore rule must travel with the bundle: %v", err)
+	}
+	if string(rule) != "*\n!.gitignore\n" {
+		t.Fatalf("logs/.gitignore = %q", rule)
+	}
+	testutil.WriteFile(t, clone, "docs/takt/demo/logs/x.stdout", "reviewer output\n")
+	if status := testutil.Git(t, clone, "status", "--porcelain"); status != "" {
+		t.Fatalf("a reviewer log in a fresh clone must be ignored, got %q", status)
 	}
 }
