@@ -87,7 +87,11 @@ release:
     owner: monrad
     name: takt
   draft: false
-  prerelease: auto
+  # No `prerelease: auto`: v1 does not support prerelease tags at all. The
+  # version is pinned to x.y.z in four places that must agree — setversion,
+  # manifest_test.go, and release.yml's gate — so a v0.2.0-rc1 tag is
+  # rejected by the gate long before goreleaser sees it. Supporting them
+  # means relaxing that shape everywhere, deliberately, not here.
   mode: replace
   name_template: "v{{ .Version }}"
 
@@ -97,6 +101,8 @@ release:
 # takes a tarball or the flake.
 homebrew_casks:
   - name: takt
+    # Plural: `binary:` is the deprecated singular in goreleaser 2.17 and
+    # fails `goreleaser check`.
     binaries:
       - takt
     ids:
@@ -109,9 +115,15 @@ homebrew_casks:
     directory: Casks
     homepage: https://github.com/monrad/takt
     description: Resumable brainstorm-plan-execute workflow with a deterministic Go core
-    license: mit
-    # Prereleases (v0.2.0-rc1 &c.) do not move the tap.
-    skip_upload: auto
+    # No `license:` — goreleaser accepts it but Homebrew casks have no license
+    # stanza, so it never reaches takt.rb. The licence lives in LICENSE and in
+    # the plugin manifests.
+    #
+    # Skip the tap when HOMEBREW_TAP_GITHUB_TOKEN is empty or unset, so a
+    # missing secret leaves the GitHub release intact instead of half
+    # publishing. `index` rather than `.Env.X` so an unset variable is "" and
+    # not a template error, which is the local `task snapshot` case.
+    skip_upload: '{{ if eq (index .Env "HOMEBREW_TAP_GITHUB_TOKEN") "" }}true{{ else }}false{{ end }}'
     hooks:
       post:
         # An unsigned binary downloaded by brew is quarantined by Gatekeeper;
