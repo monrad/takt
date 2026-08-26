@@ -32,6 +32,11 @@ const implementerTimeout = 10 * time.Minute
 // package's own waitDelay.
 const implementerKillDelay = 5 * time.Second
 
+// liveModel is the model liveCfg pins the plan's task class to: the model
+// the dispatch op names, the model the hook runs, and the model the digest
+// records — one fact, asserted in all three places.
+const liveModel = "haiku"
+
 // goTestTimeout bounds the final `go test ./...` in the finished repository.
 const goTestTimeout = 5 * time.Minute
 
@@ -41,8 +46,17 @@ const e2eMaxSteps = 60
 
 // liveCfg is the throwaway repository's .takt.json: the shipped reviewer
 // chain (copilot, then claude) instead of the fake every other test in this
-// package uses, and a max_parallel honest about a two-task plan.
-const liveCfg = `{"backends":{"reviewer":["copilot","claude"]},"max_parallel":2}`
+// package uses, a max_parallel honest about a two-task plan, and the plan's
+// task class pinned to haiku.
+//
+// That pin is what makes the run's own record true. The hook runs whatever
+// model the dispatch op names, and the digest records the model takt
+// resolved for the attempt — so with `bounded` left at its shipped sonnet,
+// a haiku hook would have made takt record a model that never saw the task.
+// Pinning the class instead keeps the run cheap AND keeps the two facts the
+// same one, which is what the assertions below check.
+const liveCfg = `{"backends":{"reviewer":["copilot","claude"]},"max_parallel":2,` +
+	`"agents":{"implementer":{"by_class":{"bounded":"haiku"}}}}`
 
 // liveGoMod and liveMain are the module the run adds a greeting to: real
 // enough that `go build ./...` and `go test ./...` mean something, small
@@ -168,14 +182,14 @@ func TestLiveEndToEnd(t *testing.T) {
 	logDir := t.TempDir()
 	t.Logf("live run: repo %s, agent logs %s", root, logDir)
 
-	runs := 0
+	var models []string // the model each live implementer was dispatched on
 	d := &driver{
 		t: t, root: root, bdir: bdir,
 		env:      map[string]string{"TAKT_SESSION": "live-0"},
 		takeover: true,
-		implement: func(brief, repo string) (string, error) {
-			runs++
-			return runImplementer(t, logDir, runs, brief, repo)
+		implement: func(brief, repo, model string) (string, error) {
+			models = append(models, model)
+			return runImplementer(t, logDir, len(models), brief, repo, model)
 		},
 	}
 
@@ -183,7 +197,7 @@ func TestLiveEndToEnd(t *testing.T) {
 	reason := playLive(t, d)
 	elapsed := time.Since(start)
 	t.Logf("ops: %s", strings.Join(d.ops, " "))
-	t.Logf("wall time: %s, live implementer runs: %d", elapsed.Round(time.Second), runs)
+	t.Logf("wall time: %s, live implementer runs: %v", elapsed.Round(time.Second), models)
 	if reason != stopArchived {
 		t.Fatalf("the live run must end archived, stopped %q", reason)
 	}
@@ -205,6 +219,16 @@ func TestLiveEndToEnd(t *testing.T) {
 		if tk.Status != bundle.StatusDone {
 			t.Fatalf("task %d is %s: %s", tk.ID, tk.Status, tk.LastDigest)
 		}
+		// The class is pinned to haiku and the hook runs the op's model, so
+		// the model the run recorded is the model that really wrote the
+		// code. (A task that needed a second attempt escalates one tier —
+		// escalate_on_retry — and would fail here, loudly and correctly.)
+		if m := recordedModel(t, tk); m != liveModel {
+			t.Errorf("task %d recorded model %q, want %q", tk.ID, m, liveModel)
+		}
+	}
+	if want := []string{liveModel, liveModel}; !slices.Equal(models, want) {
+		t.Errorf("the live implementers ran on %v, want %v", models, want)
 	}
 
 	t.Logf("git log:\n%s", testutil.Git(t, root, "log", "--oneline"))
@@ -354,17 +378,18 @@ func waveEvidence(t *testing.T, bdir string) string {
 	return b.String()
 }
 
-// runImplementer is the live hook: Claude Code, headless, on haiku, working
-// in the repository the run is driving. The brief takt rendered is the whole
+// runImplementer is the live hook: Claude Code, headless, on the model the
+// dispatch op picked for this task, working in the repository the run is
+// driving. The brief takt rendered is the whole
 // prompt and already ends with the STATUS / SUMMARY / BLOCKERS trailer
 // `takt record` parses, so stdout goes back as the agent's final message
 // with nothing added. Prompt, stdout and stderr are kept for the report.
-func runImplementer(t *testing.T, logDir string, n int, brief, repo string) (string, error) {
+func runImplementer(t *testing.T, logDir string, n int, brief, repo, model string) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), implementerTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "claude", "-p", brief,
-		"--model", "haiku",
+		"--model", model,
 		"--permission-mode", "acceptEdits",
 		"--allowedTools", "Read,Edit,Write,Bash,Grep,Glob",
 		"--no-session-persistence",
@@ -380,8 +405,8 @@ func runImplementer(t *testing.T, logDir string, n int, brief, repo string) (str
 	for ext, body := range map[string]string{"prompt": brief, "stdout": out.String(), "stderr": errb.String()} {
 		writeAt(t, filepath.Join(logDir, fmt.Sprintf("implementer-%d.%s", n, ext)), body)
 	}
-	t.Logf("implementer %d: %s, %d bytes of stdout, %s",
-		n, elapsed.Round(time.Second), out.Len(), reportLine(out.String()))
+	t.Logf("implementer %d on %s: %s, %d bytes of stdout, %s",
+		n, model, elapsed.Round(time.Second), out.Len(), reportLine(out.String()))
 
 	if out.Len() == 0 && err != nil {
 		return "", fmt.Errorf("claude -p: %w (stderr: %s)", err, strings.TrimSpace(errb.String()))

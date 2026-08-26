@@ -42,11 +42,14 @@ type driver struct {
 	// every takeover presents an id this run has never seen.
 	sessions int
 	// implement, when set, is what plays one implementer of a wave dispatch:
-	// it is handed the brief the op named (its contents, not its path) and
-	// the repository root, and returns the agent's final message. The live
-	// end-to-end test wires a real `claude -p` run in here. Nil keeps the
-	// scripted stand-in, which writes the declared files itself.
-	implement func(brief, repo string) (string, error)
+	// it is handed the brief the op named (its contents, not its path), the
+	// repository root, and the model the op picked for that task, and
+	// returns the agent's final message. The model travels with the brief so
+	// that the agent which really runs is the one takt said it dispatched —
+	// see TestImplementHookGetsTheOpsModel. The live end-to-end test wires a
+	// real `claude -p` run in here. Nil keeps the scripted stand-in, which
+	// writes the declared files itself.
+	implement func(brief, repo, model string) (string, error)
 }
 
 func (d *driver) cmd(args ...string) (int, map[string]any, string) {
@@ -385,7 +388,7 @@ func (d *driver) playImplementer(o, ag map[string]any) {
 		if err != nil {
 			d.t.Fatal(err)
 		}
-		final, err := d.implement(string(b), d.root)
+		final, err := d.implement(string(b), d.root, opText(ag["model"]))
 		if err != nil {
 			d.t.Fatalf("implementer for task %v: %v", ag["task"], err)
 		}
@@ -533,6 +536,19 @@ func declaredFiles(t *testing.T, briefPath string) []string {
 		t.Fatalf("no declared files in %s:\n%s", briefPath, b)
 	}
 	return files
+}
+
+// recordedModel is the model a task's last digest says ran. `takt status`
+// reads the same field back out of the same bytes.
+func recordedModel(t *testing.T, tk bundle.Task) string {
+	t.Helper()
+	var d struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(tk.LastDigest, &d); err != nil {
+		t.Fatalf("task %d has no readable digest: %v (%s)", tk.ID, err, tk.LastDigest)
+	}
+	return d.Model
 }
 
 // writeAt writes content to an absolute path an op named; op paths are
@@ -811,5 +827,74 @@ func assertCloneIgnoresLogs(t *testing.T, root string) {
 	testutil.WriteFile(t, clone, "docs/takt/demo/logs/x.stdout", "reviewer output\n")
 	if status := testutil.Git(t, clone, "status", "--porcelain"); status != "" {
 		t.Fatalf("a reviewer log in a fresh clone must be ignored, got %q", status)
+	}
+}
+
+// byClassCfg pins one task class to a model that is neither the shipped
+// default for that class (sonnet) nor the implementer default (opus), so a
+// model seen downstream can only have come from the by_class map (spec D22).
+const byClassCfg = `{"backends":{"reviewer":["fake"]},` +
+	`"agents":{"implementer":{"by_class":{"bounded":"haiku"}}}}`
+
+// TestImplementHookGetsTheOpsModel is the seam the live end-to-end test
+// hangs its implementers on: the model `takt next` picked for a task has to
+// reach the agent that really runs, and the digest has to record that same
+// model. Without the model travelling with the brief, a hook could run on
+// anything at all while the digest went on claiming what the config said —
+// so `takt status` would name a model that never saw the task.
+//
+// The config pins class `bounded` to haiku, which validIndex's task 1 is, so
+// the model asserted here cannot have come from a default anywhere.
+func TestImplementHookGetsTheOpsModel(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	testutil.WriteFile(t, root, ".takt.json", byClassCfg)
+	testutil.Commit(t, root, "config")
+	if code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "Add a greeting"); code != 0 {
+		t.Fatal(errb)
+	}
+	bdir := filepath.Join(root, "docs", "takt", "demo")
+
+	var got []string
+	d := &driver{
+		t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"},
+		implement: func(_, _, model string) (string, error) {
+			got = append(got, model)
+			return "STATUS: done\nSUMMARY: implemented\nBLOCKERS: none\n", nil
+		},
+	}
+
+	var disp map[string]any
+	for range 40 {
+		o := d.nextOp()
+		if isImplementerDispatch(t, o) {
+			disp = o
+			break
+		}
+		if reason, stopped := d.step(o); stopped {
+			t.Fatalf("the run stopped (%s) before dispatching a wave: %v", reason, d.ops)
+		}
+	}
+	if disp == nil {
+		t.Fatalf("never reached a wave dispatch: %v", d.ops)
+	}
+	if ag := agentsOf(t, disp)[0]; ag["model"] != "haiku" {
+		t.Fatalf("the by_class override must reach the dispatch op: %v", ag)
+	}
+
+	d.dispatch(disp)
+	if !slices.Equal(got, []string{"haiku"}) {
+		t.Fatalf("the hook was handed %v, want the op's own model", got)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk := st.Task(1)
+	if tk == nil {
+		t.Fatal("task 1 is not in the run")
+	}
+	if m := recordedModel(t, *tk); m != "haiku" {
+		t.Fatalf("the digest recorded %q, want the model the agent ran on", m)
 	}
 }
