@@ -1,5 +1,257 @@
 # takt
 
-Resumable brainstorm → plan → execute → finish for Claude Code, with a deterministic Go core.
+takt runs long, multi-step coding work as a resumable **brainstorm → plan → execute → finish** loop on a
+durable run bundle. It is a Claude Code plugin (a command prompt plus four agent definitions) and a Go
+binary: Claude Code drives every phase, but the binary decides and records every state change, subagents
+implement, and headless reviewers judge. Every phase is resumable — a crash, a compaction, or a brand new
+session picks the run back up with `/takt` and nothing is lost or done twice.
 
 Design: [docs/superpowers/specs/2026-08-24-takt-design.md](docs/superpowers/specs/2026-08-24-takt-design.md)
+
+---
+
+## Install
+
+The `takt` binary needs to be on `PATH`. Pick one:
+
+**Nix** (imperative):
+
+```sh
+nix profile install github:monrad/takt
+```
+
+**Nix** (flake input, for a home-manager or NixOS configuration):
+
+```nix
+{
+  inputs.takt.url = "github:monrad/takt";
+  # ...
+  outputs = { self, nixpkgs, takt, ... }: {
+    # home-manager:
+    homeConfigurations.you.home.packages = [ takt.packages.${system}.default ];
+    # or, via the overlay, if you'd rather reach it as pkgs.takt:
+    # nixpkgs.overlays = [ takt.overlays.default ];
+  };
+}
+```
+
+**Homebrew** (macOS and Linuxbrew — a cask, not a formula: goreleaser 2.17 deprecated `brews` in favour of
+`homebrew_casks`):
+
+```sh
+brew install monrad/tap/takt
+```
+
+**Go** (anyone with a Go toolchain):
+
+```sh
+go install github.com/monrad/takt/cmd/takt@latest
+```
+
+Pin a version with `@v0.1.0` instead of `@latest` — `go install` stamps nothing into the binary, but
+`takt version` recovers the exact tag from the module's own build info, so a pinned install still reports
+its real version.
+
+## Install the plugin
+
+The plugin (the `/takt` command and its four agent definitions) is installed from the same repository, via
+its own marketplace. In Claude Code:
+
+```
+/plugin marketplace add monrad/takt
+/plugin install takt@monrad-takt
+```
+
+(or, from a shell: `claude plugin marketplace add monrad/takt` then
+`claude plugin install takt@monrad-takt`.)
+
+For local development against a checkout instead of GitHub, add the marketplace from the path:
+
+```
+/plugin marketplace add /path/to/takt
+```
+
+`claude plugin validate .`, run from the repo root, checks the plugin and marketplace manifests without
+installing anything — useful after editing either one by hand.
+
+The plugin depends on `superpowers` (`claude-plugins-official`); Claude Code installs it automatically as
+part of installing `takt`.
+
+## Use
+
+- `/takt "<topic>"` — starts a new run: `takt init` creates the bundle, then the loop begins.
+- `/takt` — resumes whatever run is in progress (or asks which, if there's more than one).
+- `/takt status` — one-screen report: phase, branch, task counts, the open gate, goal verdicts.
+- `/takt doctor` — read-only health checks across every bundle in the repository; exits non-zero on an
+  ERROR finding.
+- `/takt waive <N> "<reason>"` — marks a blocked or failed task waived, so the run can continue past it.
+- `/takt unlock` — clears a stale session lock (another session died mid-run and left it held).
+
+Everything else — dispatching agents, running gate reviews, verifying, committing — happens inside the
+binary; the plugin prompt only executes the op `takt next` hands it and asks the user when a gate needs an
+answer.
+
+The run bundle lives at `<dir>/<slug>/` in the repository, where `<dir>` defaults to `docs/takt` (see `dir`
+below) — a relative `dir` is committed with the code; an absolute or `~`-prefixed one keeps bundles outside
+git entirely.
+
+### `.takt.json`
+
+Repo config (`<repo>/.takt.json`, committed) is for what a team shares — the bundle directory, which gates
+are on. User config (`~/.config/takt/config.json`) is for machine/account facts — models, backend timeouts.
+Precedence is flags › environment › `.takt.json` › user config › the defaults below. Every key and its
+shipped default:
+
+```json
+{
+  "dir": "docs/takt",
+  "autonomy": "auto",
+  "review": { "spec": true, "plan": true, "tasks": true },
+  "goals": true,
+  "alignment": true,
+  "max_parallel": 8,
+  "max_rework": 1,
+  "max_files_per_task": 12,
+  "wave_stale_after": "30m",
+  "lock_ttl": "10m",
+  "verify_timeout": "10m",
+  "default_branch": "",
+  "backends": {
+    "reviewer": ["copilot", "claude"],
+    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "5m" },
+    "claude":  { "model": "opus", "effort": "high", "timeout": "5m" }
+  },
+  "agents": {
+    "implementer": {
+      "model": "opus",
+      "by_class": { "mechanical": "haiku", "bounded": "sonnet", "test": "sonnet", "docs": "sonnet" },
+      "escalate_on_retry": true
+    },
+    "planner": { "model": "fable" },
+    "goal-assessor": { "model": "sonnet" },
+    "alignment-auditor": { "model": "sonnet" }
+  }
+}
+```
+
+| key | default | meaning |
+|---|---|---|
+| `dir` | `"docs/takt"` | Where run bundles live — relative (committed) or absolute/`~` (external, gitignored). |
+| `autonomy` | `"auto"` | `"auto"` runs ops back to back; `"step"` asks "continue?" before each wave dispatch. Neither skips a gate. |
+| `review.spec` | `true` | Headless review gate on the brainstormed spec before planning. |
+| `review.plan` | `true` | Headless review gate on the plan index before execution. |
+| `review.tasks` | `true` | Per-task cross-vendor review at the end of each wave. |
+| `goals` | `true` | goal-assessor verdict per goal at finish, before disposition. |
+| `alignment` | `true` | End-of-planning audit of the merged plan against the original request. |
+| `max_parallel` | `8` | Most tasks dispatched as concurrent subagents in one wave. |
+| `max_rework` | `1` | Rework rounds a task gets from review before it counts as a wave failure. |
+| `max_files_per_task` | `12` | Plan validation caps how many files one task may declare — over this, split the task. |
+| `wave_stale_after` | `"30m"` | How old an `active_wave` with a dead session must be before it's treated as abandoned. |
+| `lock_ttl` | `"10m"` | How long a session's heartbeat lease is honored before another session (or `--force`) may take over. |
+| `verify_timeout` | `"10m"` | Deadline for one verify command. |
+| `default_branch` | `""` | Empty means unset (`origin/HEAD` is auto-detected); set it when takt can't resolve that on its own. |
+| `backends.reviewer` | `["copilot","claude"]` | Fallback order: the first healthy reviewer in the list runs. |
+| `backends.copilot.model` | `"gpt-5.6-sol"` | Model the `copilot` reviewer is invoked with. |
+| `backends.copilot.effort` | `"high"` | Effort level passed to the `copilot` reviewer. |
+| `backends.copilot.timeout` | `"5m"` | Deadline for one `copilot` review call. |
+| `backends.claude.model` | `"opus"` | Model the `claude` reviewer is invoked with. |
+| `backends.claude.effort` | `"high"` | Effort level passed to the `claude` reviewer. |
+| `backends.claude.timeout` | `"5m"` | Deadline for one `claude` review call. |
+| `agents.implementer.model` | `"opus"` | Implementer model for the `implement` class and any class missing from `by_class`. |
+| `agents.implementer.by_class` | mechanical→haiku, bounded/test/docs→sonnet | Per-task-class model override (spec D22). |
+| `agents.implementer.escalate_on_retry` | `true` | On a reworked task's retry, bump the model one tier (haiku→sonnet→opus); opus stays opus, Fable is never chosen automatically. |
+| `agents.planner.model` | `"fable"` | Model for the planner agent — set to `opus` on an account without Claude Fable 5. |
+| `agents.goal-assessor.model` | `"sonnet"` | Model for the goal-assessor agent. |
+| `agents.alignment-auditor.model` | `"sonnet"` | Model for the alignment-auditor agent. |
+
+`autonomy`, `review.*`, `goals`, `alignment`, `max_parallel` and `max_rework` are frozen into the bundle's
+`state.json` at `init`, so editing `.takt.json` mid-run never changes that run's behaviour.
+
+## Reviewers
+
+Every gate (spec, plan, per-task) runs through `config.backends.reviewer`'s ordered chain — shipped as
+`["copilot", "claude"]`. takt tries each in order and uses the first one whose CLI is on `PATH` and answers
+`--version`; a review that actually runs and returns `error` does **not** fall through to the next backend
+— that failure is surfaced, not silently retried on another vendor. If neither backend is healthy, the
+review itself fails with an evidenced skip: the error names *why* each one in the chain was skipped (not
+found, or its health probe failed), so the failure is diagnosable from the message alone rather than a bare
+"no reviewer available".
+
+## Releasing
+
+This is the maintainer's checklist — none of it is automatic for a fresh clone of this repository. Manual,
+one-time setup:
+
+1. Create `github.com/monrad/takt` and add it as the `origin` remote.
+2. Create `monrad/homebrew-tap` (empty is fine — goreleaser creates `Casks/takt.rb` there on first
+   release).
+3. Add a repo secret `HOMEBREW_TAP_GITHUB_TOKEN` — a PAT with `contents:write` on `monrad/homebrew-tap` —
+   to the `takt` repo. Without it, the release workflow's Homebrew cask step is skipped and the GitHub
+   release still happens; with it, `brew install monrad/tap/takt` starts working after the first tag.
+
+Per release:
+
+1. `task version:set VERSION=x.y.z` — rewrites `.claude-plugin/plugin.json` and
+   `.claude-plugin/marketplace.json`'s version fields (the only two files that carry the version by hand).
+2. Commit the manifests.
+3. `git tag vx.y.z` — this is the tag `.github/workflows/release.yml` watches for (`tags: ["v*"]`).
+   `claude plugin tag --dry-run` is worth running first, as an extra manifest-agreement check beside
+   `task version:set` — but it names its own tag `takt--v<version>`, a different shape than this repo's
+   release workflow expects, so it's a validation step here, not a substitute for the `git tag` above.
+4. `git push origin vx.y.z` (and the commit, if not already pushed).
+
+Pushing the tag is what `.github/workflows/release.yml` reacts to (`on: push: tags: ["v*"]`). It:
+
+1. Re-derives the version from the tag and fails immediately if `plugin.json` or `marketplace.json`
+   disagrees with it — before running `go vet`, lint or tests.
+2. Runs `go vet`, `golangci-lint` (pinned to v2.13.1) and `go test ./... -race -count=1`.
+3. Runs `goreleaser release --clean`: builds `takt` for linux/darwin × amd64/arm64, publishes a GitHub
+   release with a changelog grouped by commit type, and pushes a Homebrew cask to `monrad/homebrew-tap`
+   (skipped without the secret above).
+
+v1 supports stable `vX.Y.Z` tags only — there is no prerelease channel. A `v0.2.0-rc1` tag fails the
+version-agreement gate before goreleaser ever runs, because the version is pinned to the `x.y.z` shape in
+four places (`setversion`, the two manifests, and the release gate itself) that would all need to relax
+together to support it.
+
+`task snapshot` builds an unpublished, unpushed snapshot with goreleaser locally (`dist/`) — useful for
+checking the release build works before tagging anything.
+
+## Coexistence with masterplan
+
+takt ignores `docs/masterplan/**` entirely. Existing masterplan bundles are not imported — finish them
+under masterplan or archive them by hand. The masterplan plugin can stay installed alongside takt; the two
+share no commands, agents, or state, but only one of them should be driving a given branch at a time.
+
+## Development
+
+```sh
+task check     # go build ./... && go test ./... -race -count=1 && golangci-lint run ./...
+nix develop    # a shell with go, golangci-lint, goreleaser, go-task and gh on PATH
+```
+
+`nix develop`'s golangci-lint is pinned through `flake.lock` to match `.golangci.yml`'s golden config
+(v2.13.1) exactly; running `nix flake update` can move it to a newer nixpkgs release and off that pin —
+check `.golangci.yml`'s header comment after updating, and if it's drifted, either hold nixpkgs back or
+update the golden config to match.
+
+The hermetic suite (`go test ./...`) never touches the network or spends money. Two more suites are
+opt-in, gated behind environment variables specifically so `go test ./...` alone never runs them:
+
+```sh
+# Reviewer smokes: needs both the `copilot` and `claude` CLIs on PATH and logged in.
+TAKT_LIVE=1 go test ./internal/backend/ -run TestLive
+
+# The full loop against real agents: a throwaway repo, two `haiku` implementers doing
+# real work, and a real reviewer at each gate. Roughly 90 seconds, a few cents to a
+# dollar in API usage.
+TAKT_E2E=1 go test ./internal/cli/ -run TestLiveEndToEnd -timeout 45m
+```
+
+Set `TAKT_E2E_LOGDIR=<dir>` to keep the live implementers' prompts, stdout and stderr after the run —
+without it they go to a temp directory the test framework deletes on the way out.
+
+The live implementer runs `claude -p` with `--permission-mode acceptEdits` and Bash access, in the
+throwaway repo, under the developer's real `HOME` (the reviewer CLIs need real credentials to answer at
+all). Nothing sandboxes that process itself: the brief says what to touch and the wave's own scope check
+reverts anything outside it, but it's that confinement doing the work, not the process.

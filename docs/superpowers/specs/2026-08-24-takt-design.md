@@ -118,7 +118,16 @@ internal/backend/                   Reviewer interface; claudecli, copilotcli, f
 internal/gitx/                      exec wrapper
 internal/doctor/
 internal/goals/                     goals.md parsing, hashing
+internal/prompt/                    parses commands/takt.md, the agent defs and the manifests for the
+                                     op/gate-parity, handshake and version-agreement tests (§14)
+internal/tools/setversion/          `task version:set` — the one thing that rewrites the two manifests'
+                                     version fields
 flake.nix                           packages.default via buildGoModule
+.goreleaser.yaml                    release build: GitHub release + the monrad/homebrew-tap cask (§15)
+.github/workflows/                  ci.yml (vet/lint/test) and release.yml (the tag-version gate, then
+                                     goreleaser)
+Taskfile.yml                        build, test, lint, check, snapshot, version:set
+LICENSE                             MIT
 docs/superpowers/specs/             this document
 ```
 
@@ -483,7 +492,10 @@ and goal-assessor dispatches never carry it.
 
 Deliberately short — an op table and a list of invariants, no phase logic. Contents, in order:
 
-1. **Handshake.** `takt version --expect <plugin version>`; on mismatch, print the hint and stop.
+1. **Handshake.** `takt version --expect-manifest "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"`
+   (reads the manifest's own `version` field, rather than a value threaded through the prompt; an
+   unstamped `0.0.0-dev` binary — a local build — matches any manifest, in dev mode, and the reply
+   carries `"dev": true`); on mismatch, print the hint and stop.
 2. **Verb parsing.** `/takt` → loop. `/takt <topic…>` → `takt init "<topic>"` then loop. `/takt status`,
    `/takt doctor`, `/takt waive N "reason"`, `/takt unlock` → the command, print, stop.
 3. **The loop.** `takt next` → execute the op per the table → repeat, until `ask` or `stop`.
@@ -760,6 +772,11 @@ slice, which keeps every commit verified.
      outcome from git each time, so an effect that could not land the first try (the primary was busy, the
      merge conflicted) is simply retried, and `stop`'s `context` always reflects git as it stands right
      now rather than a stale claim. The working tree is clean after archive for every choice.
+   - The `archive` commit itself is re-taken on the same terms: a later `takt next` on the archived run
+     that finds anything dirty in git under the bundle directory redoes it, so a file dropped there after
+     archiving — the bundle directory is otherwise untouched once archived — is swept into a second
+     `archive` commit that carries it, rather than sitting as untracked litter forever (this is also what
+     recovers a run whose first `archive` commit never landed at all — §11's `state-schema` check).
 
 ---
 
@@ -902,14 +919,17 @@ maps it to a model, and a retry escalates a tier (D22).
 
 ## 11. Doctor and status
 
-`takt doctor` runs six checks over every non-archived bundle in the resolved directory (and, with
-`--all`, archived ones), printing `PASS | WARN | ERROR <check>: <message>` lines and exiting 1 on any
-ERROR. `index-lock` is the exception: `.git/index.lock` governs the whole repository, not one bundle, so
-it runs once per invocation rather than once per bundle.
+`takt doctor` runs six checks over every non-archived bundle in the resolved directory; archived bundles
+are skipped unless `--all` — with one exception: an archived bundle the `Dirty` hook reports as still
+having something outstanding under it in git gets `state-schema` run against it regardless, because that
+bundle's own `archive` commit never landed and no command but `doctor` would otherwise notice (§7.5 step
+5). It prints `PASS | WARN | ERROR <check>: <message>` lines and exits 1 on any ERROR. `index-lock` is
+repo-wide: `.git/index.lock` governs the whole repository, not one bundle, so it runs once per invocation
+rather than once per bundle.
 
 | check | condition |
 |---|---|
-| `state-schema` | `state.json` parses and validates; `phase` is a known value; tasks reference existing waves; WARNs when `active_wave.slice` is 0 — the bundle predates per-slice close records; the next `close-wave` records it as slice 1 |
+| `state-schema` | `state.json` parses and validates; `phase` is a known value; tasks reference existing waves; WARNs when `active_wave.slice` is 0 — the bundle predates per-slice close records; the next `close-wave` records it as slice 1; ERRORs "archived run has an uncommitted bundle" when an archived run's `archive` commit never landed — `takt next --slug <slug>` takes it again |
 | `stale-wave` | `active_wave` older than `wave_stale_after` with a dead session (heartbeat > `lock_ttl`) |
 | `index-staleness` | `plan.index.json.spec_hash` ≠ `sha256(spec.md)`, or a gate receipt hash ≠ current hash while `state.gates` says `ok`; skipped for an archived run — its artifacts are frozen history, so a later edit on the same branch must not re-arm its gates |
 | `branch` | `state.branch` and `base_sha` resolve; the cwd worktree is on `state.branch` (WARN if not) |
@@ -1004,11 +1024,11 @@ into `state.config` at `init` so a config change mid-run does not change the run
 | `plan` | Validation fixtures (valid; overlap without order; cycle; bad paths; too many files; goal not served); wave assignment against hand-computed expectations; the cedar-policy-2154 index (converted) as a realistic fixture. |
 | `bundle` | Round-trip, atomicity (crash injection between write and rename), lock semantics, dir resolution precedence, external-dir mode. |
 | `wave` | Temp git repos (`t.TempDir()` + `git init`): scripted "agents" that edit in scope, out of scope, create untracked files, and change nothing; scope verify and revert; verify runner with a failing command; commit staging never includes baseline-dirty files. |
-| `backend` | `fake` reviewer driven by a fixture file; parsing of fenced JSON; timeout → `error`; one live smoke per backend behind `TAKT_LIVE=1`. |
+| `backend` | `fake` reviewer driven by a fixture file; parsing of fenced JSON; timeout → `error`; live behind `TAKT_LIVE=1`: one review smoke per backend (`TestLiveCopilotReviewsASpec`, `TestLiveClaudeReviewsASpec`) plus the copilot→claude fallback order against the real `claude` binary (`TestLiveFallbackOrder`). |
 | `brief` | Golden files for every template; the delimiter token never collides with content. |
-| `prompt` | Parse `commands/takt.md`; assert every op kind and every gate id `decide` can emit is present. |
+| `prompt` | Parse `commands/takt.md`; assert every op kind, gate id, run step, exec command and stop reason `decide` can emit is present, and that the handshake, verb and invariant lines hold (`TestPromptNamesEveryOpGateStepAndReason`, `TestPromptHandshakeVerbsAndInvariants`); agent frontmatter matches spec §3.3 (`TestAgentDefinitionsMatchSpec`); `plugin.json` and `marketplace.json` agree on version (`TestPluginManifestsAgreeOnVersion`); `flake.nix` and `.goreleaser.yaml` both stamp it (`TestFlakeReadsThePluginVersion`, `TestGoreleaserStampsTheVersion`). |
 | `cli` | Golden stdout/stderr per command; exit codes. |
-| e2e (opt-in, `TAKT_E2E=1`) | A throwaway repo, a two-wave plan, `haiku` implementers via a session-less driver that executes ops like the prompt would; kill/resume at each op boundary (G1). |
+| e2e (opt-in, `TAKT_E2E=1`) | A throwaway repo, a two-wave plan, `haiku` implementers via a session-less driver that executes ops like the prompt would; kill/resume at each op boundary (G1) (`TestLiveEndToEnd`). |
 
 CI: `go vet`, `golangci-lint`, `go test ./...`.
 
@@ -1023,11 +1043,28 @@ false positives excluded — is the default; linters are toggled only with a com
 
 ## 15. Distribution and versioning
 
-- `flake.nix`: `packages.default = buildGoModule …`; the author's home-manager adds it to PATH.
-  `go install github.com/monrad/takt/cmd/takt@<tag>` for everyone else.
+- `flake.nix`: `packages.default = buildGoModule …`, its version read straight out of
+  `.claude-plugin/plugin.json` and stamped into the binary via `-ldflags`; the author's home-manager adds
+  it to PATH. `go install github.com/monrad/takt/cmd/takt@<tag>` stamps nothing, so `takt version`
+  recovers the same version from the module release info that `go install` itself resolved — for
+  everyone else.
+- `.goreleaser.yaml` builds the tagged release for linux/darwin × amd64/arm64, publishes it as a GitHub
+  release, and pushes a Homebrew cask (`brew install monrad/tap/takt`) to `monrad/homebrew-tap` when
+  `HOMEBREW_TAP_GITHUB_TOKEN` is set — unset, the cask step is skipped and the GitHub release still
+  happens. v1 supports stable `vX.Y.Z` tags only; there is no prerelease channel (`v0.2.0-rc1` is
+  rejected before goreleaser ever sees it — see the release-workflow gate below).
 - The plugin (`commands/`, `agents/`, `.claude-plugin/`) is installed from the same repo via the in-repo
   marketplace; `plugin.json.version` equals the Go version (`takt version`), both stamped from the git tag
-  at release. The prompt's first line runs `takt version --expect <that version>`.
+  at release. The prompt's first line runs
+  `takt version --expect-manifest "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"` (§6), which reads
+  the manifest's own `version` rather than a value threaded through the prompt; an unstamped
+  `0.0.0-dev` binary matches any manifest, in dev mode.
+- `task version:set VERSION=x.y.z` (`internal/tools/setversion`) is the one place that rewrites
+  `plugin.json` and `marketplace.json`'s version fields; `flake.nix` and the `--expect-manifest` handshake
+  both read them back, so nothing else may hand-edit a version string.
+  `.github/workflows/release.yml`'s `check` job derives the version from the pushed tag
+  (`GITHUB_REF_NAME`) and fails — before build, lint or goreleaser run — if either manifest disagrees
+  with it, naming the mismatch and the `task version:set` command that fixes it.
 - Semantic versions; `state.schema` bumps only with a migration in `bundle`, and takt refuses bundles
   with a newer schema.
 
