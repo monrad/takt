@@ -468,7 +468,8 @@ the caller gets the first real op of the new phase in the same call.
 - **Every op is safe to execute twice.** `dispatch` carries an attempt number; `record` ignores stale
   attempts. `answer` on a gate that is no longer pending is a no-op with `"ignored": true`. `done` on a
   step already done is a no-op. `exec` commands are re-runnable: `close-wave` re-verifies from the same
-  baseline; `review` overwrites the receipt at the same hash; `verify` re-runs.
+  baseline; `review` at the current hash returns the cached receipt (`cached: true`) unless `--force`
+  is given; `verify` re-runs.
 - **A crash between "agents finished" and "recorded"** leaves `active_wave` with unrecorded tasks. Row 13
   waits; row 14 recovers by resetting only those tasks' declared files (`git checkout -- <files>` for
   tracked, delete for untracked-in-scope) and re-dispatching them. Because agents never commit, nothing
