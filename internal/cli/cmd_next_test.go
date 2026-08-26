@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -390,6 +391,77 @@ func TestReviewReworkOpensGateAndOverrideClearsIt(t *testing.T) {
 	_ = bundle.SaveState(bdir, st)
 	if _, o, _ = next(t, root, nil); o["op"] != "exec" {
 		t.Fatalf("edited spec must re-arm the gate: %v", o)
+	}
+}
+
+func TestReviewIsIdempotentAtAHash(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	rework := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"too vague","findings":[]}`}
+	approve := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"approve","summary":"fine","findings":[]}`}
+	if c, r, e := runIn(
+		t,
+		root,
+		rework,
+		"review",
+		"spec",
+		"--slug",
+		"demo",
+	); c != 0 || r["verdict"] != "rework" ||
+		r["cached"] != nil {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	head := testutil.Git(t, root, "rev-parse", "HEAD")
+	first, err := os.ReadFile(filepath.Join(bdir, "gates", "spec.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same hash, no --force: the receipt answers; the backend does not run
+	// (it would approve now), nothing is written, nothing is committed.
+	c, r, e := runIn(t, root, approve, "review", "spec", "--slug", "demo")
+	if c != 0 || r["cached"] != true || r["verdict"] != "rework" || r["receipt"] != "gates/spec.json" {
+		t.Fatalf("cached review: %d %v %s", c, r, e)
+	}
+	if testutil.Git(t, root, "rev-parse", "HEAD") != head {
+		t.Fatal("a cached review must not commit")
+	}
+	if again, _ := os.ReadFile(filepath.Join(bdir, "gates", "spec.json")); !bytes.Equal(first, again) {
+		t.Fatal("a cached review must not rewrite the receipt")
+	}
+	// --force re-runs at the same hash and commits the new receipt.
+	if c, r, e = runIn(
+		t,
+		root,
+		approve,
+		"review",
+		"spec",
+		"--force",
+		"--slug",
+		"demo",
+	); c != 0 || r["cached"] != nil ||
+		r["verdict"] != "approve" {
+		t.Fatalf("forced review: %d %v %s", c, r, e)
+	}
+	if testutil.Git(t, root, "rev-parse", "HEAD") == head {
+		t.Fatal("a forced review must commit its receipt")
+	}
+	// An edit changes the hash: the cache does not apply.
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec v2\n")
+	if c, r, e = runIn(
+		t,
+		root,
+		rework,
+		"review",
+		"spec",
+		"--slug",
+		"demo",
+	); c != 0 || r["cached"] != nil ||
+		r["verdict"] != "rework" {
+		t.Fatalf("review after edit: %d %v %s", c, r, e)
 	}
 }
 

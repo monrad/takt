@@ -325,7 +325,7 @@ also how a choice carries its argument where it needs one: `no_verification`'s *
 its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt done --step <id> [--url <pr-url>]` | Marks an LLM-side `run` step complete (brainstorm, goals, retro, push_pr). For `goals`, freezes `goals.md` (hash). `push_pr` requires `--url`. A `done` for a step already closed against the same artifact is a no-op (`ignored: true`); `push_pr` is the one exception — a repeat with the *same* URL is the no-op, a *different* URL (a re-opened or replaced pull request) is a new `done`, since the URL is `push_pr`'s only artifact. |
 | `takt close-wave` | The long half of a wave (§7.4): scope verify, verify commands, reviews, commit. Launched by the session in the background from an `exec` op. |
-| `takt review spec\|plan [--skip --reason "…"]` | Runs the gate review headless and writes the receipt (`exec` op). `--skip` records an evidenced skip (§9) instead of running. |
+| `takt review spec\|plan [--skip --reason "…"] [--force]` | Runs the gate review headless and writes the receipt (`exec` op). `--skip` records an evidenced skip (§9) instead of running. At a hash that already has a receipt with a reviewer's verdict (approve, rework, reject) the command returns that receipt with "cached": true, runs nothing and commits nothing; --force re-runs. An error verdict or an evidenced skip never counts as an answer. |
 | `takt verify` | Runs the union of all tasks' verify commands (plus any the user supplied through `no_verification`'s *specify*) at HEAD; records `finish/verify.json` and, on pass, `verified_sha`. `exec` op. |
 | `takt waive --task N --reason "…"` | Marks a blocked/failed task waived. |
 | `takt status [--json] [--history]` | One-screen report; no writes. |
@@ -479,6 +479,8 @@ the caller gets the first real op of the new phase in the same call.
   the skill (the spec file is either there or not).
 - **Compaction** is not a crash: the session id is stable, `next` re-derives the op from disk, and the
   prompt's op table needs no conversation history.
+- exec review — a replay at the same hash returns the existing receipt (cached: true) instead of a second
+  backend call and a second reviewed commit.
 
 ### 5.5 Autonomy
 
@@ -875,8 +877,10 @@ Receipt `gates/<gate>.json`:
 A gate is satisfied when a receipt exists whose `hash` equals the current hash and whose `verdict` is
 `approve`, or whose `skipped` carries `{reason, evidence_path}` (an evidenced backend outage — never a
 convenience), or when an override event (`gate_overridden`, with reason) exists at that hash. Editing a
-gated artifact changes the hash and re-arms the gate. `takt review <gate> --skip --reason "…"` requires
-the reviewer's stderr to be non-empty and stores it as evidence.
+gated artifact changes the hash and re-arms the gate. A receipt with a reviewer's verdict at the current
+hash is also the answer to a repeated `takt review` at that hash (cached, no re-run, no commit) unless
+`--force` is given. `takt review <gate> --skip --reason "…"` requires the reviewer's stderr to be
+non-empty and stores it as evidence.
 
 ---
 

@@ -24,6 +24,7 @@ type reviewOpts struct {
 	skip     bool
 	reason   string
 	evidence string
+	force    bool
 }
 
 // cmdReview runs a gate review headless and writes the hash-bound receipt,
@@ -46,7 +47,30 @@ func cmdReview(env Env) int {
 	if o.skip {
 		return recordSkip(env, tgt, o, hash)
 	}
+	if !o.force {
+		if rc, ok := cachedReceipt(tgt.bdir, o.gate, hash); ok {
+			return printJSON(env, map[string]any{
+				keyGate: o.gate, keyVerdict: rc.Verdict, keyProvider: rc.Reviewer.Provider,
+				"cached": true, "receipt": "gates/" + o.gate + ".json",
+			})
+		}
+	}
 	return runReview(env, tgt, o.gate, hash, present)
+}
+
+// cachedReceipt returns the receipt that already answers a review of gate
+// at hash: one whose hash is current and whose verdict is a reviewer's
+// word — approve, rework or reject. An `error` verdict and an evidenced
+// skip are not answers, so they never short-circuit a re-run (spec §9).
+// This is what makes `exec review` safe to execute twice (spec §5.4): a
+// replayed op returns the receipt instead of a second backend call and a
+// second `reviewed` commit at the same hash.
+func cachedReceipt(bdir, g, hash string) (*gate.Receipt, bool) {
+	r, err := gate.ReadReceipt(bdir, g)
+	if err != nil || r == nil || r.Hash != hash || r.Skipped != nil || r.Verdict == gate.VerdictError {
+		return nil, false
+	}
+	return r, true
 }
 
 // reviewGrace is what a gate review is allowed on top of the backend's own
@@ -64,6 +88,7 @@ func reviewFlags(env Env) (reviewOpts, int) {
 	skip := fs.Bool("skip", false, "record an evidenced skip instead of reviewing")
 	reason := fs.String("reason", "", "why the review was skipped")
 	evidence := fs.String("evidence", "", "file holding the backend's error output")
+	force := fs.Bool("force", false, "re-run the reviewer even when a receipt already answers at the current hash")
 	positional, err := parseInterspersed(fs, env.Args)
 	if err != nil {
 		return reviewOpts{}, usageError(env, fs, err)
@@ -73,7 +98,7 @@ func reviewFlags(env Env) (reviewOpts, int) {
 	}
 	return reviewOpts{
 		dir: *dirFlag, slug: *slugFlag, gate: positional[0],
-		skip: *skip, reason: *reason, evidence: *evidence,
+		skip: *skip, reason: *reason, evidence: *evidence, force: *force,
 	}, 0
 }
 
@@ -127,7 +152,7 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	_ = bundle.AppendEvent(tgt.bdir, "gate_reviewed", map[string]any{
-		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, "provider": res.Provider, keyFindings: len(res.Findings),
+		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, keyProvider: res.Provider, keyFindings: len(res.Findings),
 	})
 	gctx, gcancel := commandContext(env)
 	defer gcancel()
@@ -136,7 +161,7 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	}
 	return printJSON(env, map[string]any{
 		keyGate: g, keyVerdict: res.Verdict, keyFindings: len(res.Findings),
-		"provider": res.Provider, keyReason: res.Reason,
+		keyProvider: res.Provider, keyReason: res.Reason,
 	})
 }
 
