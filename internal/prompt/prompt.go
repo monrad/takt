@@ -3,9 +3,13 @@
 package prompt
 
 import (
+	"errors"
 	"os"
 	"strings"
 )
+
+// ErrNoFrontmatter is returned by [Frontmatter] when md has no `---` block.
+var ErrNoFrontmatter = errors.New("prompt: no frontmatter block")
 
 // Load returns the prompt's markdown.
 func Load(path string) (string, error) {
@@ -31,4 +35,55 @@ func Section(md, heading string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// Frontmatter parses the `---`-delimited block at the top of md (an agent
+// definition's YAML-ish header) into key/value pairs: each line between the
+// first two `---` lines is split on the first `:`, both sides are trimmed,
+// and matching surrounding quotes are stripped from the value. It errors if
+// md has fewer than two `---` lines.
+func Frontmatter(md string) (map[string]string, error) {
+	lines := strings.Split(md, "\n")
+	start, end := -1, -1
+	for i, ln := range lines {
+		if strings.TrimSpace(ln) != "---" {
+			continue
+		}
+		if start == -1 {
+			start = i
+			continue
+		}
+		end = i
+		break
+	}
+	if start == -1 || end == -1 {
+		return nil, ErrNoFrontmatter
+	}
+
+	out := make(map[string]string, end-start-1)
+	for _, ln := range lines[start+1 : end] {
+		key, value, ok := strings.Cut(ln, ":")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(key)] = unquote(strings.TrimSpace(value))
+	}
+	return out, nil
+}
+
+// minQuotedLen is the shortest string that can carry a matching pair of
+// leading/trailing quotes: the two quote characters themselves.
+const minQuotedLen = 2
+
+// unquote strips one layer of matching leading/trailing quotes ( " or ' )
+// from s, if present.
+func unquote(s string) string {
+	if len(s) < minQuotedLen {
+		return s
+	}
+	first, last := s[0], s[len(s)-1]
+	if (first == '"' || first == '\'') && first == last {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
