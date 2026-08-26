@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added TestRecordFlagsBeatParsedTrailer to internal/cli/execute_test.go, proving --status/--summary/--blockers beat the parsed trailer via LastDigest; grep check, targeted test, full `go test -race ./...`, and `golangci-lint run ./...` all pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-26T17:51:11.800516432Z"
+}

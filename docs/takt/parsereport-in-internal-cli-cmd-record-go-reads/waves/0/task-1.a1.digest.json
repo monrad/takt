@@ -1,0 +1,9 @@
+{
+  "task": 1,
+  "attempt": 1,
+  "status": "done",
+  "summary": "parseReport now strips leading markers and decoration runs before matching the exact uppercase keys, with a tolerant grammar in unexported helpers and a new internal test file that proves the whole cross-product, the marker boundaries, the opener rule and the must-not-match set.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-26T17:42:35.978434237Z"
+}

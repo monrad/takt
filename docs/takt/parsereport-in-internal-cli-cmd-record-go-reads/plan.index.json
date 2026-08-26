@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "spec_hash": "sha256:ba2f67a42d8b16d05c3cddd397e7bbbef758b42526bf3aaec54a6d1029f4257f",
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Tolerant trailer grammar in parseReport, proven by its own tests",
+      "description": "In internal/cli/cmd_record.go, keep parseReport's signature func(text string) (string, string, string) and its last-occurrence-wins loop, but delegate per-line matching to new unexported helpers implementing the spec's four steps: (1) repeatedly strip one leading marker plus its mandatory following whitespace (single '-', '*', '+' or '\u003e'; a run of 1-6 '#'; an ordered marker of 1+ ASCII digits then '.' or ')'; '--', '\u003e\u003e' and '**' are never markers; 7+ '#' is not a marker); (2) drop one leading decoration run (maximal run over '*', '_', '`', mixes allowed) and remember it as an opener; (3) match the exact uppercase prefixes STATUS: / SUMMARY: / BLOCKERS: anchored at what remains, else skip the line; (4) clean the value: TrimSpace, repeatedly drop leading decoration runs plus following whitespace (each counts as an opener), drop ONE trailing decoration run only if the line produced an opener in step 2 or 4, trim, lowercase STATUS. Whitespace after the colon stays optional (STATUS:done parses). Decoration is stripped where found, never validated: unclosed (**STATUS: done) and mismatched (*STATUS:** done) lines still match; STATUS: done** with no opener anywhere keeps its stars (documented non-goal). Update parseReport's doc comment to state the tolerance. Stdlib strings only, no regexp; keep every helper under the golden cyclop/gocognit/funlen budgets. recordTask, the digest schema and the --status/--summary/--blockers cmp.Or overrides are untouched. Create internal/cli/cmd_record_test.go with header '//nolint:testpackage // tests an unexported helper' and 'package cli' (the slug_test.go convention; no export_test.go entry), containing: the full cross-product over marker {none,-,*,+,\u003e,#,1.} x Dk-open x Dk-close x Do x Dc (each decoration slot in {none,*,**,_,__,`}) x key {STATUS,SUMMARY,BLOCKERS} with inline t.Errorf assertions (no per-case t.Run) and the oracle 'want = value; if dkOpen==\"\" \u0026\u0026 dkClose==\"\" \u0026\u0026 do==\"\" \u0026\u0026 dc!=\"\" { want = value + dc }'; boundary rows (###### accepted, ####### rejected, 0., 007., 2) accepted, stacked '\u003e - 1.' accepted, mixed run *` accepted); opener rows (STATUS: **done** and **STATUS: done** lose closers; SUMMARY: changed wildcard *, SUMMARY: fixed *parseReport* and STATUS: done** keep every byte, the last asserted as done**); STATUS:done records done; one row per line of the must-not-match table (mid-sentence mention, lowercase status:, Status:, missing colon, -STATUS: done without marker space, ####### STATUS: done) asserting fields stay empty; the blunt case **SUMMARY: fixed *parseReport*** recording 'fixed *parseReport'; a whole-message case where the brief's quoted template appears earlier and the real decorated trailer last (last occurrence wins); and the undecorated-trailer regression parsing exactly as before. Marker-boundary rows are mandatory, because an implementation can satisfy every other row and still break the grammar: '-- STATUS: done' and '\u003e\u003e STATUS: done' must NOT match (a marker is one character followed by whitespace, so '--' and '\u003e\u003e' are neither markers nor decoration and the key no longer starts the line); '-\\tSTATUS: done' MUST match (a tab satisfies the mandatory marker whitespace); '١. STATUS: done' (Arabic-Indic digit) and '+1. STATUS: done' (signed) must NOT match, since an ordered marker is ASCII digits only with no sign;; and '** STATUS: done' must NOT match either, because '**' is not a marker and step 2 strips the decoration run without the whitespace after it, leaving the key unanchored — '**STATUS: done', with no gap, is the decoration-path case and is already covered above.",
+      "files": [
+        "internal/cli/cmd_record.go",
+        "internal/cli/cmd_record_test.go"
+      ],
+      "verify": [
+        "grep -q 'nolint:testpackage' internal/cli/cmd_record_test.go",
+        "go test -race ./internal/cli/...",
+        "go test -race ./...",
+        "golangci-lint run ./..."
+      ],
+      "depends_on": [],
+      "goals": [
+        "G1",
+        "G2",
+        "G3",
+        "G6"
+      ],
+      "class": "implement",
+      "wave": 0
+    },
+    {
+      "id": 2,
+      "title": "Prove --status/--summary/--blockers beat the parsed trailer",
+      "description": "Add TestRecordFlagsBeatParsedTrailer to internal/cli/execute_test.go, using the file's existing fixtures (executeRun, runIn): write a report file whose trailer reads 'STATUS: failed\\nSUMMARY: parsed summary\\nBLOCKERS: parsed blocker\\n', then run record --task 1 --attempt 1 --from \u003cfile\u003e --status done --summary s --blockers none --slug demo, and assert the recorded digest carries status done, summary s and blockers none — read waves/0/task-1.a1.digest.json under the bundle dir (the digestPath layout, cf. sliceRecord's use of the wave dir) or the task's LastDigest via bundle.LoadState. This pins the cmp.Or override half of the record contract, which no test exercises today (the record helper always trusts --from). Do not modify the existing record/recordReport helpers or any existing test. Setup order matters: executeRun leaves ActiveWave unset, so record would fail with \"task 1 is not in the active wave\" — dispatch wave 0 first with the shared next helper (next(t, root, nil), internal/cli/cmd_next_test.go:65), as TestWaveLaunchCloseAndCommit does, so ActiveWave covers task 1 attempt 1 before the record call. This task is the last one to touch Go code, so it carries the terminal repo gates (go test -race ./..., golangci-lint run ./...) over the assembled change: task 1's copies of them run before this file is edited and cannot cover it.",
+      "files": [
+        "internal/cli/execute_test.go"
+      ],
+      "verify": [
+        "grep -q 'TestRecordFlagsBeatParsedTrailer' internal/cli/execute_test.go",
+        "go test -race -run TestRecordFlagsBeatParsedTrailer ./internal/cli/",
+        "go test -race ./...",
+        "golangci-lint run ./..."
+      ],
+      "depends_on": [
+        1
+      ],
+      "goals": [
+        "G2"
+      ],
+      "class": "test",
+      "wave": 1
+    },
+    {
+      "id": 3,
+      "title": "State the trailer tolerance in the implementer contract and regenerate the Copilot agent",
+      "description": "In agents/implementer.md, extend the report-contract sentence in the Rules paragraph (the one ending \"End your final message with exactly three lines: `STATUS: done|failed|blocked`, `SUMMARY: \u003cone line\u003e`, `BLOCKERS: \u003cone line or none\u003e`.\") to state the tolerance: plain undecorated lines are the contract, but takt's parser also accepts trailer lines decorated with leading list/quote/heading markers or bold/italic/backtick emphasis around the key or value. The sentence must contain the word 'decorated' (the verify greps for it). Then regenerate hosts/copilot/agents/takt-implementer.agent.md by running 'go run ./internal/tools/hostgen' from the repo root — never hand-edit the generated file. Do NOT touch internal/brief/templates/implementer.md (explicit spec decision: it would churn the brief goldens). The verify is sentence-anchored, not a whole-file grep: the words 'decorated' and 'marker' must both appear on the same line as 'End your final message' in agents/implementer.md and, after regeneration, in the Copilot agent file. The sentence must also carry the word 'plain', so the grep witnesses that plain undecorated lines are still stated as the contract rather than only the tolerance. The greps are tripwires against an edit landing in the wrong place, not oracles for prose meaning: the wave review reads the diff and the G4 assessment judges the content.",
+      "files": [
+        "agents/implementer.md",
+        "hosts/copilot/agents/takt-implementer.agent.md"
+      ],
+      "verify": [
+        "grep 'End your final message' agents/implementer.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+        "grep 'End your final message' agents/implementer.md | grep -qi 'plain'",
+        "grep 'End your final message' hosts/copilot/agents/takt-implementer.agent.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+        "go run ./internal/tools/hostgen --check"
+      ],
+      "depends_on": [],
+      "goals": [
+        "G4"
+      ],
+      "class": "docs",
+      "wave": 0
+    },
+    {
+      "id": 4,
+      "title": "Describe the tolerant parse in the design spec's takt record row",
+      "description": "In docs/superpowers/specs/2026-08-24-takt-design.md, amend the section 5.1 command-table row for 'takt record --task N --attempt A ...' (line ~330) so the --from sentence describes the tolerant parse instead of implying exact-prefix matching: --from parses the trailing STATUS:/SUMMARY:/BLOCKERS: lines tolerantly, stripping leading list, quote, heading and ordered-list markers and bold, italic or backtick decoration around the key, the value, or the whole line; keys stay uppercase with their colon and must start the line once markers and decoration are removed; a trailing decoration run is removed only on a line that opened one. The row must contain the words 'decorated' and 'backtick' (the verifies grep for them). Keep the row's existing stale-attempt sentence, keep it a single table row, and change nothing else in the file. The verify is row-anchored: the words 'decorated' and 'backtick' must appear on the `takt record --task N` table row itself, that row must still carry its \"stale attempt is logged and ignored\" sentence, and there must be exactly one such row — so a word added elsewhere in the file, a dropped sentence or a split row all fail. The row must also carry 'uppercase' (keys stay uppercase with their colon and must start the line) and 'opened' (a trailing decoration run is removed only on a line that opened one), so the two semantic halves of the rule are witnessed and not merely asserted. As in task 3 the greps are tripwires, not meaning oracles; the wave review and the G5 assessment judge the sentence itself.",
+      "files": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "verify": [
+        "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'decorat'",
+        "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'backtick'",
+        "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'uppercase'",
+        "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'opened'",
+        "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'stale attempt is logged and ignored'",
+        "test \"$(grep -cF '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md)\" -eq 1"
+      ],
+      "depends_on": [],
+      "goals": [
+        "G5"
+      ],
+      "class": "docs",
+      "wave": 0
+    }
+  ]
+}

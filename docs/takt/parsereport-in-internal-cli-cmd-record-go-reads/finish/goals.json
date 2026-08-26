@@ -1,0 +1,61 @@
+{
+  "sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
+  "verdicts": [
+    {
+      "id": "G1",
+      "verdict": "achieved",
+      "evidence": "internal/cli/cmd_record_test.go's TestParseReportAcceptsTheDecorationCrossProduct walks the full marker x decoration cross-product (markers: '', '- ', '* ', '+ ', '\u003e ', '# ', '1. '; decorations: '', '*', '**', '_', '__', '`') around key and value for STATUS/SUMMARY/BLOCKERS, plus TestParseReportWorkedExamples and TestParseReportOpenerRule cover the spec's exact worked shapes ('**STATUS:** done', '`STATUS:` `done`', '\u003e 1. **STATUS: done**', 'STATUS: **done**'). `go test -race -count=1 ./internal/cli/...` ran green (7.2s, not cached).",
+      "citations": [
+        "internal/cli/execute_test.go:34-75",
+        "internal/cli/execute_test.go:111-124",
+        "internal/cli/cmd_record.go:369-490"
+      ]
+    },
+    {
+      "id": "G2",
+      "verdict": "achieved",
+      "evidence": "TestParseReportUndecoratedTrailerIsUnchanged confirms a plain trailer parses byte-identically (lowercased status) to before. TestParseReportTakesTheLastOccurrence proves the last occurrence wins even against a quoted-template trailer earlier in the message. TestRecordFlagsBeatParsedTrailer (new in execute_test.go) proves --status/--summary/--blockers override the parsed trailer via recordTask's cmp.Or(...) call. `go test -race ./...` passed for all 20 packages.",
+      "citations": [
+        "internal/cli/execute_test.go:174-211",
+        "internal/cli/execute_test.go:1416-1443",
+        "internal/cli/cmd_record.go:506-507"
+      ]
+    },
+    {
+      "id": "G3",
+      "verdict": "achieved",
+      "evidence": "TestParseReportMustNotMatch table includes 'see STATUS: done in the brief' (mid-sentence), 'status: done' and 'Status: done' (lowercase/mixed-case key), 'STATUS done' (no colon), '-STATUS: done' (marker without required space) and '####### STATUS: done' (7 '#' exceeds maxHeadingMarker) — all asserted via assertNoTrailer to leave all three fields empty. Test passes under `go test -race ./internal/cli/...`.",
+      "citations": [
+        "internal/cli/execute_test.go:156-169",
+        "internal/cli/execute_test.go:224-231"
+      ]
+    },
+    {
+      "id": "G4",
+      "verdict": "achieved",
+      "evidence": "agents/implementer.md:10 and hosts/copilot/agents/takt-implementer.agent.md:9 both end with the identical sentence: 'plain undecorated lines are the contract, but takt's parser also tolerates trailer lines decorated with leading list/quote/heading markers or bold/italic/backtick emphasis around the key or value.' `go run ./internal/tools/hostgen --check` exits 0 (no stale hosts).",
+      "citations": [
+        "agents/implementer.md:10",
+        "hosts/copilot/agents/takt-implementer.agent.md:9"
+      ]
+    },
+    {
+      "id": "G5",
+      "verdict": "achieved",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:330's `takt record --task N` row states the tolerance in full: names decorated examples ('**STATUS:** done', backtick-wrapped), the stripped marker/decoration classes, that keys stay uppercase and structural rejection, the opener rule ('a trailing decoration run is removed only on a line that opened one'), and the stale-attempt behaviour ('A stale attempt is logged and ignored'). Confirmed exactly one such row exists.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:330"
+      ]
+    },
+    {
+      "id": "G6",
+      "verdict": "achieved",
+      "evidence": "Ran `go test -race -count=1 ./internal/cli/...` (ok, 7.2s) and `go test -race ./...` (all 20 packages ok) and `golangci-lint run ./...` (0 issues) myself; all green.",
+      "citations": [
+        "internal/cli/cmd_record.go",
+        "internal/cli/cmd_record_test.go"
+      ]
+    }
+  ],
+  "at": "2026-08-26T17:55:22.221518936Z"
+}

@@ -1,0 +1,119 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "parsereport-in-internal-cli-cmd-record-go-reads",
+  "topic": "parseReport in internal/cli/cmd_record.go reads the implementer's trailer with strings.HasPrefix on \"STATUS:\", \"SUMMARY:\" and \"BLOCKERS:\", so a final message whose trailer is markdown-decorated — \"**STATUS:** done\", \"- STATUS: done\", \"STATUS: **done**\", \"`STATUS:` done\" — records nothing and takt rejects the digest with \"digest status must be done, failed or blocked\". Make the trailer parsing tolerant of leading list markers and of bold, italic or backtick decoration around the key and around the value, while exact-prefix lines keep working; add table-driven tests for every decorated shape and for a body line that merely mentions STATUS: mid-sentence (must not match); and mention the tolerance in the implementer agent's report contract in agents/implementer.md.",
+  "phase": "archived",
+  "created_at": "2026-08-26T15:07:35.482675146Z",
+  "branch": "takt/parsereport-in-internal-cli-cmd-record-go-reads",
+  "branch_adopted": false,
+  "base": "main",
+  "base_sha": "aae4f5072013feb14f4fab9cd656bde02685fd71",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:d9b6f5399130ef57a21616812cb4c3b8566dd785ab641a5daded55d8daf74d07",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/cli/cmd_record.go",
+        "internal/cli/cmd_record_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "parseReport now strips leading markers and decoration runs before matching the exact uppercase keys, with a tolerant grammar in unexported helpers and a new internal test file that proves the whole cross-product, the marker boundaries, the opener rule and the must-not-match set.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-26T17:42:35.978434237Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/cli/execute_test.go"
+      ],
+      "class": "test",
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added TestRecordFlagsBeatParsedTrailer to internal/cli/execute_test.go, proving --status/--summary/--blockers beat the parsed trailer via LastDigest; grep check, targeted test, full `go test -race ./...`, and `golangci-lint run ./...` all pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-26T17:51:11.800516432Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "agents/implementer.md",
+        "hosts/copilot/agents/takt-implementer.agent.md"
+      ],
+      "class": "docs",
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Extended the report-contract sentence in agents/implementer.md's Rules paragraph to state the trailer tolerance (plain/decorated/marker wording), and regenerated hosts/copilot/agents/takt-implementer.agent.md via `go run ./internal/tools/hostgen`, which passes `--check`.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-26T17:38:38.405337819Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "class": "docs",
+      "attempt": 2,
+      "last_digest": {
+        "task": 4,
+        "attempt": 2,
+        "status": "done",
+        "summary": "The §5.1 `takt record --task N` row now describes the tolerant trailer parse, naming decorated trailers, bold/italic/backtick decoration, the uppercase-and-anchored key rule, and the opener-gated trailing strip, while keeping its stale-attempt sentence and single-row shape.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-26T17:47:39.654120174Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
+  "goals_checked_sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-26T18:06:10.987924014Z",
+    "pr_url": "https://github.com/monrad/takt/pull/22",
+    "applied": true
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "slug": "parsereport-in-internal-cli-cmd-record-go-reads",
+  "topic": "parseReport in internal/cli/cmd_record.go reads the implementer's trailer with strings.HasPrefix on \"STATUS:\", \"SUMMARY:\" and \"BLOCKERS:\", so a final message whose trailer is markdown-decorated — \"**STATUS:** done\", \"- STATUS: done\", \"STATUS: **done**\", \"`STATUS:` done\" — records nothing and takt rejects the digest with \"digest status must be done, failed or blocked\". Make the trailer parsing tolerant of leading list markers and of bold, italic or backtick decoration around the key and around the value, while exact-prefix lines keep working; add table-driven tests for every decorated shape and for a body line that merely mentions STATUS: mid-sentence (must not match); and mention the tolerance in the implementer agent's report contract in agents/implementer.md.",
+  "tasks": 4,
+  "waves": 2,
+  "retries": [
+    {
+      "task": 4,
+      "attempts": 2
+    }
+  ],
+  "failures": [],
+  "review_findings": 0,
+  "wave_timings": [
+    {
+      "wave": 0,
+      "slice": 1,
+      "attempt": 2,
+      "dispatched_at": "2026-08-26T17:44:13.516013089Z",
+      "committed_at": "2026-08-26T17:47:55.01838377Z"
+    },
+    {
+      "wave": 1,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-26T17:47:59.745498941Z",
+      "committed_at": "2026-08-26T17:53:01.050615915Z"
+    }
+  ],
+  "verify": {
+    "sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
+    "passed": true,
+    "no_commands": false,
+    "commands": [
+      "grep -q 'nolint:testpackage' internal/cli/cmd_record_test.go",
+      "go test -race ./internal/cli/...",
+      "go test -race ./...",
+      "golangci-lint run ./...",
+      "grep -q 'TestRecordFlagsBeatParsedTrailer' internal/cli/execute_test.go",
+      "go test -race -run TestRecordFlagsBeatParsedTrailer ./internal/cli/",
+      "grep 'End your final message' agents/implementer.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+      "grep 'End your final message' agents/implementer.md | grep -qi 'plain'",
+      "grep 'End your final message' hosts/copilot/agents/takt-implementer.agent.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+      "go run ./internal/tools/hostgen --check",
+      "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'decorat'",
+      "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'backtick'",
+      "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'uppercase'",
+      "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'opened'",
+      "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'stale attempt is logged and ignored'",
+      "test \"$(grep -cF '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md)\" -eq 1"
+    ],
+    "results": [
+      {
+        "command": "grep -q 'nolint:testpackage' internal/cli/cmd_record_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t(cached)",
+        "elapsed_ms": 1776
+      },
+      {
+        "command": "go test -race ./...",
+        "exit": 0,
+        "passed": true,
+        "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t(cached)\nok  \tgithub.com/monrad/takt/internal/brief\t(cached)\nok  \tgithub.com/monrad/takt/internal/bundle\t(cached)\nok  \tgithub.com/monrad/takt/internal/cli\t(cached)\nok  \tgithub.com/monrad/takt/internal/config\t(cached)\nok  \tgithub.com/monrad/takt/internal/decide\t(cached)\nok  \tgithub.com/monrad/takt/internal/doctor\t(cached)\nok  \tgithub.com/monrad/takt/internal/finish\t(cached)\nok  \tgithub.com/monrad/takt/internal/gate\t(cached)\nok  \tgithub.com/monrad/takt/internal/gitx\t(cached)\nok  \tgithub.com/monrad/takt/internal/goals\t(cached)\nok  \tgithub.com/monrad/takt/internal/hosts\t(cached)\nok  \tgithub.com/monrad/takt/internal/op\t(cached)\nok  \tgithub.com/monrad/takt/internal/plan\t(cached)\nok  \tgithub.com/monrad/takt/internal/prompt\t(cached)\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t(cached)\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t(cached)\nok  \tgithub.com/monrad/takt/internal/version\t(cached)\nok  \tgithub.com/monrad/takt/internal/wave\t(cached)",
+        "elapsed_ms": 1765
+      },
+      {
+        "command": "golangci-lint run ./...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 396
+      },
+      {
+        "command": "grep -q 'TestRecordFlagsBeatParsedTrailer' internal/cli/execute_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -run TestRecordFlagsBeatParsedTrailer ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t(cached)",
+        "elapsed_ms": 61
+      },
+      {
+        "command": "grep 'End your final message' agents/implementer.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep 'End your final message' agents/implementer.md | grep -qi 'plain'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep 'End your final message' hosts/copilot/agents/takt-implementer.agent.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go run ./internal/tools/hostgen --check",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 28
+      },
+      {
+        "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'decorat'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'backtick'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'uppercase'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'opened'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'stale attempt is logged and ignored'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "test \"$(grep -cF '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md)\" -eq 1",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      }
+    ],
+    "at": "2026-08-26T17:53:09.845238222Z"
+  },
+  "goals": {
+    "sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
+    "verdicts": [
+      {
+        "id": "G1",
+        "verdict": "achieved",
+        "evidence": "internal/cli/cmd_record_test.go's TestParseReportAcceptsTheDecorationCrossProduct walks the full marker x decoration cross-product (markers: '', '- ', '* ', '+ ', '\u003e ', '# ', '1. '; decorations: '', '*', '**', '_', '__', '`') around key and value for STATUS/SUMMARY/BLOCKERS, plus TestParseReportWorkedExamples and TestParseReportOpenerRule cover the spec's exact worked shapes ('**STATUS:** done', '`STATUS:` `done`', '\u003e 1. **STATUS: done**', 'STATUS: **done**'). `go test -race -count=1 ./internal/cli/...` ran green (7.2s, not cached).",
+        "citations": [
+          "internal/cli/execute_test.go:34-75",
+          "internal/cli/execute_test.go:111-124",
+          "internal/cli/cmd_record.go:369-490"
+        ]
+      },
+      {
+        "id": "G2",
+        "verdict": "achieved",
+        "evidence": "TestParseReportUndecoratedTrailerIsUnchanged confirms a plain trailer parses byte-identically (lowercased status) to before. TestParseReportTakesTheLastOccurrence proves the last occurrence wins even against a quoted-template trailer earlier in the message. TestRecordFlagsBeatParsedTrailer (new in execute_test.go) proves --status/--summary/--blockers override the parsed trailer via recordTask's cmp.Or(...) call. `go test -race ./...` passed for all 20 packages.",
+        "citations": [
+          "internal/cli/execute_test.go:174-211",
+          "internal/cli/execute_test.go:1416-1443",
+          "internal/cli/cmd_record.go:506-507"
+        ]
+      },
+      {
+        "id": "G3",
+        "verdict": "achieved",
+        "evidence": "TestParseReportMustNotMatch table includes 'see STATUS: done in the brief' (mid-sentence), 'status: done' and 'Status: done' (lowercase/mixed-case key), 'STATUS done' (no colon), '-STATUS: done' (marker without required space) and '####### STATUS: done' (7 '#' exceeds maxHeadingMarker) — all asserted via assertNoTrailer to leave all three fields empty. Test passes under `go test -race ./internal/cli/...`.",
+        "citations": [
+          "internal/cli/execute_test.go:156-169",
+          "internal/cli/execute_test.go:224-231"
+        ]
+      },
+      {
+        "id": "G4",
+        "verdict": "achieved",
+        "evidence": "agents/implementer.md:10 and hosts/copilot/agents/takt-implementer.agent.md:9 both end with the identical sentence: 'plain undecorated lines are the contract, but takt's parser also tolerates trailer lines decorated with leading list/quote/heading markers or bold/italic/backtick emphasis around the key or value.' `go run ./internal/tools/hostgen --check` exits 0 (no stale hosts).",
+        "citations": [
+          "agents/implementer.md:10",
+          "hosts/copilot/agents/takt-implementer.agent.md:9"
+        ]
+      },
+      {
+        "id": "G5",
+        "verdict": "achieved",
+        "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:330's `takt record --task N` row states the tolerance in full: names decorated examples ('**STATUS:** done', backtick-wrapped), the stripped marker/decoration classes, that keys stay uppercase and structural rejection, the opener rule ('a trailing decoration run is removed only on a line that opened one'), and the stale-attempt behaviour ('A stale attempt is logged and ignored'). Confirmed exactly one such row exists.",
+        "citations": [
+          "docs/superpowers/specs/2026-08-24-takt-design.md:330"
+        ]
+      },
+      {
+        "id": "G6",
+        "verdict": "achieved",
+        "evidence": "Ran `go test -race -count=1 ./internal/cli/...` (ok, 7.2s) and `go test -race ./...` (all 20 packages ok) and `golangci-lint run ./...` (0 issues) myself; all green.",
+        "citations": [
+          "internal/cli/cmd_record.go",
+          "internal/cli/cmd_record_test.go"
+        ]
+      }
+    ],
+    "at": "2026-08-26T17:55:22.221518936Z"
+  }
+}

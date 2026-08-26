@@ -1,0 +1,138 @@
+{
+  "sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
+  "passed": true,
+  "no_commands": false,
+  "commands": [
+    "grep -q 'nolint:testpackage' internal/cli/cmd_record_test.go",
+    "go test -race ./internal/cli/...",
+    "go test -race ./...",
+    "golangci-lint run ./...",
+    "grep -q 'TestRecordFlagsBeatParsedTrailer' internal/cli/execute_test.go",
+    "go test -race -run TestRecordFlagsBeatParsedTrailer ./internal/cli/",
+    "grep 'End your final message' agents/implementer.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+    "grep 'End your final message' agents/implementer.md | grep -qi 'plain'",
+    "grep 'End your final message' hosts/copilot/agents/takt-implementer.agent.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+    "go run ./internal/tools/hostgen --check",
+    "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'decorat'",
+    "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'backtick'",
+    "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'uppercase'",
+    "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'opened'",
+    "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'stale attempt is logged and ignored'",
+    "test \"$(grep -cF '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md)\" -eq 1"
+  ],
+  "results": [
+    {
+      "command": "grep -q 'nolint:testpackage' internal/cli/cmd_record_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race ./internal/cli/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t(cached)",
+      "elapsed_ms": 1776
+    },
+    {
+      "command": "go test -race ./...",
+      "exit": 0,
+      "passed": true,
+      "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t(cached)\nok  \tgithub.com/monrad/takt/internal/brief\t(cached)\nok  \tgithub.com/monrad/takt/internal/bundle\t(cached)\nok  \tgithub.com/monrad/takt/internal/cli\t(cached)\nok  \tgithub.com/monrad/takt/internal/config\t(cached)\nok  \tgithub.com/monrad/takt/internal/decide\t(cached)\nok  \tgithub.com/monrad/takt/internal/doctor\t(cached)\nok  \tgithub.com/monrad/takt/internal/finish\t(cached)\nok  \tgithub.com/monrad/takt/internal/gate\t(cached)\nok  \tgithub.com/monrad/takt/internal/gitx\t(cached)\nok  \tgithub.com/monrad/takt/internal/goals\t(cached)\nok  \tgithub.com/monrad/takt/internal/hosts\t(cached)\nok  \tgithub.com/monrad/takt/internal/op\t(cached)\nok  \tgithub.com/monrad/takt/internal/plan\t(cached)\nok  \tgithub.com/monrad/takt/internal/prompt\t(cached)\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t(cached)\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t(cached)\nok  \tgithub.com/monrad/takt/internal/version\t(cached)\nok  \tgithub.com/monrad/takt/internal/wave\t(cached)",
+      "elapsed_ms": 1765
+    },
+    {
+      "command": "golangci-lint run ./...",
+      "exit": 0,
+      "passed": true,
+      "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+      "elapsed_ms": 396
+    },
+    {
+      "command": "grep -q 'TestRecordFlagsBeatParsedTrailer' internal/cli/execute_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -run TestRecordFlagsBeatParsedTrailer ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t(cached)",
+      "elapsed_ms": 61
+    },
+    {
+      "command": "grep 'End your final message' agents/implementer.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep 'End your final message' agents/implementer.md | grep -qi 'plain'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep 'End your final message' hosts/copilot/agents/takt-implementer.agent.md | grep -qiE 'decorat.*marker|marker.*decorat'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go run ./internal/tools/hostgen --check",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 28
+    },
+    {
+      "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'decorat'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'backtick'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'uppercase'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qi 'opened'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -F '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'stale attempt is logged and ignored'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "test \"$(grep -cF '| `takt record --task N' docs/superpowers/specs/2026-08-24-takt-design.md)\" -eq 1",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    }
+  ],
+  "at": "2026-08-26T17:53:09.845238222Z"
+}
