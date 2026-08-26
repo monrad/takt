@@ -114,3 +114,17 @@ func RunHermetic(m *testing.M) int {
 	}
 	return m.Run()
 }
+
+// startHome is the HOME the test binary started with — read at package
+// initialisation, which runs before any TestMain and therefore before
+// [RunHermetic] points HOME at a throwaway directory.
+var startHome = os.Getenv("HOME")
+
+// RealHome returns the HOME the test binary started with. A live test that
+// shells out to a credentialed CLI (claude, copilot) has to put it back with
+// t.Setenv before the child can find its login: [RunHermetic] replaces HOME
+// with a throwaway directory so git never reads the developer's
+// configuration, and nothing under that directory holds a credential. Git
+// stays hermetic across the change — GIT_CONFIG_GLOBAL and
+// GIT_CONFIG_NOSYSTEM are what isolate it, not HOME.
+func RealHome() string { return startHome }

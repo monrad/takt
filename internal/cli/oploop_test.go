@@ -33,6 +33,20 @@ type driver struct {
 	// is safe to execute twice" — see assertReplay for the two shapes that
 	// takes.
 	replay bool
+	// takeover is replay across a session boundary: at every op boundary a
+	// fresh named session takes the run over with --force and must be handed
+	// the op its predecessor was looking at (spec §14, G1). See
+	// assertTakeoverReplay; the live end-to-end test is what sets it.
+	takeover bool
+	// sessions counts the named sessions takeover has burned through, so
+	// every takeover presents an id this run has never seen.
+	sessions int
+	// implement, when set, is what plays one implementer of a wave dispatch:
+	// it is handed the brief the op named (its contents, not its path) and
+	// the repository root, and returns the agent's final message. The live
+	// end-to-end test wires a real `claude -p` run in here. Nil keeps the
+	// scripted stand-in, which writes the declared files itself.
+	implement func(brief, repo string) (string, error)
 }
 
 func (d *driver) cmd(args ...string) (int, map[string]any, string) {
@@ -50,6 +64,9 @@ func (d *driver) nextOp() map[string]any {
 	}
 	if d.replay {
 		d.assertReplay(o)
+	}
+	if d.takeover {
+		d.assertTakeoverReplay(o)
 	}
 	if _, ok := o["op"].(string); !ok {
 		d.t.Fatalf("next printed no op: %v", o)
@@ -117,6 +134,41 @@ func (d *driver) assertReplay(first map[string]any) {
 	b, _ := json.Marshal(second)
 	if string(a) != string(b) {
 		d.t.Fatalf("next is not idempotent:\n%s\n%s", a, b)
+	}
+}
+
+// assertTakeoverReplay is spec §14's kill/resume at an op boundary: the
+// session that just asked what to do next goes away, and a fresh one takes
+// the run over with `--force` and must be handed the very op its predecessor
+// was looking at. What is compared is the op JSON, not the bundle: a
+// takeover appends a lock_taken event and stamps a new holder on
+// state.json, so the bytes on disk are *expected* to differ — the point is
+// that nothing about the answer came from the session that asked.
+//
+// The session that took over keeps driving: it holds the lock now, so the
+// `done`, `record` and `answer` calls that execute the op have to come from
+// it.
+//
+// A wave dispatch is the one op boundary this cannot be taken at. The wave
+// is in flight the moment `next` printed the op, so a takeover there is a
+// recovery re-dispatch rather than the same op again
+// (TestOpLoopSurvivesACrashAfterDispatch covers that shape) — and against
+// live agents it would run every implementer of the wave a second time.
+func (d *driver) assertTakeoverReplay(first map[string]any) {
+	d.t.Helper()
+	if isImplementerDispatch(d.t, first) {
+		return
+	}
+	d.sessions++
+	d.env["TAKT_SESSION"] = fmt.Sprintf("takeover-%d", d.sessions)
+	code, second, errb := d.cmd("next", "--slug", "demo", "--force")
+	if code != 0 {
+		d.t.Fatalf("takeover next: %d %s", code, errb)
+	}
+	a, _ := json.Marshal(first)
+	b, _ := json.Marshal(second)
+	if string(a) != string(b) {
+		d.t.Fatalf("a fresh session must re-derive the same op:\n%s\n%s", a, b)
 	}
 }
 
@@ -314,14 +366,31 @@ func (d *driver) playAuditor(ag map[string]any) {
 	}
 }
 
-// playImplementer creates exactly the files the brief declares and reports
-// done at the attempt the dispatch op named.
+// playImplementer plays one implementer of the wave and records what it
+// reported at the attempt the dispatch op named. The scripted stand-in
+// creates exactly the files the brief declares and reports done; a driver
+// carrying an implement hook hands the brief to that instead and records
+// whatever final message comes back, touching no files of its own — the
+// agent's own edits are the ones under test.
 func (d *driver) playImplementer(o, ag map[string]any) {
 	d.t.Helper()
-	for _, f := range declaredFiles(d.t, ag["brief"].(string)) {
-		testutil.WriteFile(d.t, d.root, f, "package x // written by the scripted implementer\n")
+	var msg string
+	if d.implement == nil {
+		for _, f := range declaredFiles(d.t, ag["brief"].(string)) {
+			testutil.WriteFile(d.t, d.root, f, "package x // written by the scripted implementer\n")
+		}
+		msg = d.message("STATUS: done\nSUMMARY: implemented\nBLOCKERS: none\n")
+	} else {
+		b, err := os.ReadFile(ag["brief"].(string))
+		if err != nil {
+			d.t.Fatal(err)
+		}
+		final, err := d.implement(string(b), d.root)
+		if err != nil {
+			d.t.Fatalf("implementer for task %v: %v", ag["task"], err)
+		}
+		msg = d.message(final)
 	}
-	msg := d.message("STATUS: done\nSUMMARY: implemented\nBLOCKERS: none\n")
 	task := strconv.Itoa(int(ag["task"].(float64)))
 	attempt := strconv.Itoa(int(o["attempt"].(float64)))
 	code, out, errb := d.cmd("record", "--task", task, "--attempt", attempt, "--from", msg, "--slug", "demo")
