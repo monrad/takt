@@ -9,19 +9,11 @@ import (
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/goals"
-)
-
-// The run steps `takt done` closes (spec §5.2). stepGoals is spelled the
-// same as the JSON key, so it aliases keyGoals instead of repeating it.
-const (
-	stepBrainstorm = "brainstorm"
-	stepGoals      = keyGoals
-	stepRetro      = "retro"
-	stepPushPR     = "push_pr"
+	"github.com/monrad/takt/internal/op"
 )
 
 // stepsHint lists the steps in the usage error for an unknown one.
-const stepsHint = "steps: brainstorm, goals, retro, push_pr"
+var stepsHint = "steps: " + strings.Join(op.Steps(), ", ")
 
 // dispositionPR is the branch_finish choice push_pr belongs to (spec §7.5).
 const dispositionPR = "pr"
@@ -37,10 +29,10 @@ type doneStep struct {
 
 // doneSteps is the receipt each step `done` can close leaves, keyed by step.
 var doneSteps = map[string]doneStep{
-	stepBrainstorm: {event: "spec_written", artifact: "spec.md"},
-	stepGoals:      {event: "goals_frozen", artifact: "goals.md"},
-	stepRetro:      {event: stepRetro, artifact: "retro.md"},
-	stepPushPR:     {event: "pr_pushed"},
+	op.StepBrainstorm: {event: "spec_written", artifact: "spec.md"},
+	op.StepGoals:      {event: "goals_frozen", artifact: "goals.md"},
+	op.StepRetro:      {event: op.StepRetro, artifact: "retro.md"},
+	op.StepPushPR:     {event: "pr_pushed"},
 }
 
 // cmdDone marks an LLM-side `run` step complete (spec §5.1). For `goals` it
@@ -82,13 +74,13 @@ func cmdDone(env Env) int {
 // doneStepWork runs one step's own checks and records its receipt.
 func doneStepWork(env Env, tgt *runTarget, step, prURL string) int {
 	switch step {
-	case stepBrainstorm:
+	case op.StepBrainstorm:
 		return doneBrainstorm(env, tgt.bdir)
-	case stepGoals:
+	case op.StepGoals:
 		return doneGoals(env, tgt.bdir, tgt.st)
-	case stepRetro:
+	case op.StepRetro:
 		return doneRetro(env, tgt)
-	case stepPushPR:
+	case op.StepPushPR:
 		return donePushPR(env, tgt, prURL)
 	}
 	return fail(env.Stderr, exitUsage, "unknown step "+step, stepsHint)
@@ -190,14 +182,14 @@ func doneGoals(env Env, bdir string, st *bundle.State) int {
 // told what is actually wrong rather than being sent to write a
 // retrospective row 22 has not asked for yet (review M2).
 func doneRetro(env Env, tgt *runTarget) int {
-	if code := finishPhaseOnly(env, tgt.st, "done --step "+stepRetro); code != 0 {
+	if code := finishPhaseOnly(env, tgt.st, "done --step "+op.StepRetro); code != 0 {
 		return code
 	}
 	if !fileNonEmpty(filepath.Join(tgt.bdir, "retro.md")) {
 		return fail(env.Stderr, exitError, "retro.md is missing or empty",
 			"write the retrospective to "+filepath.Join(tgt.bdir, "retro.md")+" first")
 	}
-	_ = bundle.AppendEvent(tgt.bdir, stepRetro, map[string]any{keyHash: artifactHash(tgt.bdir, "retro.md")})
+	_ = bundle.AppendEvent(tgt.bdir, op.StepRetro, map[string]any{keyHash: artifactHash(tgt.bdir, "retro.md")})
 	return 0
 }
 

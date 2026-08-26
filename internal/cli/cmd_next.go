@@ -637,7 +637,7 @@ func (r *nextRun) run(o op.Op) int {
 		keySlug: r.slug, "topic": r.st.Topic, "spec_path": data.SpecPath, "goals_path": data.GoalsPath,
 	}
 	switch o.Step {
-	case stepRetro:
+	case op.StepRetro:
 		// The inputs are re-derived on every call that emits this op: they
 		// are a pure function of what is on disk, so a repeated `next`
 		// writes the same bytes and hands back the same op (spec §5.4).
@@ -646,10 +646,10 @@ func (r *nextRun) run(o op.Op) int {
 		}
 		inputs["inputs_path"] = data.InputsPath
 		inputs["retro_path"] = data.RetroPath
-	case stepPushPR:
+	case op.StepPushPR:
 		inputs[keyBranch] = data.Branch
 		inputs[keyBase] = data.Base
-		o.Done = "takt done --step " + stepPushPR + " --url <pr-url> --slug " + r.slug
+		o.Done = "takt done --step " + op.StepPushPR + " --url <pr-url> --slug " + r.slug
 	}
 	text, err := brief.Render("run-"+o.Step, data)
 	if err != nil {

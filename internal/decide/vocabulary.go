@@ -1,15 +1,12 @@
 package decide
 
+import "github.com/monrad/takt/internal/op"
+
 // Run-step and stop-reason names used at the run(...)/stop(...) call sites
 // in decide.go/finish.go and returned by Vocab below — the same identifiers
 // at both ends is the compile-time tie: renaming or dropping one without
 // touching the other fails the build, not just a silently stale prompt.
 const (
-	stepBrainstorm = "brainstorm"
-	stepGoals      = "goals"
-	stepRetro      = "retro"
-	stepPushPR     = "push_pr"
-
 	reasonWaveInFlight = "wave_in_flight"
 	reasonArchived     = "archived"
 )
@@ -29,7 +26,7 @@ func Vocab() Vocabulary {
 	return Vocabulary{
 		Gates: []string{gateOwner, gateReview, gateAlignmentConfirm, gatePlanInvalid, gateWaveFailures,
 			gateReviewError, gateVerificationFailed, gateNoVerification, gateGoalsUnmet, gateBranchFinish},
-		RunSteps:     []string{stepBrainstorm, stepGoals, stepRetro, stepPushPR},
+		RunSteps:     op.Steps(),
 		ExecCommands: []string{"review", "close-wave", "verify"},
 		StopReasons:  []string{reasonWaveInFlight, reasonArchived},
 	}

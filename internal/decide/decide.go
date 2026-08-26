@@ -126,8 +126,8 @@ type Decision struct {
 	Agent   *op.Agent // dispatch of a single non-task agent (Brief filled by the caller)
 }
 
-// maxPlannerAttempts is how many invalid indexes are tolerated before asking (§5.3 row 8).
-const maxPlannerAttempts = 3
+// maxAgentAttempts caps how many unusable replies in a row takt accepts from an agent before it asks (spec §5.3 rows 8, 10, 11, 21).
+const maxAgentAttempts = 3
 
 // Decide applies the §5.3 precedence table.
 func Decide(st *bundle.State, f Facts) (Decision, error) {
@@ -189,10 +189,10 @@ const (
 func decideBrainstorm(st *bundle.State, f Facts) Decision {
 	in := map[string]any{ctxSlug: st.Slug, "topic": st.Topic}
 	if !f.HasSpec {
-		return run(stepBrainstorm, "brainstorm the spec", in)
+		return run(op.StepBrainstorm, "brainstorm the spec", in)
 	}
 	if st.Config.Goals && (!f.HasGoals || !f.GoalsFrozen) {
-		return run(stepGoals, "distil and freeze the goals", in)
+		return run(op.StepGoals, "distil and freeze the goals", in)
 	}
 	if st.Config.Review.Spec && !f.SpecGate.Satisfied {
 		if needsRework(f.SpecGate) {
@@ -217,7 +217,7 @@ func needsRework(g GateStatus) bool {
 
 func decidePlan(st *bundle.State, f Facts) Decision {
 	if !f.HasIndex || !f.IndexValid {
-		if f.PlanAttempts >= maxPlannerAttempts {
+		if f.PlanAttempts >= maxAgentAttempts {
 			return ask(
 				gatePlanInvalid,
 				map[string]any{ctxSlug: st.Slug, "attempts": f.PlanAttempts, "problems": f.IndexProblems},

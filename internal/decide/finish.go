@@ -61,13 +61,13 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 		return ask(gateGoalsUnmet, map[string]any{ctxSlug: st.Slug, "unmet": fin.Goals.Unmet})
 	}
 	if !fin.HasRetro {
-		return run(stepRetro, "write the retrospective", map[string]any{ctxSlug: st.Slug})
+		return run(op.StepRetro, "write the retrospective", map[string]any{ctxSlug: st.Slug})
 	}
 	if fin.Disposition == "" {
 		return ask(gateBranchFinish, branchFinishContext(st, fin))
 	}
 	if fin.Disposition == "pr" && !fin.PRPushed {
-		return run(stepPushPR, "push the branch and open the pull request",
+		return run(op.StepPushPR, "push the branch and open the pull request",
 			map[string]any{ctxSlug: st.Slug, "branch": st.Branch, "base": st.Base})
 	}
 	return Decision{Action: ActArchive}

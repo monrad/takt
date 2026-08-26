@@ -2,6 +2,7 @@ package decide_test
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -490,6 +491,13 @@ func TestWaveFailuresContextShape(t *testing.T) {
 			t.Fatalf("the question must name the rework tasks: %q", d.Op.Question)
 		}
 	})
+}
+
+func TestVocabRunStepsAreTheOpSteps(t *testing.T) {
+	t.Parallel()
+	if got, want := decide.Vocab().RunSteps, op.Steps(); !slices.Equal(got, want) {
+		t.Fatalf("Vocab().RunSteps = %v, want op.Steps() = %v", got, want)
+	}
 }
 
 // assertIDs checks one id list of a gate context: present, a list (never
