@@ -333,7 +333,7 @@ its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt plan validate [path]` | Standalone validation of a plan index. |
 | `takt goals amend` | Re-freezes `goals.md` after an edit, records the event, re-arms the spec gate. |
 | `takt unlock [--slug s]` | Clears a stale session lock. |
-| `takt version [--expect v]` | Prints the version; exit 1 on mismatch (the prompt's handshake). |
+| `takt version [--expect v] [--expect-manifest path]` | Prints the version; exit 1 on mismatch. `--expect-manifest` is what the prompt's handshake runs (§6); a `0.0.0-dev` build passes with `"dev": true`. |
 
 ### 5.2 Op kinds
 
@@ -967,7 +967,7 @@ config is for what a team shares (`dir`, gate defaults); user config for machine
   "wave_stale_after": "30m",
   "lock_ttl": "10m",
   "verify_timeout": "10m",
-  "default_branch": null,
+  "default_branch": "",
   "backends": {
     "reviewer": ["copilot", "claude"],
     "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "5m" },

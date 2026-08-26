@@ -48,9 +48,11 @@ brew install monrad/tap/takt
 go install github.com/monrad/takt/cmd/takt@latest
 ```
 
-Pin a version with `@v0.1.0` instead of `@latest` — `go install` stamps nothing into the binary, but
-`takt version` recovers the exact tag from the module's own build info, so a pinned install still reports
-its real version.
+`@latest` resolves to a concrete tag before Go builds anything, and `go install` stamps nothing into
+the binary either way — `takt version` recovers whichever tag was actually resolved from the module's own
+build info, so it reports correctly whether you pinned or not. Pin a version (`@v0.1.0`) for
+reproducibility — the same binary on every machine and every re-install — not because `@latest` would
+report wrong.
 
 ## Install the plugin
 
@@ -90,6 +92,12 @@ part of installing `takt`.
 Everything else — dispatching agents, running gate reviews, verifying, committing — happens inside the
 binary; the plugin prompt only executes the op `takt next` hands it and asks the user when a gate needs an
 answer.
+
+Every command above that drives one specific run (`next`, `status`, `answer`, `record`, `done`, `waive`,
+`unlock`) needs `--slug` once there's more than one non-archived run in the repository, and always needs
+it for an archived run — the plugin asks which run before the first such call if it's ambiguous.
+`takt doctor` is the exception: it judges every bundle in the workspace at once and takes no `--slug` at
+all.
 
 The run bundle lives at `<dir>/<slug>/` in the repository, where `<dir>` defaults to `docs/takt` (see `dir`
 below) — a relative `dir` is committed with the code; an absolute or `~`-prefixed one keeps bundles outside
@@ -172,10 +180,15 @@ shipped default:
 Every gate (spec, plan, per-task) runs through `config.backends.reviewer`'s ordered chain — shipped as
 `["copilot", "claude"]`. takt tries each in order and uses the first one whose CLI is on `PATH` and answers
 `--version`; a review that actually runs and returns `error` does **not** fall through to the next backend
-— that failure is surfaced, not silently retried on another vendor. If neither backend is healthy, the
-review itself fails with an evidenced skip: the error names *why* each one in the chain was skipped (not
-found, or its health probe failed), so the failure is diagnosable from the message alone rather than a bare
-"no reviewer available".
+— that failure is surfaced, not silently retried on another vendor.
+
+If no backend in the chain is healthy, `takt review spec|plan` fails outright rather than silently passing
+the gate — its hint names *why* each backend in the chain was skipped (not found, or its health probe
+failed), so the cause is diagnosable from the message alone. Recording an evidenced skip instead is a
+separate, deliberate command, not something the failed review does on its own:
+`takt review spec|plan --skip --reason "<why>" --evidence <file>`, where `<file>` holds the failing
+backend's error output. Both `--reason` and `--evidence` are required, and the evidence file is copied into
+the bundle's receipt (spec §9) so the skip stays auditable.
 
 ## Releasing
 
