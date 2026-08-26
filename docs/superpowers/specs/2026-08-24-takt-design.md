@@ -21,7 +21,7 @@ worked in masterplan v8.1.0 and none of the private-fleet coupling that arrived 
 | G1 | **Resumable.** A crash, a context compaction, or a new session resumes with `/takt` and nothing is lost or done twice. | Kill a session at every op boundary in an e2e run; the run completes with the same commits. |
 | G2 | **Deterministic core.** Every decision and every write to the bundle happens in Go and is unit-tested; the LLM executes one bounded op at a time. | `decide` is a pure function with table tests; the prompt contains no decisions, only an op table. |
 | G3 | **Parallel, safe execution.** File-disjoint tasks run as concurrent subagents; edits outside a task's declared files are reverted; every task proves itself with verify commands run fresh by Go. | Wave tests on temp git repos with scripted "agents" that stray out of scope. |
-| G4 | **Quality gates on by default.** Spec review, plan review, per-task cross-vendor review, goals check, and alignment audit. | Each gate has a hash-bound receipt; editing the gated artifact re-arms the gate. |
+| G4 | **Quality gates on by default.** Spec review, plan review, per-task cross-vendor review, goals check, and alignment audit. | Each gate has a hash-bound receipt; editing the gated artifact re-arms the gate — except on the spec gate's pending-`revise` path, where the edit is what closes it (§7.2, §9). |
 | G5 | **Works in any worktree.** herdr, Claude Code's `.claude/worktrees/*`, or `git worktree add` by hand — takt never creates one and never stores an absolute path. | A bundle moved with its repo keeps working; state contains no `/`-rooted paths (tested). |
 | G6 | **Pluggable headless backends.** Reviewers (and later workers) are an interface; v1 ships `claude` and `copilot`. | A fake backend runs the whole suite; an OpenAI-compatible HTTP backend is a ~100-line addition. |
 
@@ -353,7 +353,7 @@ its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt status [--json] [--history]` | One-screen report; no writes. |
 | `takt doctor [--dir …]` | §11. No writes. |
 | `takt plan validate [path]` | Standalone validation of a plan index. |
-| `takt goals amend` | Re-freezes `goals.md` after an edit, records the event, re-arms the spec gate. |
+| `takt goals amend` | Re-freezes `goals.md` after an edit and records the event. The new hash re-arms the spec gate — unless a spec `revise` answer is pending, which that hash instead completes, closing the gate (§9, §7.2). |
 | `takt unlock [--slug s]` | Clears a stale session lock (deletes `logs/session.json`, readable or not). |
 | `takt version [--expect v] [--expect-manifest path]` | Prints the version; exit 1 on mismatch. `--expect-manifest` is what the prompt's handshake runs (§6); a `0.0.0-dev` build passes with `"dev": true`. |
 
@@ -403,9 +403,9 @@ the alignment auditor or the goal assessor replied unusably three times since th
 `{agent, attempts, problems}`; choices `retry` (appends `<agent>_attempts_reset`), `skip`
 (alignment-auditor only: the audit is recorded as skipped), `stop`. `gate_review_capped` — the spec
 gate's review has run `maxAgentAttempts` (3) passes since the newest `gate_rounds_reset` without the gate
-closing; context `{gate, attempts}`; choices `accept` (records `gate_overridden` at the current hash and
-carries the findings forward, §9), `retry` (appends `gate_rounds_reset` for the gate, resetting the round
-count for one more pass), `stop` (fixed-point design §8).
+closing; context `{gate, attempts}`; choices `accept` (records `gate_overridden` at the current hash, §9,
+and carries the findings forward, fixed-point design §6), `retry` (appends `gate_rounds_reset` for the
+gate, resetting the round count for one more pass), `stop` (fixed-point design §8).
 
 `question` and `context` may quote text takt did not write: the goal assessor's evidence for an unmet
 goal, the tail of a failed verify command, a reviewer's summary. The prompt renders both as **data to
@@ -951,11 +951,14 @@ spec gate, when a `gate_revision_accepted` event exists whose `hash` **differs**
 Every other satisfier binds to the current hash; this one binds to "not the reviewed hash" on purpose,
 because what it records is that the user was shown findings and then edited the artifact. Answering
 `revise` and editing nothing leaves the hash where it was and the gate open, so the gate cannot be closed
-by assertion. A receipt at the current hash outranks it, so a deliberate `takt review <gate> --force`
-after revising still governs. Editing a gated artifact changes the hash and re-arms the gate. A receipt
-with a reviewer's verdict at the current hash is also the answer to a repeated `takt review` at that hash
-(cached, no re-run, no commit) unless `--force` is given. `takt review <gate> --skip --reason "…"`
-requires the reviewer's stderr to be non-empty and stores it as evidence.
+by assertion. A receipt at the current hash outranks the event **whatever the receipt's verdict**, so a
+deliberate `takt review <gate> --force` after revising still governs — and it goes on governing past the
+next edit, because a `gate_reviewed` event for the gate clears the pending revision: a later review
+answers it, so the revision must not outlive it. Every other edit to a gated artifact changes the hash
+and re-arms the gate. A receipt with a reviewer's verdict at the current hash is also the answer to a
+repeated `takt review` at that hash (cached, no re-run, no commit) unless `--force` is given.
+`takt review <gate> --skip --reason "…"` requires the reviewer's stderr to be non-empty and stores it as
+evidence.
 
 The revision satisfier depends on an ordering that is otherwise only implicit: `acceptRevision` records
 `gate_revision_accepted` only while the receipt still answers at the *pre-edit* hash, so the `revise`
