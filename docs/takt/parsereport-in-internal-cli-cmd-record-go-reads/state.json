@@ -50,12 +50,21 @@
     {
       "id": 2,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/execute_test.go"
       ],
       "class": "test",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added TestRecordFlagsBeatParsedTrailer to internal/cli/execute_test.go, proving --status/--summary/--blockers beat the parsed trailer via LastDigest; grep check, targeted test, full `go test -race ./...`, and `golangci-lint run ./...` all pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-26T17:51:11.800516432Z"
+      }
     },
     {
       "id": 3,
@@ -98,13 +107,13 @@
     }
   ],
   "active_wave": {
-    "n": 0,
+    "n": 1,
     "slice": 1,
-    "attempt": 2,
-    "started_at": "2026-08-26T17:44:13.496979593Z",
+    "attempt": 1,
+    "started_at": "2026-08-26T17:47:59.705558663Z",
     "session_id": "f86e54d4-434a-4339-aacb-39eb1ede0776",
     "tasks": [
-      4
+      2
     ],
     "baseline": []
   },

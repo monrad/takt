@@ -44,3 +44,8 @@
 {"ts":"2026-08-26T17:44:09.099509864Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[4],"sha":"","wave":0}}
 {"ts":"2026-08-26T17:44:13.516013089Z","type":"wave_dispatched","data":{"attempt":2,"slice":1,"tasks":[4],"wave":0}}
 {"ts":"2026-08-26T17:47:39.655651897Z","type":"task_recorded","data":{"attempt":2,"status":"done","task":4}}
+{"ts":"2026-08-26T17:47:55.01838377Z","type":"wave_committed","data":{"attempt":2,"sha":"068c93e4963b2b59375280232043be9891cffebe","slice":1,"tasks":[4],"wave":0}}
+{"ts":"2026-08-26T17:47:55.018412705Z","type":"wave_closed","data":{"attempt":2,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[],"sha":"068c93e4963b2b59375280232043be9891cffebe","wave":0}}
+{"ts":"2026-08-26T17:47:59.738978545Z","type":"wave_cleared","data":{"wave":0}}
+{"ts":"2026-08-26T17:47:59.745498941Z","type":"wave_dispatched","data":{"attempt":1,"slice":1,"tasks":[2],"wave":1}}
+{"ts":"2026-08-26T17:51:11.802520565Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":2}}

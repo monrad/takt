@@ -1407,3 +1407,37 @@ func waiveSliceAway(t *testing.T, root string, tasks ...int) {
 		}
 	}
 }
+
+// TestRecordFlagsBeatParsedTrailer covers the override half of the record
+// contract, which no other test exercises: `record`'s helper always goes
+// through --from. recordTask's `cmp.Or(in.status, s), ...` puts the explicit
+// flags ahead of whatever parseReport pulled out of the trailer, so a report
+// whose trailer says failed must still land as the digest the flags name.
+func TestRecordFlagsBeatParsedTrailer(t *testing.T) {
+	t.Parallel()
+	root, bdir := executeRun(t)
+	next(t, root, nil) // dispatches wave 0 so task 1 attempt 1 is in the active wave
+	f := filepath.Join(t.TempDir(), "m.txt")
+	body := "STATUS: failed\nSUMMARY: parsed summary\nBLOCKERS: parsed blocker\n"
+	if err := os.WriteFile(f, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, o, errb := runIn(t, root, nil,
+		"record", "--task", "1", "--attempt", "1", "--from", f,
+		"--status", "done", "--summary", "s", "--blockers", "none", "--slug", "demo")
+	if code != 0 || o["ignored"] == true {
+		t.Fatalf("record: %d %v %s", code, o, errb)
+	}
+	st, _ := bundle.LoadState(bdir)
+	var d struct {
+		Status   string `json:"status"`
+		Summary  string `json:"summary"`
+		Blockers string `json:"blockers"`
+	}
+	if err := json.Unmarshal(st.Task(1).LastDigest, &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != "done" || d.Summary != "s" || d.Blockers != "none" {
+		t.Fatalf("--status/--summary/--blockers must beat the parsed trailer: %+v", d)
+	}
+}
