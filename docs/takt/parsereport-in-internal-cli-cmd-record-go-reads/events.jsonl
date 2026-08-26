@@ -53,3 +53,6 @@
 {"ts":"2026-08-26T17:53:01.050654068Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[],"sha":"4d3bd9187b7b57b571ec1eb276e3471f8ee44238","wave":1}}
 {"ts":"2026-08-26T17:53:05.638861342Z","type":"wave_cleared","data":{"wave":1}}
 {"ts":"2026-08-26T17:53:05.64079555Z","type":"phase","data":{"from":"execute","to":"finish"}}
+{"ts":"2026-08-26T17:53:13.930085846Z","type":"verify","data":{"commands":16,"passed":true,"sha":"cdd73eff4704cecdb1013a65172a13d8c28c9800"}}
+{"ts":"2026-08-26T17:55:22.222865772Z","type":"goal_check","data":{"achieved":6,"missed":0,"partial":0,"sha":"cdd73eff4704cecdb1013a65172a13d8c28c9800","waived":0}}
+{"ts":"2026-08-26T17:56:28.237375189Z","type":"retro","data":{"hash":"sha256:c9ce0415dede62add0695c201727a99b13115e80be9107ef2d5f370858f8e242"}}
