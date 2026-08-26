@@ -657,3 +657,63 @@ func TestAgentInvalidQuestionOffersSkipOnlyForTheAuditor(t *testing.T) {
 		t.Fatalf("assessor choices: %s", choices(q))
 	}
 }
+
+// TestGateReviewTellsTheUserWhatReviseWillActuallyDo: the revise option's
+// text has to match what revising does, not what it did before the
+// fixed-point design. Only the spec gate with nothing blocking gets the new
+// wording — every other combination keeps promising the re-review it still
+// performs.
+func TestGateReviewTellsTheUserWhatReviseWillActuallyDo(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		gate     string
+		blocking bool
+		want     string
+	}{
+		{"spec, nothing blocking", "spec", false, "closes on the edit"},
+		{"spec, blocking", "spec", true, "re-arms"},
+		{"plan is unchanged", "plan", false, "re-arms"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			q := decide.Question("gate_review", map[string]any{
+				"slug": "demo", "gate": c.gate, "verdict": "rework",
+				"summary": "see reviews/" + c.gate + ".md", "blocking": c.blocking,
+			})
+			var revise string
+			for _, o := range q.Options {
+				if o.Choice == "revise" {
+					revise = o.Description
+				}
+			}
+			if revise == "" {
+				t.Fatal("gate_review must always offer revise")
+			}
+			if !strings.Contains(revise, c.want) {
+				t.Fatalf("revise says %q, want it to mention %q", revise, c.want)
+			}
+		})
+	}
+}
+
+// TestBrainstormPassesBlockingToTheGateReviewQuestion: decideBrainstorm must
+// forward GateStatus.Blocking into the gate_review ask context, or the
+// question has no way to tell a fixed-point revise from a re-review one.
+func TestBrainstormPassesBlockingToTheGateReviewQuestion(t *testing.T) {
+	t.Parallel()
+	st := state(bundle.PhaseBrainstorm)
+	f := decide.Facts{HasSpec: true, HasGoals: true, GoalsFrozen: true}
+	f.SpecGate = decide.GateStatus{Verdict: "rework", Blocking: true}
+	d, err := decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActAsk || d.Op.Gate != "gate_review" {
+		t.Fatalf("%+v", d)
+	}
+	if d.Op.Context["blocking"] != true {
+		t.Fatalf("the question must carry blocking: %+v", d.Op.Context)
+	}
+}

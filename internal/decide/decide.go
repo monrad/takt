@@ -32,6 +32,13 @@ const (
 	ctxProblems  = "problems"
 )
 
+// Gate artifact ids, spelled once because they travel in ask contexts and
+// goconst flags the repeated literals.
+const (
+	specGate = "spec"
+	planGate = "plan"
+)
+
 // ids normalises a nil id list to an empty one. A gate's context is
 // persisted as the pending gate's payload and re-rendered from it verbatim
 // (spec §4.3), so `null` where the user expects a list is durable noise —
@@ -65,7 +72,12 @@ const (
 // GateStatus summarises a gate receipt (spec §9).
 type GateStatus struct {
 	Satisfied bool
-	Verdict   string // "", approve, rework, reject, error, skipped, overridden
+	Verdict   string // "", approve, rework, reject, error, skipped, overridden, revised
+	// Blocking is whether the receipt at the current hash tallied a blocking
+	// finding. On the spec gate it is the difference between a revise that
+	// closes the gate and one that buys a scoped confirming pass — so the
+	// question has to say which the user is getting.
+	Blocking bool
 }
 
 // AlignmentFacts summarises alignment.json. ClauseCount is how many clauses
@@ -216,10 +228,11 @@ func decideBrainstorm(st *bundle.State, f Facts) Decision {
 			return ask(
 				gateReview,
 				map[string]any{
-					ctxSlug:   st.Slug,
-					"gate":    "spec",
-					"verdict": f.SpecGate.Verdict,
-					"summary": "see reviews/spec.md",
+					ctxSlug:    st.Slug,
+					"gate":     specGate,
+					"verdict":  f.SpecGate.Verdict,
+					"summary":  "see reviews/spec.md",
+					"blocking": f.SpecGate.Blocking,
 				},
 			)
 		}
@@ -247,10 +260,11 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 			return ask(
 				gateReview,
 				map[string]any{
-					ctxSlug:   st.Slug,
-					"gate":    "plan",
-					"verdict": f.PlanGate.Verdict,
-					"summary": "see reviews/plan.md",
+					ctxSlug:    st.Slug,
+					"gate":     planGate,
+					"verdict":  f.PlanGate.Verdict,
+					"summary":  "see reviews/plan.md",
+					"blocking": f.PlanGate.Blocking,
 				},
 			)
 		}

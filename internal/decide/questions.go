@@ -92,26 +92,38 @@ func questionOwner(q *op.Op, ctx map[string]any) {
 	}
 }
 
-// questionGateReview fills the "gate_review" gate (spec/plan review asked for rework).
+// questionGateReview fills the "gate_review" gate (spec/plan review asked for
+// rework). The revise option's text depends on what revising will actually
+// do: on the spec gate, a review that found nothing blocking is "usable after
+// the listed edits" and the edit itself closes the gate (fixed-point design
+// §4), so promising a re-review there would tell the user the opposite of
+// what happens.
 func questionGateReview(q *op.Op, ctx map[string]any) {
 	g, _ := ctx["gate"].(string)
+	blocking, _ := ctx["blocking"].(bool)
 	q.Narration = g + " review asked for rework"
 	q.Question = fmt.Sprintf(
 		"The %s review verdict is %v: %v. How do you want to proceed?",
 		g, ctx["verdict"], ctx["summary"],
 	)
+	revise := op.Option{
+		Choice: "revise",
+		Label:  "Revise and re-review (Recommended)",
+		Description: fmt.Sprintf(
+			"Edit the %s with the findings in reviews/%s.md; the gate re-arms on the new hash.", g, g,
+		),
+	}
+	if g == specGate && !blocking {
+		revise.Label = "Revise (Recommended)"
+		revise.Description = "Edit spec.md with the findings in reviews/spec.md; " +
+			"the gate closes on the edit — no second review."
+	}
 	q.Options = []op.Option{
-		{
-			Choice: "revise",
-			Label:  "Revise and re-review (Recommended)",
-			Description: fmt.Sprintf(
-				"Edit the %s with the findings in reviews/%s.md; the gate re-arms on the new hash.", g, g,
-			),
-		},
+		revise,
 		{
 			Choice:      "accept",
 			Label:       "Accept as is",
-			Description: "Record an override with a reason (`--reason`) and proceed.",
+			Description: "Record an override with a reason (`--reason`); the findings are carried to the retro.",
 		},
 		{Choice: choiceStop, Label: labelStop, Description: "Keep the gate open and end the turn."},
 	}
