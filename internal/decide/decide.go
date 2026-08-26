@@ -32,16 +32,6 @@ const (
 	ctxProblems  = "problems"
 )
 
-// The non-task agents Decide dispatches (spec §5.3 rows 8, 10, 11, 21). The
-// same names identify them in a dispatch op, in the agent_invalid gate's
-// context and in the *_attempts_reset event `takt answer` appends, so they
-// are one constant each rather than a literal per site.
-const (
-	agentPlanner          = "planner"
-	agentAlignmentAuditor = "alignment-auditor"
-	agentGoalAssessor     = "goal-assessor"
-)
-
 // ids normalises a nil id list to an empty one. A gate's context is
 // persisted as the pending gate's payload and re-rendered from it verbatim
 // (spec §4.3), so `null` where the user expects a list is durable noise —
@@ -250,7 +240,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 				map[string]any{ctxSlug: st.Slug, ctxAttempts: f.PlanAttempts, ctxProblems: f.IndexProblems},
 			)
 		}
-		return Decision{Action: ActDispatch, Agent: &op.Agent{Agent: agentPlanner, Label: "plan the run"}}
+		return Decision{Action: ActDispatch, Agent: &op.Agent{Agent: op.AgentPlanner, Label: "plan the run"}}
 	}
 	if st.Config.Review.Plan && !f.PlanGate.Satisfied {
 		if needsRework(f.PlanGate) {
@@ -284,11 +274,11 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 // which case the run asks rather than dispatch a fourth time.
 func dispatchAuditor(st *bundle.State, f Facts, mode, label string) Decision {
 	if f.AlignmentAttempts >= maxAgentAttempts {
-		return askAgentInvalid(st, agentAlignmentAuditor, f.AlignmentAttempts, f.AlignmentProblems)
+		return askAgentInvalid(st, op.AgentAlignmentAuditor, f.AlignmentAttempts, f.AlignmentProblems)
 	}
 	return Decision{
 		Action: ActDispatch,
-		Agent:  &op.Agent{Agent: agentAlignmentAuditor, Mode: mode, Label: label},
+		Agent:  &op.Agent{Agent: op.AgentAlignmentAuditor, Mode: mode, Label: label},
 	}
 }
 

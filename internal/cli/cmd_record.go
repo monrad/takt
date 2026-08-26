@@ -17,6 +17,7 @@ import (
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/finish"
 	"github.com/monrad/takt/internal/goals"
+	"github.com/monrad/takt/internal/op"
 )
 
 // cmdRecord records an agent's result: an implementer digest (`--task`, Task
@@ -50,11 +51,11 @@ func cmdRecord(env Env) int {
 		})
 	}
 	switch *agent {
-	case agentPlanner:
+	case op.AgentPlanner:
 		return recordPlanner(ctx, env, tgt)
-	case agentAuditor:
+	case op.AgentAlignmentAuditor:
 		return recordAlignment(env, tgt.bdir, tgt.st, *mode, *from)
-	case agentAssessor:
+	case op.AgentGoalAssessor:
 		return recordGoals(ctx, env, tgt, *from)
 	}
 	return fail(env.Stderr, exitUsage,

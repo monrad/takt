@@ -75,15 +75,6 @@ const (
 	keyProvider      = "provider"
 )
 
-// The non-task agents `takt next` dispatches and `takt record --agent`
-// records; the same names identify the capped agent in the agent_invalid
-// gate's context (spec §5.3 rows 8, 10, 11, 21).
-const (
-	agentPlanner  = "planner"
-	agentAuditor  = "alignment-auditor"
-	agentAssessor = "goal-assessor"
-)
-
 // state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`
 // for a review this run switched off at init — a gate that will never take a
 // receipt, which none of the three existing words describes. Named so

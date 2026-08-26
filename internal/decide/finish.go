@@ -54,11 +54,11 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 		// could give, persisted as a gate.
 		if !fin.Goals.Present || len(fin.Goals.Unmet) == 0 {
 			if f.GoalsAttempts >= maxAgentAttempts {
-				return askAgentInvalid(st, agentGoalAssessor, f.GoalsAttempts, f.GoalsProblems)
+				return askAgentInvalid(st, op.AgentGoalAssessor, f.GoalsAttempts, f.GoalsProblems)
 			}
 			return Decision{
 				Action: ActDispatch,
-				Agent:  &op.Agent{Agent: agentGoalAssessor, Label: "assess the goals at HEAD"},
+				Agent:  &op.Agent{Agent: op.AgentGoalAssessor, Label: "assess the goals at HEAD"},
 			}
 		}
 		return ask(gateGoalsUnmet, map[string]any{ctxSlug: st.Slug, "unmet": fin.Goals.Unmet})

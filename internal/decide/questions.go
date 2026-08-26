@@ -179,7 +179,7 @@ func questionAgentInvalid(q *op.Op, ctx map[string]any) {
 			Description: "Re-dispatch the " + agent + " with the rejection reasons appended to its brief.",
 		},
 	}
-	if agent == agentAlignmentAuditor {
+	if agent == op.AgentAlignmentAuditor {
 		q.Options = append(q.Options, op.Option{
 			Choice:      choiceSkip,
 			Label:       "Skip the audit",

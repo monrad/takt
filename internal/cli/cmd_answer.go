@@ -12,6 +12,7 @@ import (
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gate"
+	"github.com/monrad/takt/internal/op"
 )
 
 // cmdAnswer resolves a pending gate: it records the choice, applies it, and
@@ -163,15 +164,15 @@ func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, err
 	switch choice {
 	case "retry":
 		reset := map[string]string{
-			agentAuditor:  evAlignmentReset,
-			agentAssessor: evGoalsReset,
+			op.AgentAlignmentAuditor: evAlignmentReset,
+			op.AgentGoalAssessor:     evGoalsReset,
 		}[agent]
 		if reset == "" {
 			return false, errorf("agent_invalid gate names no agent")
 		}
 		return false, bundle.AppendEvent(bdir, reset, map[string]any{keyProblems: payload.Context[keyProblems]})
 	case "skip":
-		if agent != agentAuditor {
+		if agent != op.AgentAlignmentAuditor {
 			return false, errorf("skip answers only the alignment-auditor, not the %s", agent)
 		}
 		return false, skipAlignment(bdir, st)

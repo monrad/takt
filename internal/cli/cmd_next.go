@@ -518,11 +518,11 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	ag.Cwd = r.ws.Repo.Root
 	render := func(tok string) (string, string, error) {
 		switch ag.Agent {
-		case agentPlanner:
+		case op.AgentPlanner:
 			return r.plannerBrief(ctx, &ag, tok)
-		case agentAuditor:
+		case op.AgentAlignmentAuditor:
 			return r.auditorBrief(&ag, tok)
-		case agentAssessor:
+		case op.AgentGoalAssessor:
 			return r.assessorBrief(ctx, &ag, tok)
 		}
 		return "", "", errors.New("unknown agent " + ag.Agent)

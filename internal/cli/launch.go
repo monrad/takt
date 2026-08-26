@@ -305,7 +305,7 @@ func renderTaskBrief(r *nextRun, pt *plan.Task, t *bundle.Task, waveN, slice, at
 	t.Attempt = attempt
 	t.LastDigest = nil
 	return op.Agent{
-		Task: t.ID, Agent: "implementer", Class: t.Class, Model: model, Brief: p,
+		Task: t.ID, Agent: op.AgentImplementer, Class: t.Class, Model: model, Brief: p,
 		Cwd: r.ws.Repo.Root, Label: fmt.Sprintf("task %d: %s", t.ID, pt.Title),
 	}, nil
 }
