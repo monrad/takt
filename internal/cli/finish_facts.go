@@ -101,6 +101,15 @@ func gatherFinishFacts(ctx context.Context, ws *workspace, bdir string, st *bund
 	}
 	fin.MergeAllowed, fin.MergeBlocked = df.MergeAllowed, df.MergeBlocked
 	fin.DiscardAllowed = df.DiscardAllowed
+	if !fin.DiscardAllowed {
+		// The gate renders a reason per option, and that contract stands:
+		// `discard_blocked` is what the question and plan 4's renderer read.
+		// What M9 dropped is the second *computation* — only an adopted
+		// branch blocks discard, and it blocks merge with the same
+		// sentence, so gatherDispositionFacts writes that sentence once and
+		// the two rendered facts are filled from it here.
+		fin.DiscardBlocked = df.MergeBlocked
+	}
 	return fin, nil
 }
 

@@ -247,7 +247,7 @@ One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: 
 `task_recorded`, `digest_ignored`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`,
 `retro`, `pr_pushed`, `disposition`, `archived`, `lock_taken`, `lock_released`, `recovered`,
 `wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
-`plan_invalid`, `plan_attempts_reset`. Three decisions read events as their durable record —
+`plan_invalid`, `plan_attempts_reset`, `goals_invalid`. Three decisions read events as their durable record —
 gate overrides (`gate_overridden`, required by §9), planner attempt counting (`plan_invalid` /
 `plan_attempts_reset`) and per-task review skips (`review_skipped`); everything else is the audit
 trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both carry

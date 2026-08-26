@@ -411,3 +411,52 @@ func TestUncommittedArchiveNeedsTheDirtyHook(t *testing.T) {
 		t.Fatalf("a committed archive passes: %+v", fs)
 	}
 }
+
+// TestArchivedBundleIsJudgedWithoutAllOnlyWhenDirty pins the one hole in the
+// archived skip. An archived run's artifacts are frozen history, so `takt
+// doctor` passes over it unless asked with --all — except when its bundle
+// was never committed, which is the one thing about an archived run that
+// still needs doing and the one run nobody calls `takt next` on again
+// (review I1). Only state-schema is run for it; the rest of the skip stands.
+func TestArchivedBundleIsJudgedWithoutAllOnlyWhenDirty(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("done")
+	st.Phase = bundle.PhaseArchived
+	if err := bundle.SaveState(d.Bundle("done"), st); err != nil {
+		t.Fatal(err)
+	}
+	opts := func(dirty bool) doctor.Options {
+		return doctor.Options{
+			Now: time.Now(), RepoRoot: d.RepoRoot, Dirty: func(string) bool { return dirty },
+			WaveStaleAfter: time.Hour, LockTTL: time.Hour,
+			Resolve: func(string) bool { return true }, ValidateOpts: noOpts,
+		}
+	}
+	perBundle := func(fs []doctor.Finding) []doctor.Finding {
+		var out []doctor.Finding
+		for _, f := range fs {
+			if f.Slug != "" {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
+	if got := perBundle(doctor.RunWith(context.Background(), d, opts(false), doctor.Default)); len(got) != 0 {
+		t.Fatalf("a committed archive stays skipped without --all: %+v", got)
+	}
+	all := doctor.RunWith(context.Background(), d, opts(true), doctor.Default)
+	got := perBundle(all)
+	if len(got) != 1 || got[0].Check != "state-schema" || got[0].Level != "ERROR" ||
+		got[0].Message != "archived run has an uncommitted bundle" {
+		t.Fatalf("only state-schema judges an uncommitted archive without --all: %+v", all)
+	}
+	if !doctor.HasError(all) {
+		t.Fatal("it must be an ERROR, so `takt doctor` exits 1")
+	}
+	// A caller that narrowed the checks past state-schema still gets the skip.
+	if got = perBundle(doctor.RunWith(context.Background(), d, opts(true),
+		[]doctor.Check{doctor.Branch})); len(got) != 0 {
+		t.Fatalf("state-schema is not forced on a caller that did not ask for it: %+v", got)
+	}
+}

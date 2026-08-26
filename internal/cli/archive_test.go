@@ -421,9 +421,17 @@ func TestBranchFinishAdoptedOffersPrAndKeepOnly(t *testing.T) {
 	if len(opts) != 2 || opts["pr"] == nil || opts["keep"] == nil {
 		t.Fatalf("an adopted branch offers exactly pr and keep: %v", o["options"])
 	}
-	// The two it does not offer are still refused if asked for by hand, and
-	// each names the one reason an adopted run has — which is written once,
-	// not once per option (review M9).
+	// The gate still reports a reason per option — `merge_blocked` and
+	// `discard_blocked` are both what plan 4's renderer reads — even though
+	// an adopted run has one reason to put under each (review M9 dropped
+	// the duplicate computation, not the keys).
+	askCtx, _ := o["context"].(map[string]any)
+	mb, _ := askCtx["merge_blocked"].(string)
+	db, _ := askCtx["discard_blocked"].(string)
+	if mb == "" || db != mb || !strings.Contains(mb, "adopted branch feature") {
+		t.Fatalf("both blocked keys must carry the adopted reason: %v", askCtx)
+	}
+	// The two options it does not offer are still refused if asked for by hand.
 	for _, choice := range []string{"merge", "discard"} {
 		refusesDisposition(t, d, choice, "adopted branch feature")
 	}
@@ -485,12 +493,14 @@ func TestMergeHandOffRunsFromAPathWithASpace(t *testing.T) {
 	}
 }
 
-// doctorSays reports whether `takt doctor --all` prints a finding at this
-// level with this message. Archived bundles are only judged with --all
-// (spec §11), which is exactly the run this reports on.
-func doctorSays(t *testing.T, root, level, msg string) bool {
+// doctorSays reports whether plain `takt doctor` prints a finding at this
+// level with this message, and the exit code it did it with. Deliberately
+// without --all: an archived run whose bundle was never committed is the one
+// nobody drives again, so it has to reach the command anyone actually runs
+// (spec §11's archived skip otherwise stands).
+func doctorSays(t *testing.T, root, level, msg string) (bool, int) {
 	t.Helper()
-	code, got, errb := runIn(t, root, nil, "doctor", "--json", "--all")
+	code, got, errb := runIn(t, root, nil, "doctor", "--json")
 	if got == nil {
 		t.Fatalf("doctor --json printed nothing: %d %s", code, errb)
 	}
@@ -504,10 +514,10 @@ func doctorSays(t *testing.T, root, level, msg string) bool {
 			t.Fatalf("finding is not an object: %v", x)
 		}
 		if f["level"] == level && f["message"] == msg {
-			return true
+			return true, code
 		}
 	}
-	return false
+	return false, code
 }
 
 // TestArchiveCommitIsRetriedAfterAStrandedIndexLock covers review I1's first
@@ -540,8 +550,8 @@ func TestArchiveCommitIsRetriedAfterAStrandedIndexLock(t *testing.T) {
 	if s := testutil.Git(t, d.root, "status", "--porcelain"); s == "" {
 		t.Fatal("the failed commit must leave the bundle uncommitted")
 	}
-	if !doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle") {
-		t.Fatal("doctor must report the archive that never got its commit")
+	if said, dcode := doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle"); !said || dcode != 1 {
+		t.Fatalf("plain `takt doctor` must report the archive that never got its commit: %v exit %d", said, dcode)
 	}
 	// A kill can land before the copy as easily as after it, so the retry
 	// has to redo the discard bookkeeping and not only the commit.
@@ -565,8 +575,8 @@ func TestArchiveCommitIsRetriedAfterAStrandedIndexLock(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(discarded, "state.json")); serr != nil {
 		t.Fatalf("the retry must redo the discard copy: %v", serr)
 	}
-	if doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle") {
-		t.Fatal("a committed archive must not be reported")
+	if said, dcode := doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle"); said || dcode != 0 {
+		t.Fatalf("a committed archive goes back to being skipped: %v exit %d", said, dcode)
 	}
 	// And the hand-off the same call printed now runs as written — which is
 	// what the commit buys: `git checkout` refuses over a modified state.json.
@@ -597,8 +607,8 @@ func TestArchiveCommitIsRetriedAfterASoftReset(t *testing.T) {
 	if s := testutil.Git(t, d.root, "status", "--porcelain"); s == "" {
 		t.Fatal("the reset must leave the archive's writes uncommitted")
 	}
-	if !doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle") {
-		t.Fatal("doctor must report the archive whose commit is gone")
+	if said, dcode := doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle"); !said || dcode != 1 {
+		t.Fatalf("plain `takt doctor` must report the archive whose commit is gone: %v exit %d", said, dcode)
 	}
 	o := d.nextOp()
 	if o["op"] != "stop" || o["reason"] != stopArchived {

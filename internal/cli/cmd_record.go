@@ -98,9 +98,12 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 		return code
 	}
 	if len(problems) > 0 {
-		// Nothing is written, so the dispatch is still pending: the next
+		// No record is written, so the dispatch is still pending: the next
 		// `takt next` hands the brief out again and the assessment is
-		// simply retaken (spec §5.3 row 21).
+		// simply retaken (spec §5.3 row 21). The rejection itself is on the
+		// log, as the planner's is — purely audit here, with no attempt cap
+		// reading it back (§4.4).
+		_ = bundle.AppendEvent(tgt.bdir, "goals_invalid", map[string]any{keyProblems: problems})
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
 	head, err := tgt.ws.Repo.HeadSHA(ctx)

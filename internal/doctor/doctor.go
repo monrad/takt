@@ -3,6 +3,7 @@ package doctor
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -105,7 +106,9 @@ func Run(
 	}, checks)
 }
 
-// RunWith executes checks over every bundle (archived only with o.All). A
+// RunWith executes checks over every bundle (archived only with o.All, the
+// one exception being an archived bundle git still has something outstanding
+// under — see archivedChecks). A
 // bundle whose state cannot load yields one state-schema ERROR and no other
 // checks. A repo-wide check (Check.RepoWide) runs once, before the
 // per-bundle loop, against Input{RepoRoot, Now} with Slug "" — sortFindings
@@ -152,19 +155,36 @@ func runBundle(ctx context.Context, dir bundle.Dir, slug string, o Options, chec
 			Fix: "restore state.json from git history; takt never repairs state silently",
 		}}
 	}
-	if st.Phase == bundle.PhaseArchived && !o.All {
-		return nil
-	}
 	in := Input{
 		Dir: dir, Slug: slug, BundleDir: bdir, State: st, ValidateOpts: o.ValidateOpts(bdir),
 		Now: o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL, RepoRoot: o.RepoRoot,
 		CurrentBranch: o.CurrentBranch, Resolve: o.Resolve, Dirty: o.Dirty,
+	}
+	if st.Phase == bundle.PhaseArchived && !o.All {
+		checks = archivedChecks(in, checks)
+		if len(checks) == 0 {
+			return nil
+		}
 	}
 	var out []Finding
 	for _, c := range checks {
 		out = append(out, c.Run(ctx, in)...)
 	}
 	return out
+}
+
+// archivedChecks narrows the check set for an archived bundle a caller did
+// not ask for with --all. The skip stands for everything an archived run's
+// frozen history would only produce noise about — but not for an archive
+// whose bundle was never committed. That run is precisely the one nobody
+// calls `takt next` on again, so hiding its ERROR behind --all would hide it
+// from the only command that looks (review I1). Just state-schema runs, and
+// only when the caller asked for it in the first place.
+func archivedChecks(in Input, checks []Check) []Check {
+	if !uncommittedArchive(in) {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(checks), func(c Check) bool { return c.Name != stateSchemaCheckName })
 }
 
 // sortFindings orders findings by slug then check, so output is deterministic.

@@ -263,12 +263,7 @@ func questionBranchFinish(q *op.Op, ctx map[string]any) {
 		Description: "Requires `--confirm <slug>`. The bundle is copied to <dir>/.discarded/<slug>/ and the branch force-deleted.",
 	}
 	if allowed, _ := ctx["discard_allowed"].(bool); !allowed {
-		// The one thing that blocks discard — the run adopted its branch —
-		// blocks merge with the same sentence, and an adopted run never
-		// gets this far (it took the pr/keep return above). So the reason
-		// is carried once, and this is the net under an unreachable state
-		// rather than a second value to keep in step (review M9).
-		discard.Disabled, _ = ctx["merge_blocked"].(string)
+		discard.Disabled, _ = ctx["discard_blocked"].(string)
 	}
 	q.Options = []op.Option{merge, pr, keep, discard}
 }

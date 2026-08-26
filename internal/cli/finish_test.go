@@ -344,7 +344,20 @@ func TestGoalAssessorRecordRejectsBadVerdicts(t *testing.T) {
 		}
 	}
 	if _, err := os.Stat(filepath.Join(bdir, "finish", "goals.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a rejected assessment must write nothing: %v", err)
+		t.Fatalf("a rejected assessment must write no record: %v", err)
+	}
+	// The rejection itself is on the log, as the planner's is — audit only,
+	// nothing counts it (spec §4.4).
+	if n := countEvents(t, bdir, "goals_invalid"); n != 2 {
+		t.Fatalf("each rejection appends one goals_invalid, got %d", n)
+	}
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := events[len(events)-1]
+	if problems, ok := last.Data["problems"].([]any); !ok || len(problems) == 0 {
+		t.Fatalf("goals_invalid must name the problems: %+v", last)
 	}
 	st, err := bundle.LoadState(bdir)
 	if err != nil || st.GoalsCheckedSHA != nil {

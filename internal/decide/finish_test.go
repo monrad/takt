@@ -206,6 +206,22 @@ func TestBranchFinishOptions(t *testing.T) {
 	if d.Op.Options[0].Choice != "merge" {
 		t.Fatalf("merge is listed first even when disabled: %+v", d.Op.Options)
 	}
+	// Both blocked keys are part of the gate's payload — the question reads
+	// them, and so will the prompt renderer.
+	for _, k := range []string{"merge_blocked", "discard_blocked"} {
+		if _, ok := d.Op.Context[k]; !ok {
+			t.Fatalf("branch_finish context must carry %s: %+v", k, d.Op.Context)
+		}
+	}
+	// A blocked discard renders its own reason, not merge's by accident.
+	blocked := decide.FinishFacts{Verified: true, GoalsChecked: true, HasRetro: true,
+		MergeBlocked: "no", DiscardBlocked: "the run adopted branch feature; integrate it yourself"}
+	db, _ := decide.Decide(finishState(), decide.Facts{Finish: blocked})
+	for _, o := range db.Op.Options {
+		if o.Choice == "discard" && o.Disabled != blocked.DiscardBlocked {
+			t.Fatalf("discard must render discard_blocked: %+v", o)
+		}
+	}
 	st := finishState()
 	st.BranchAdopted = true
 	d, _ = decide.Decide(st, decide.Facts{Finish: fin})
