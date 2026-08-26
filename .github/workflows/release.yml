@@ -17,24 +17,44 @@ jobs:
           # goreleaser builds the changelog from history.
           fetch-depth: 0
 
-      - name: The plugin manifest must agree with the tag
+      - name: Both plugin manifests must agree with the tag
         run: |
           set -euo pipefail
-          manifest="$(jq -r .version .claude-plugin/plugin.json)"
           tag="${GITHUB_REF_NAME#v}"
-          if [ "$manifest" != "$tag" ]; then
-            echo "::error::.claude-plugin/plugin.json says $manifest but the tag ${GITHUB_REF_NAME} means $tag."
+
+          # `task version:set` writes all three of these; the tag is the
+          # fourth place the same number appears, and nothing but this gate
+          # stops the four drifting apart.
+          plugin="$(jq -r '.version' .claude-plugin/plugin.json)"
+          market="$(jq -r '.version' .claude-plugin/marketplace.json)"
+          entry="$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)"
+
+          rc=0
+          for pair in \
+            "plugin.json .version:$plugin" \
+            "marketplace.json .version:$market" \
+            "marketplace.json .plugins[0].version:$entry"
+          do
+            where="${pair%%:*}"
+            have="${pair##*:}"
+            if [ "$have" != "$tag" ]; then
+              echo "::error::.claude-plugin/$where says '$have' but tag ${GITHUB_REF_NAME} means '$tag'."
+              rc=1
+            fi
+          done
+
+          if [ "$rc" -ne 0 ]; then
             echo "::error::Run 'task version:set VERSION=$tag', commit the manifests, then move the tag."
             exit 1
           fi
-          echo "plugin.json $manifest matches tag ${GITHUB_REF_NAME}"
+          echo "plugin.json and marketplace.json both say $tag — matches tag ${GITHUB_REF_NAME}"
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           check-latest: true
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
