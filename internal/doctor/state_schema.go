@@ -3,6 +3,8 @@ package doctor
 import (
 	"context"
 	"fmt"
+
+	"github.com/monrad/takt/internal/bundle"
 )
 
 // stateSchemaCheckName names this check; shared with doctor.go's
@@ -13,8 +15,39 @@ const stateSchemaCheckName = "state-schema"
 // StateSchema re-validates state.json beyond what LoadState enforces:
 // the active wave must reference tasks, and an open gate must have an id.
 var StateSchema = Check{Name: stateSchemaCheckName, Run: func(_ context.Context, in Input) []Finding {
-	st := in.State
 	f := Finding{Level: levelPass, Check: stateSchemaCheckName, Slug: in.Slug, Message: "state.json is schema-valid"}
+	// An archive that never got its commit: the run says it is finished
+	// while its own record is still only in the worktree, where a merge
+	// cannot carry it and `git checkout` cannot run over it (review I1).
+	// `takt next` on the run takes that commit again — this is the report
+	// for the bundle nobody asks again.
+	if uncommittedArchive(in) {
+		f.Level = levelError
+		f.Message = "archived run has an uncommitted bundle"
+		f.Fix = "run `takt next --slug " + in.Slug + "`; it takes the archive commit again"
+		return []Finding{f}
+	}
+	return schemaFindings(in, f)
+}}
+
+// uncommittedArchive reports whether this bundle is archived and still has
+// something outstanding in git. It answers false unless the caller wired a
+// Dirty hook against a real repository and the bundle is one takt commits:
+// a unit test's bundle, and one that lives outside the work tree, have no
+// archive commit to be missing in the first place.
+func uncommittedArchive(in Input) bool {
+	if in.State.Phase != bundle.PhaseArchived || in.Dirty == nil || in.RepoRoot == "" || !in.Dir.InRepo {
+		return false
+	}
+	rel, err := in.Dir.RelToRepo(in.BundleDir)
+	return err == nil && in.Dirty(rel)
+}
+
+// schemaFindings is the rest of the check: the active wave must reference
+// tasks and carry a slice number, an open gate must have an id, and an
+// executing run must have a plan loaded.
+func schemaFindings(in Input, f Finding) []Finding {
+	st := in.State
 	if st.ActiveWave != nil {
 		found := false
 		for _, t := range st.Tasks {
@@ -54,4 +87,4 @@ var StateSchema = Check{Name: stateSchemaCheckName, Run: func(_ context.Context,
 		f.Level, f.Message, f.Fix = levelError, "phase is execute but tasks is empty", "the plan was never loaded; re-run planning"
 	}
 	return []Finding{f}
-}}
+}

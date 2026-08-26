@@ -72,6 +72,9 @@ func cmdNext(env Env) int {
 	// it here on a later call, and one that is fully done says so and does
 	// nothing.
 	if tgt.st.Phase == bundle.PhaseArchived {
+		if code = recommitArchive(ctx, env, tgt); code != 0 {
+			return code
+		}
 		return applyAndStop(ctx, env, tgt)
 	}
 	id, generated := sessionID(env.Getenv)

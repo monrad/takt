@@ -370,3 +370,44 @@ func TestSliceLessActiveWaveWarnDoesNotMaskAnError(t *testing.T) {
 		}
 	}
 }
+
+// TestUncommittedArchiveNeedsTheDirtyHook covers review I1's report: an
+// archived run with anything still outstanding under its bundle never got
+// its archive commit, and doctor says so. The hook is what makes that
+// askable at all — a caller that wires none (this package's own unit tests,
+// and every caller that predates it) simply does not run the check rather
+// than guessing.
+func TestUncommittedArchiveNeedsTheDirtyHook(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("done")
+	st.Phase = bundle.PhaseArchived
+	if err := bundle.SaveState(d.Bundle("done"), st); err != nil {
+		t.Fatal(err)
+	}
+	opts := func(dirty func(string) bool) doctor.Options {
+		return doctor.Options{
+			All: true, Now: time.Now(), RepoRoot: d.RepoRoot, Dirty: dirty,
+			WaveStaleAfter: time.Hour, LockTTL: time.Hour,
+			Resolve: func(string) bool { return true }, ValidateOpts: noOpts,
+		}
+	}
+	only := []doctor.Check{doctor.StateSchema}
+	fs := doctor.RunWith(context.Background(), d, opts(nil), only)
+	if len(fs) != 1 || fs[0].Level != "PASS" {
+		t.Fatalf("no hook → nothing is asked of git: %+v", fs)
+	}
+	asked := ""
+	fs = doctor.RunWith(context.Background(), d,
+		opts(func(rel string) bool { asked = rel; return true }), only)
+	if len(fs) != 1 || fs[0].Level != "ERROR" || fs[0].Message != "archived run has an uncommitted bundle" {
+		t.Fatalf("%+v", fs)
+	}
+	if asked != "docs/takt/done" {
+		t.Fatalf("the hook is asked about the bundle, repo-relative: %q", asked)
+	}
+	fs = doctor.RunWith(context.Background(), d, opts(func(string) bool { return false }), only)
+	if len(fs) != 1 || fs[0].Level != "PASS" {
+		t.Fatalf("a committed archive passes: %+v", fs)
+	}
+}

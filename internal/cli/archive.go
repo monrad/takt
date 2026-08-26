@@ -78,6 +78,48 @@ func (r *nextRun) archive(ctx context.Context) int {
 	return applyAndStop(ctx, r.env, &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st})
 }
 
+// recommitArchive finishes an archive whose commit never landed. archive
+// writes `phase: archived`, `applied: true` and the discard copy *before*
+// commitBundle, so a commit that failed — a stranded .git/index.lock, a hook
+// that said no — or a kill between the two leaves the run archived with its
+// own record still only in the worktree. Nothing downstream recovers from
+// that on its own: every later `next` goes straight to applyAndStop, so the
+// bundle stays dirty forever, the discard hand-off's `git checkout` cannot
+// run over a modified state.json, and a merge would carry a state.json that
+// still says `phase: finish` (review I1).
+//
+// Nothing new is remembered to notice it. The question is put to git, like
+// every other question the archived path asks: an in-repo bundle with
+// anything outstanding under it is an archive whose commit is missing, and
+// the commit is simply taken again — after redoing the one piece of
+// bookkeeping that may also have been lost. A re-commit that fails again is
+// the error the original archive would have returned, so the caller stops
+// rather than printing a hand-off that cannot work.
+func recommitArchive(ctx context.Context, env Env, tgt *runTarget) int {
+	rel := bundleRel(tgt.ws, tgt.bdir)
+	dirty, err := bundleDirty(ctx, tgt.ws.Repo, rel)
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	if !dirty {
+		return 0
+	}
+	// The copy is what is left of a discarded run once the branch holding
+	// its commits is gone, and it is taken before the archive commit — so a
+	// crash before it must not be papered over by the commit alone. It is
+	// redone only when it is missing: a copy that is already there was taken
+	// from these same files.
+	if dispositionChoice(tgt.st) == dispositionDiscard && !dirExists(tgt.ws.Dir.Discarded(tgt.st.Slug)) {
+		if err = discardCopy(tgt.ws, tgt.st, tgt.bdir); err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
+	}
+	if _, _, err = commitBundle(ctx, tgt.ws, tgt.bdir, tgt.slug, "archive"); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	return 0
+}
+
 // applyAndStop does the disposition's git work and prints the run's stop op.
 // It writes nothing: the archive commit is the run's last one, so the tree is
 // clean for every choice by the time this runs — which is what makes the

@@ -57,6 +57,13 @@ func doctorOptions(ctx context.Context, ws *workspace, all bool) doctor.Options 
 			_, err := ws.Repo.Run(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
 			return err == nil
 		},
+		// A git failure reads as "nothing outstanding": doctor is a
+		// read-only report, and a check that cannot ask git must not invent
+		// an ERROR about the answer.
+		Dirty: func(rel string) bool {
+			dirty, err := bundleDirty(ctx, ws.Repo, rel)
+			return err == nil && dirty
+		},
 		ValidateOpts: func(bdir string) plan.ValidateOpts { return validateOpts(ws, bdir) },
 	}
 }

@@ -35,6 +35,7 @@ type Input struct {
 	RepoRoot       string
 	CurrentBranch  string
 	Resolve        func(ref string) bool
+	Dirty          func(rel string) bool
 }
 
 // Check is one named health check. RepoWide marks a check that judges the
@@ -72,7 +73,12 @@ type Options struct {
 	RepoRoot       string
 	CurrentBranch  string
 	Resolve        func(ref string) bool // does a ref/sha resolve in the repo
-	ValidateOpts   func(bundleDir string) plan.ValidateOpts
+	// Dirty reports whether git has anything outstanding under the
+	// repo-relative path rel. Left nil — as every caller that predates it
+	// does, and as a unit test with no repository must — the checks that
+	// need git simply do not run.
+	Dirty        func(rel string) bool
+	ValidateOpts func(bundleDir string) plan.ValidateOpts
 }
 
 // Run executes checks over every bundle with the defaults a caller that
@@ -152,7 +158,7 @@ func runBundle(ctx context.Context, dir bundle.Dir, slug string, o Options, chec
 	in := Input{
 		Dir: dir, Slug: slug, BundleDir: bdir, State: st, ValidateOpts: o.ValidateOpts(bdir),
 		Now: o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL, RepoRoot: o.RepoRoot,
-		CurrentBranch: o.CurrentBranch, Resolve: o.Resolve,
+		CurrentBranch: o.CurrentBranch, Resolve: o.Resolve, Dirty: o.Dirty,
 	}
 	var out []Finding
 	for _, c := range checks {

@@ -463,3 +463,134 @@ func TestMergeHandOffRunsFromAPathWithASpace(t *testing.T) {
 		t.Fatalf("the hand-off must merge the run into main: %s", s)
 	}
 }
+
+// doctorSays reports whether `takt doctor --all` prints a finding at this
+// level with this message. Archived bundles are only judged with --all
+// (spec §11), which is exactly the run this reports on.
+func doctorSays(t *testing.T, root, level, msg string) bool {
+	t.Helper()
+	code, got, errb := runIn(t, root, nil, "doctor", "--json", "--all")
+	if got == nil {
+		t.Fatalf("doctor --json printed nothing: %d %s", code, errb)
+	}
+	fs, ok := got["findings"].([]any)
+	if !ok {
+		t.Fatalf("doctor --json has no findings: %v", got)
+	}
+	for _, x := range fs {
+		f, isMap := x.(map[string]any)
+		if !isMap {
+			t.Fatalf("finding is not an object: %v", x)
+		}
+		if f["level"] == level && f["message"] == msg {
+			return true
+		}
+	}
+	return false
+}
+
+// TestArchiveCommitIsRetriedAfterAStrandedIndexLock covers review I1's first
+// window. `archive` writes phase, applied and the discard copy before its
+// commit, so a commit git will not take — here a stranded .git/index.lock,
+// tomorrow a hook that says no — leaves the run archived with its own record
+// only in the worktree. Every later `next` used to walk straight past it,
+// printing a discard hand-off whose `git checkout` cannot run over a
+// modified state.json. Now the commit is taken again, along with any
+// bookkeeping that was lost with it.
+func TestArchiveCommitIsRetriedAfterAStrandedIndexLock(t *testing.T) {
+	t.Parallel()
+	d, bdir, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "discard",
+		"--confirm", "demo", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	lock := filepath.Join(d.root, ".git", "index.lock")
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errb := d.cmd("next", "--slug", "demo")
+	if code != 1 || !strings.Contains(errb, "index.lock") {
+		t.Fatalf("an archive whose commit fails must exit 1 with git's error: %d %s", code, errb)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil || st.Phase != bundle.PhaseArchived {
+		t.Fatalf("the bookkeeping is written before the commit: %v %+v", err, st)
+	}
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s == "" {
+		t.Fatal("the failed commit must leave the bundle uncommitted")
+	}
+	if !doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle") {
+		t.Fatal("doctor must report the archive that never got its commit")
+	}
+	// A kill can land before the copy as easily as after it, so the retry
+	// has to redo the discard bookkeeping and not only the commit.
+	discarded := filepath.Join(filepath.Dir(bdir), ".discarded", "demo")
+	if err = os.RemoveAll(discarded); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	o := d.nextOp()
+	if o["op"] != "stop" || o["reason"] != stopArchived {
+		t.Fatalf("%v", o)
+	}
+	if s := testutil.Git(t, d.root, "log", "-1", "--format=%s"); s != "takt(demo): archive" {
+		t.Fatalf("the retry must take the archive commit: %s", s)
+	}
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
+		t.Fatalf("tree not clean: %q", s)
+	}
+	if _, serr := os.Stat(filepath.Join(discarded, "state.json")); serr != nil {
+		t.Fatalf("the retry must redo the discard copy: %v", serr)
+	}
+	if doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle") {
+		t.Fatal("a committed archive must not be reported")
+	}
+	// And the hand-off the same call printed now runs as written — which is
+	// what the commit buys: `git checkout` refuses over a modified state.json.
+	cleanup, _ := o["cleanup"].([]any)
+	if len(cleanup) != 1 {
+		t.Fatalf("one hand-off command: %v", o)
+	}
+	if scode, out := runShell(t, d.root, cleanup[0].(string)); scode != 0 {
+		t.Fatalf("the printed cleanup must run as-is: exit %d\n%s", scode, out)
+	}
+}
+
+// TestArchiveCommitIsRetriedAfterASoftReset covers review I1's other window:
+// the kill between the archive's writes and its commit. Nothing distinguishes
+// that from a commit that was taken and then undone, so a soft reset stands
+// in for it — and the next call re-derives the same commit from the same
+// files.
+func TestArchiveCommitIsRetriedAfterASoftReset(t *testing.T) {
+	t.Parallel()
+	d, bdir, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "keep", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	if o := d.nextOp(); o["op"] != "stop" || o["reason"] != stopArchived {
+		t.Fatalf("%v", o)
+	}
+	testutil.Git(t, d.root, "reset", "--soft", "HEAD~1")
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s == "" {
+		t.Fatal("the reset must leave the archive's writes uncommitted")
+	}
+	if !doctorSays(t, d.root, "ERROR", "archived run has an uncommitted bundle") {
+		t.Fatal("doctor must report the archive whose commit is gone")
+	}
+	o := d.nextOp()
+	if o["op"] != "stop" || o["reason"] != stopArchived {
+		t.Fatalf("%v", o)
+	}
+	if s := testutil.Git(t, d.root, "log", "-1", "--format=%s"); s != "takt(demo): archive" {
+		t.Fatalf("the retry must take the archive commit: %s", s)
+	}
+	if s := testutil.Git(t, d.root, "status", "--porcelain"); s != "" {
+		t.Fatalf("tree not clean: %q", s)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil || st.Phase != bundle.PhaseArchived || st.Disposition == nil || !st.Disposition.Applied {
+		t.Fatalf("%v %+v", err, st)
+	}
+}

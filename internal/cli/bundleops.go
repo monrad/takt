@@ -73,6 +73,23 @@ func waveCommitLanded(ctx context.Context, repo *gitx.Repo, rec *wave.CloseResul
 	return err == nil && ok
 }
 
+// bundleDirty reports whether git has anything outstanding under the run's
+// own bundle directory — staged, modified or untracked. Every takt commit
+// stages that directory wholesale, so a clean bundle is a committed one:
+// this is how both the archived `next` and `takt doctor` ask whether the
+// archive commit landed. An external bundle (rel "") is not in git at all
+// and is never dirty.
+func bundleDirty(ctx context.Context, repo *gitx.Repo, rel string) (bool, error) {
+	if rel == "" {
+		return false, nil
+	}
+	out, err := repo.Run(ctx, "status", "--porcelain", "--", rel)
+	if err != nil {
+		return false, err
+	}
+	return out != "", nil
+}
+
 // pathsCommitted reports whether git has nothing outstanding at any of
 // paths — nothing staged, modified or untracked. It is the second half of
 // the question "did that commit really carry this wave": a commit that
