@@ -149,10 +149,7 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	if err = writeFindings(filepath.Join(tgt.bdir, "reviews", g+".md"), g, res); err != nil {
-		return fail(env.Stderr, exitError, err.Error(), "")
-	}
-	if err = writeResultJSON(filepath.Join(tgt.bdir, "reviews", g+".json"), res); err != nil {
+	if err = storeFindings(tgt.bdir, g, res); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	rc := gate.Receipt{
@@ -236,6 +233,30 @@ func preserveEvidence(bdir, g, src string) (string, error) {
 		return "", err
 	}
 	return rel, nil
+}
+
+// storeFindings records a pass's findings in both shapes: reviews/<gate>.md
+// for a human and reviews/<gate>.json for the code that has to read a
+// finding as data.
+//
+// An `error` verdict records neither. It is the backend failing, not a
+// reviewer's answer — the same reason cachedReceipt refuses to let one
+// short-circuit a re-run — and the stored findings are a live referent
+// rather than a log: priorBlockingFindings reads the .json to scope the
+// confirming pass, and the carry-forward reads it on accept. Overwriting
+// them with an errored result's empty findings would let one transient
+// backend failure delete the blocking findings a previous pass earned and
+// drop the run back into the unscoped re-review loop the spec gate's fixed
+// point exists to end. The receipt is still written by the caller, so the
+// run sees the failure; only the findings survive it.
+func storeFindings(bdir, g string, res backend.ReviewResult) error {
+	if res.Verdict == gate.VerdictError {
+		return nil
+	}
+	if err := writeFindings(filepath.Join(bdir, "reviews", g+".md"), g, res); err != nil {
+		return err
+	}
+	return writeResultJSON(filepath.Join(bdir, "reviews", g+".json"), res)
 }
 
 // writeFindings renders a reviewer result as markdown for humans.

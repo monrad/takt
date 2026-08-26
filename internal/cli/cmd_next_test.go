@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/cli"
@@ -464,6 +465,69 @@ func TestReviseDoesNotCarryFindings(t *testing.T) {
 	}
 	if len(got.Items) != 0 {
 		t.Fatalf("a revise answers the findings, they must not also be carried: %+v", got.Items)
+	}
+}
+
+// TestAnErroredPassKeepsThePreviousFindings covers the referent the scoped
+// confirming pass depends on. A backend failure is not a Go error here: it
+// comes back as a result whose verdict is "error", so an errored pass used to
+// overwrite reviews/spec.json with {"verdict":"error","findings":null} and
+// take the blocking findings the previous pass earned with it. One transient
+// failure was then enough to replace the scoped rubric with the full one and
+// put the run back in the unbounded re-review loop the fixed point exists to
+// end.
+func TestAnErroredPassKeepsThePreviousFindings(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+
+	blocking := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"one blocking",` +
+		`"findings":[{"severity":"blocking","file":"spec.md","line":1,"title":"wrong claim",` +
+		`"detail":"executeRun does not set ActiveWave"}]}`}
+	if c, r, e := runIn(t, root, blocking, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "rework" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+
+	// The session revised, so the edit re-armed the gate and the next pass is
+	// the scoped one — but the backend falls over on it.
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec v2\n")
+	broken := map[string]string{"TAKT_FAKE_REVIEW": "not json at all"}
+	if c, r, e := runIn(t, root, broken, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "error" {
+		t.Fatalf("the fake backend must report an error verdict: %d %v %s", c, r, e)
+	}
+
+	b, err := os.ReadFile(filepath.Join(bdir, "reviews", "spec.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got backend.ReviewResult
+	if err = json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 1 || got.Findings[0].Severity != "blocking" ||
+		got.Findings[0].Title != "wrong claim" ||
+		got.Findings[0].Detail != "executeRun does not set ActiveWave" {
+		t.Fatalf("an errored pass must not erase the findings the next pass is scoped to: %+v", got.Findings)
+	}
+	if got.Verdict != "rework" {
+		t.Fatalf("reviews/spec.json must still describe the last real pass, got verdict %q", got.Verdict)
+	}
+	md, err := os.ReadFile(filepath.Join(bdir, "reviews", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(md), "executeRun does not set ActiveWave") {
+		t.Fatalf("the human rendering must survive an errored pass too:\n%s", md)
+	}
+	rc, err := gate.ReadReceipt(bdir, gate.Spec)
+	if err != nil || rc == nil {
+		t.Fatalf("the errored pass must still leave a receipt: %v %v", rc, err)
+	}
+	if rc.Verdict != gate.VerdictError {
+		t.Fatalf("the run has to see the failure on the receipt: %+v", rc)
 	}
 }
 
