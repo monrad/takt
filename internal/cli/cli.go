@@ -9,8 +9,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -113,6 +113,14 @@ var commands = map[string]command{
 	"verify":     cmdVerify,
 }
 
+// Commands is every subcommand name, sorted: the list `takt` accepts, the
+// one usage prints, and the one the prompt parity test holds
+// commands/takt.md to — a `takt <name>` the prompt mentions must be one of
+// these (spec §6).
+func Commands() []string {
+	return slices.Sorted(maps.Keys(commands))
+}
+
 // Main dispatches args[0] to a subcommand and returns the process exit code.
 func Main(args []string, stdout, stderr io.Writer, getenv func(string) string, cwd string) int {
 	if len(args) == 0 {
@@ -126,12 +134,7 @@ func Main(args []string, stdout, stderr io.Writer, getenv func(string) string, c
 }
 
 func usage(w io.Writer) int {
-	names := make([]string, 0, len(commands))
-	for n := range commands {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return fail(w, exitUsage, "usage: takt <command> [flags]", "commands: "+strings.Join(names, ", "))
+	return fail(w, exitUsage, "usage: takt <command> [flags]", "commands: "+strings.Join(Commands(), ", "))
 }
 
 // writeJSON prints v as a single pretty JSON object followed by a newline.
