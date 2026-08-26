@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/cli"
 	"github.com/monrad/takt/internal/testutil"
@@ -736,6 +737,50 @@ func TestDoneIsANoOpOnADoneStep(t *testing.T) {
 	if code, got, _ = runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo"); code != 0 ||
 		got["ignored"] == true {
 		t.Fatalf("%d %v", code, got)
+	}
+}
+
+// TestNonTaskBriefsAreStableAcrossReplays covers the planner brief (spec
+// §5.4): a replayed dispatch must leave briefs/planner.a1.md byte-identical,
+// and an edited input must re-render it with the same delimiter token so the
+// diff shows only the change.
+func TestNonTaskBriefsAreStableAcrossReplays(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRunWith(t, "--no-review-spec", "--no-review-plan", "--no-alignment")
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" {
+		t.Fatalf("expected the planner dispatch, got %v", o)
+	}
+	p := filepath.Join(bdir, "briefs", "planner.a1.md")
+	first, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, ok := brief.TokenOf(string(first))
+	if !ok {
+		t.Fatalf("planner brief carries no delimiter token:\n%s", first)
+	}
+	if _, o, _ = next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("replay: %v", o)
+	}
+	again, _ := os.ReadFile(p)
+	if !bytes.Equal(first, again) {
+		t.Fatal("a replayed dispatch must leave the brief byte-identical")
+	}
+	// A changed input re-renders the brief — with the same token, so the
+	// diff is the change and nothing else.
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec v2\n")
+	next(t, root, nil)
+	third, _ := os.ReadFile(p)
+	if bytes.Equal(third, again) {
+		t.Fatal("an edited spec must re-render the planner brief")
+	}
+	if got, _ := brief.TokenOf(string(third)); got != tok {
+		t.Fatalf("re-render must keep the token: %q != %q", got, tok)
 	}
 }
 

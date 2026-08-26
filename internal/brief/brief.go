@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"text/template"
 )
@@ -28,6 +29,18 @@ func Token() (string, error) {
 		return "", err
 	}
 	return tokenPrefix + hex.EncodeToString(b[:]), nil
+}
+
+// tokenPattern matches a token as Token mints it: the prefix and sixteen
+// hex digits, on a word boundary so a prefix embedded in prose is not one.
+var tokenPattern = regexp.MustCompile(`\b` + regexp.QuoteMeta(tokenPrefix) + `[0-9a-f]{16}\b`)
+
+// TokenOf returns the delimiter token a rendered brief was quoted with —
+// the first token in the text — so a replay can re-render with the same
+// token and compare bytes instead of minting a fresh one (spec §5.4).
+func TokenOf(text string) (string, bool) {
+	tok := tokenPattern.FindString(text)
+	return tok, tok != ""
 }
 
 // Quote wraps content between BEGIN/END marker lines. The caller must

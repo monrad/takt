@@ -22,6 +22,28 @@ func TestTokenAndQuote(t *testing.T) {
 	}
 }
 
+func TestTokenOfFindsTheDelimiterAQuoteWasWrittenWith(t *testing.T) {
+	t.Parallel()
+	tok, err := brief.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := brief.Quote(tok, "spec", "# spec\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := brief.TokenOf("preamble\n" + q + "trailer\n")
+	if !ok || got != tok {
+		t.Fatalf("TokenOf = %q, %v; want %q", got, ok, tok)
+	}
+	if _, ok = brief.TokenOf("no delimiter here"); ok {
+		t.Fatal("text without a token must report none")
+	}
+	if _, ok = brief.TokenOf("BEGIN UNTRUSTED-ARTIFACT-short spec"); ok {
+		t.Fatal("a token needs sixteen hex digits")
+	}
+}
+
 func TestImplementerBrief(t *testing.T) {
 	t.Parallel()
 	s, err := brief.Render("implementer", brief.ImplementerData{

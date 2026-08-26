@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -483,31 +484,21 @@ func (r *nextRun) materialiseTasks(idx plan.Index, waves map[int]int) int {
 
 // dispatchAgent renders the planner / auditor brief and prints the op.
 func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
-	tok, err := brief.Token()
-	if err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), "")
-	}
 	ag := *d.Agent
 	ag.Cwd = r.ws.Repo.Root
-	var text, name string
-	switch ag.Agent {
-	case "planner":
-		text, name, err = r.plannerBrief(ctx, &ag, tok)
-	case "alignment-auditor":
-		text, name, err = r.auditorBrief(&ag, tok)
-	case "goal-assessor":
-		text, name, err = r.assessorBrief(ctx, &ag, tok)
-	default:
-		return fail(r.env.Stderr, exitError, "unknown agent "+ag.Agent, "")
+	render := func(tok string) (string, string, error) {
+		switch ag.Agent {
+		case "planner":
+			return r.plannerBrief(ctx, &ag, tok)
+		case "alignment-auditor":
+			return r.auditorBrief(&ag, tok)
+		case "goal-assessor":
+			return r.assessorBrief(ctx, &ag, tok)
+		}
+		return "", "", errors.New("unknown agent " + ag.Agent)
 	}
+	p, err := writeStableBrief(r.bdir, render)
 	if err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), "")
-	}
-	p := briefPath(r.bdir, name)
-	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), "")
-	}
-	if err = os.WriteFile(p, []byte(text), 0o600); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
 	ag.Brief = p
@@ -516,6 +507,61 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 		record += " --mode " + ag.Mode
 	}
 	return printOp(r.env, op.Op{Op: op.Dispatch, Narration: ag.Label, Agents: []op.Agent{ag}, Record: record})
+}
+
+// writeStableBrief renders a non-task brief under briefs/, reusing the
+// delimiter token of the file already there when the text is otherwise
+// unchanged, so a replayed `next` leaves the brief byte-identical instead
+// of churning a fresh random token through a tracked file (spec §5.4). A
+// brief whose content did change is rewritten with the old token, so the
+// diff shows the change and nothing else; if the old token now collides
+// with the content (Quote refuses it) the fresh render is written instead.
+func writeStableBrief(bdir string, render func(tok string) (text, name string, err error)) (string, error) {
+	fresh, err := brief.Token()
+	if err != nil {
+		return "", err
+	}
+	text, name, err := render(fresh)
+	if err != nil {
+		return "", err
+	}
+	p := briefPath(bdir, name)
+	reused, unchanged := reuseBriefToken(p, render)
+	if unchanged {
+		return p, nil
+	}
+	if reused != "" {
+		text = reused
+	}
+	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return "", err
+	}
+	return p, os.WriteFile(p, []byte(text), 0o600)
+}
+
+// reuseBriefToken re-renders the brief at p with the delimiter token already
+// on disk there, so writeStableBrief can compare bytes instead of writing a
+// fresh token on every call. The second return reports the re-render
+// reproduced the file byte-for-byte (a replay: nothing to write). Otherwise
+// the first return, when non-empty, is the re-render to write in place of
+// the fresh-token one, so the diff shows only the real change. Any failure
+// along the way — no file yet, no token in it, or the old token now
+// colliding with the content (Quote refuses it) — reports ("", false): the
+// caller's fresh render is used as-is.
+func reuseBriefToken(p string, render func(tok string) (text, name string, err error)) (string, bool) {
+	old, err := os.ReadFile(p)
+	if err != nil {
+		return "", false
+	}
+	tok, ok := brief.TokenOf(string(old))
+	if !ok {
+		return "", false
+	}
+	same, _, err := render(tok)
+	if err != nil {
+		return "", false
+	}
+	return same, same == string(old)
 }
 
 // plannerBrief pins the planner's model and renders its brief, appending the
