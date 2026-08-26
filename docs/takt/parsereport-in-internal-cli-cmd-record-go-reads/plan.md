@@ -24,7 +24,12 @@ Verify commands are chosen so at least one per task genuinely fails before the w
 `grep -q` for a file or sentence that does not exist yet, followed by the real gates
 (`go test -race`, `golangci-lint run`, `hostgen --check`). Tasks 3 and 4 therefore
 mandate one concrete word each ("decorated"; task 4 also "backtick") in the sentence
-they add — a small imposition on wording that makes the verify honest.
+they add — a small imposition on wording that makes the verify honest. The greps are
+anchored to the sentence and the row rather than run over the whole file: task 3
+requires "decorated" and "marker" on the same line as "End your final message", and
+task 4 requires "decorated" and "backtick" on the `takt record --task N` row itself,
+with that row still carrying its stale-attempt sentence and still being exactly one
+row. A word added anywhere else in a thousand-line spec no longer satisfies them.
 
 ## Task 1 — Tolerant trailer grammar in `parseReport`, proven by its own tests (implement)
 
@@ -69,7 +74,8 @@ is rewriting; sequencing avoids a flaky shared-worktree wave.
 Amends the report-contract sentence in `agents/implementer.md` (the Rules line ending
 "End your final message with exactly three lines: …") to say the trailer should be
 plain but that takt tolerates decorated lines — the sentence must contain the word
-"decorated" (the verify greps for it). Then regenerates
+"decorated" and the word "marker", on the same line as "End your final message", so
+the grep proves the contract sentence changed rather than the file. Then regenerates
 `hosts/copilot/agents/takt-implementer.agent.md` with `go run ./internal/tools/hostgen`
 rather than editing it by hand; `go run ./internal/tools/hostgen --check` proves
 parity. `internal/brief/templates/implementer.md` is explicitly out of scope (spec
@@ -101,9 +107,10 @@ sentence in the spec of record, fully specified, with grep-pinned evidence.
   that, and `golangci-lint run ./...` is in task 1's verify so a violation fails the
   task, not the run.
 - **Grep-mandated wording.** Tasks 3 and 4 constrain one word of prose each so their
-  verifies can fail before the work. If a reviewer prefers different wording, the
-  grep word ("decorated") is natural enough that the constraint should not distort the
-  sentence.
+  verifies can fail before the work, and anchor the grep to the sentence or table row
+  being changed so the check cannot be satisfied from elsewhere in the file. If a
+  reviewer prefers different wording, the grep words ("decorated", "marker",
+  "backtick") are natural enough that the constraint should not distort the sentence.
 - **Concurrent verifies in wave 1.** Tasks 1, 3 and 4 share a wave. Task 3's verifies
   compile only `internal/tools/hostgen` and task 4's are greps, so nothing races task
   1's package rewrite; the host-parity Go tests use inline fixtures, not the real

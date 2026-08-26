@@ -1,8 +1,8 @@
 # Review: plan — rework
 
-The decomposition covers the specification, but the documentation tasks have verification that can pass without making the required edits.
+Coverage is strong, but final Go validation is sequenced before all Go changes exist.
 
-- **major** plan.md:0 — Task 3 verification does not prove the contract sentence changed: The unrestricted greps can match “decorated” anywhere, while hostgen --check proves only generated-file parity. Verify the specific report-contract sentence and its marker/emphasis tolerance.
-- **major** plan.md:0 — Task 4 verification does not prove the command-table row: Whole-file greps for two words do not establish that the takt record row changed, retained the stale-attempt text, stayed one row, or documented anchoring and the opener rule. Add a row-targeted verification.
+- **major** plan.md:0 — Tasks 1–2 run repository gates in the wrong order: Task 1 claims it alone touches Go code and runs the full test/lint gates, but Task 2 subsequently modifies execute_test.go. Therefore the assembled Go change is never checked by `golangci-lint run ./...` or the specified full-suite command. Move or repeat those gates in Task 2, or add a terminal verification task depending on both.
+- **minor** plan.md:0 — Task 2 omits active-wave initialization: `executeRun` leaves `ActiveWave` unset; `record` rejects until `next(t, root, nil)` dispatches wave 0. Task 2 should explicitly include that setup step so its prescribed test is executable as written.
 
 _copilot / gpt-5.6-sol_
