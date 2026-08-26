@@ -1907,7 +1907,7 @@ This task is not executed by a subagent: it needs the plugin installed into the 
 - [ ] **Step 1: Install the plugin and the binary (user)**
 
 ```bash
-cd ~/code/misc/takt && task build && go install ./cmd/takt && takt version   # must print 0.1.0, not 0.0.0-dev
+cd ~/code/misc/takt && go install ./cmd/takt && takt version   # a source build prints 0.0.0-dev; the handshake accepts it with "dev": true
 claude plugin marketplace add /home/mmk/code/misc/takt
 claude plugin install takt@monrad-takt
 ```
@@ -1946,3 +1946,14 @@ Expected: the merge commit (or fast-forward) of `takt/<slug>` on `main`, the bun
 - **Placeholders:** none — every code step carries its code, every spec amendment its sentence; the three "use the helper the file already has" notes name the shape the helper must have and are lookups, not deferred design.
 - **Type consistency:** `op.Step*`/`op.Steps()` (T1) used by T4's prompt list only through `decide.Vocab()`; `maxAgentAttempts` (T1) used in T4; `cachedReceipt` (T2) local to `cmd_review.go`; `brief.TokenOf` (T3) used by `writeStableBrief`; `decide.Facts.{AlignmentAttempts,AlignmentProblems,GoalsAttempts,GoalsProblems}` (T4) filled by `facts.go`; `bundle.{Session,SessionPath,ReadSession,WriteSession,ClearSession,Acquire}` (T5) consumed exactly as named in T6; `doctor.Input.Session` (T6); `prompt.Body`, `hosts.{CopilotAgentName,RenderCopilotAgent}` (T7) consumed by `hostgen` and the parity test. The build is red between T5 and T6 by design (T5's report says so; T6 makes it green).
 - **Order:** T4 precedes T7 so the skill's gate list includes `agent_invalid`; T5/T6 precede T7 so the README's session paragraph and the skill's invariants describe the final layout; T8 is last and outside the SDD loop.
+
+## Rulings applied during execution (2026-08-26)
+
+Recorded here because the SDD ledger does not outlive the branch. Each changed what a task above says; the code and spec follow the ruling.
+
+- **Task 2:** the review cache check sits in `cmdReview` before backend selection, so a cached hit needs no healthy `copilot`/`claude`; §5.4's old "review overwrites the receipt at the same hash" sentence was reworded to the cached wording.
+- **Task 3:** `writeStableBrief` is split into `writeStableBrief` + `reuseBriefToken` (lint), same branches.
+- **Task 4:** `answer --choice retry` writes the gate's problems onto its `*_attempts_reset` event and `lastProblems` reads the newest invalid-or-reset event (the plan's version left the retried brief without reasons); a **valid** record ends the streak (`<agent>_attempts_reset` with `reason: "recorded"`, appended when the count is > 0 or the newest reset still carries problems); the audit sentence lives in §7.3 (§7.2 is brainstorm), the assessor's in §7.5.
+- **Task 5/6:** `WriteSession` refuses an empty holder id; `takt init` also records the bundle's `logs/` in the repository's common `.git/info/exclude` as the pair `/<bundle>/logs/*` + `!/<bundle>/logs/.gitignore` (a directory-level exclude would hide the tracked `.gitignore` from `git add`), so the sidecar stays invisible after a branch switch in the same worktree — the tracked `logs/.gitignore` still protects clones; `next` re-creates a missing `logs/.gitignore` before writing the sidecar; a generated (unnamed) holder taking over a generated holder appends no `lock_taken` event, which is what keeps a no-op `next` byte-identical without a session env; `ClearSession` runs in `applyAndStop` because an archived `next` never reaches `acquireLock`. Known, deferred: from a worktree that has left the run branch, `takt unlock`/`status --slug` fail with an empty hint (pre-existing `openTarget` behaviour).
+- **Task 7:** `task build` is a plain `go build` and stamps nothing, so `takt version --expect <v>` accepts a `0.0.0-dev` build with `"dev": true` exactly as `--expect-manifest` does; the skill, README and spec say so. `setversion` anchors the skill's handshake on an `x.y.z` pattern (a greedy `\S+` would swallow the closing backtick).
+
