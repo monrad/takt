@@ -182,3 +182,31 @@ func TestWriteReceiptLeavesNoTempOnSuccess(t *testing.T) {
 		t.Fatalf("gates/ must hold only the receipt, got %s", strings.Join(names, ", "))
 	}
 }
+
+func TestReceiptCarriesSeverityCounts(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	rc := gate.Receipt{Gate: gate.Spec, Hash: "h1", Verdict: gate.VerdictRework,
+		Severities: map[string]int{"blocking": 1, "minor": 2}, TS: time.Now()}
+	if err := gate.WriteReceipt(dir, rc); err != nil {
+		t.Fatal(err)
+	}
+	got, err := gate.ReadReceipt(dir, gate.Spec)
+	if err != nil || got == nil {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got.Severities["blocking"] != 1 || got.Severities["minor"] != 2 {
+		t.Fatalf("severities lost in the round trip: %v", got.Severities)
+	}
+	old := gate.Receipt{Gate: gate.Plan, Hash: "h1", Verdict: gate.VerdictApprove, TS: time.Now()}
+	if err = gate.WriteReceipt(dir, old); err != nil {
+		t.Fatal(err)
+	}
+	prior, err := gate.ReadReceipt(dir, gate.Plan)
+	if err != nil || prior == nil {
+		t.Fatalf("%v %v", prior, err)
+	}
+	if prior.Severities["blocking"] != 0 {
+		t.Fatal("a receipt written before severities existed must read as zero blocking")
+	}
+}

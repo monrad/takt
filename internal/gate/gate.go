@@ -45,13 +45,19 @@ type Skipped struct {
 
 // Receipt is gates/<gate>.json.
 type Receipt struct {
-	Gate     string    `json:"gate"`
-	Hash     string    `json:"hash"`
-	Verdict  string    `json:"verdict"`
-	Reviewer Reviewer  `json:"reviewer"`
-	Findings string    `json:"findings"`
-	TS       time.Time `json:"ts"`
-	Skipped  *Skipped  `json:"skipped"`
+	Gate     string   `json:"gate"`
+	Hash     string   `json:"hash"`
+	Verdict  string   `json:"verdict"`
+	Reviewer Reviewer `json:"reviewer"`
+	Findings string   `json:"findings"`
+	// Severities tallies the review's findings by severity. Counts only, not
+	// the findings themselves, so a gate decision never has to open a second
+	// file. Absent on receipts written before this field existed, which read
+	// as zero of everything — the safe default, since zero blocking is the
+	// path that closes on revise rather than the one that loops.
+	Severities map[string]int `json:"severities,omitempty"`
+	TS         time.Time      `json:"ts"`
+	Skipped    *Skipped       `json:"skipped"`
 }
 
 // Status is the computed state of a gate.

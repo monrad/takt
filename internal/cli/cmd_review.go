@@ -143,10 +143,13 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	if err = writeFindings(filepath.Join(tgt.bdir, "reviews", g+".md"), g, res); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
+	if err = writeResultJSON(filepath.Join(tgt.bdir, "reviews", g+".json"), res); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
 	rc := gate.Receipt{
 		Gate: g, Hash: hash, Verdict: res.Verdict,
 		Reviewer: gate.Reviewer{Provider: res.Provider, Model: res.Model},
-		Findings: "reviews/" + g + ".md", TS: timeNow(),
+		Findings: "reviews/" + g + ".md", Severities: res.SeverityCounts(), TS: timeNow(),
 	}
 	if err = gate.WriteReceipt(tgt.bdir, rc); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
@@ -234,4 +237,17 @@ func writeFindings(path, title string, res backend.ReviewResult) error {
 	}
 	fmt.Fprintf(&b, "\n_%s / %s_\n", res.Provider, res.Model)
 	return os.WriteFile(path, []byte(b.String()), 0o600)
+}
+
+// writeResultJSON stores the reviewer's structured result beside the human
+// rendering. writeFindings renders severities into a markdown bullet and the
+// structure is lost, so nothing downstream can read a finding as data: the
+// scoped follow-up pass needs the prior findings to quote, and the
+// carry-forward needs them to record. Written for both gates because
+// runReview is shared and the cost is one file; only the spec gate reads it.
+func writeResultJSON(path string, res backend.ReviewResult) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	return bundle.WriteJSONAtomic(path, res)
 }
