@@ -59,3 +59,4 @@
 {"ts":"2026-08-26T17:56:28.279392779Z","type":"gate_opened","data":{"gate":"branch_finish"}}
 {"ts":"2026-08-26T18:06:11.000376398Z","type":"disposition","data":{"choice":"pr","reason":""}}
 {"ts":"2026-08-26T18:06:11.00150001Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
+{"ts":"2026-08-26T18:06:36.577770282Z","type":"pr_pushed","data":{"url":"https://github.com/monrad/takt/pull/22"}}
