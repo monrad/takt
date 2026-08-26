@@ -26,9 +26,11 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
 
-          # `task version:set` writes all three of these; the tag is the
-          # fourth place the same number appears, and nothing but this gate
-          # stops the four drifting apart.
+          # `task version:set` writes these three and a fourth the shell
+          # cannot read as JSON: the Copilot skill's `takt version --expect`
+          # handshake, which internal/prompt's parity test ties back to
+          # plugin.json. The tag is the fifth place the same number appears,
+          # and nothing but this gate stops it drifting from the rest.
           plugin="$(jq -r '.version' .claude-plugin/plugin.json)"
           market="$(jq -r '.version' .claude-plugin/marketplace.json)"
           entry="$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)"

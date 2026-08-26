@@ -89,10 +89,13 @@ release:
     name: takt
   draft: false
   # No `prerelease: auto`: v1 does not support prerelease tags at all. The
-  # version is pinned to x.y.z in four places that must agree — setversion,
-  # manifest_test.go, and release.yml's gate — so a v0.2.0-rc1 tag is
-  # rejected by the gate long before goreleaser sees it. Supporting them
-  # means relaxing that shape everywhere, deliberately, not here.
+  # version is stamped into four places that must agree with the tag —
+  # plugin.json, marketplace.json's own `version` and its `plugins[0]`
+  # entry, and the Copilot skill's `takt version --expect` handshake — and
+  # x.y.z is the only shape setversion, manifest_test.go and release.yml's
+  # gate accept, so a v0.2.0-rc1 tag is rejected by the gate long before
+  # goreleaser sees it. Supporting them means relaxing that shape
+  # everywhere, deliberately, not here.
   mode: replace
   name_template: "v{{ .Version }}"
 

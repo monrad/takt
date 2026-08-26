@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -184,16 +185,17 @@ func frontmatterLines(md string) []string {
 }
 
 // plainScalarProblem reports why value would not survive a YAML parse, or ""
-// when it is safe. A quoted scalar and a flow sequence carry their own
-// delimiters and are taken as they are; anything else is a plain scalar, so
-// it may not open with an indicator or contain ": ".
+// when it is safe. A flow sequence carries its own delimiters and is taken
+// as it is; a quoted scalar carries its own too, but only until one of them
+// turns up unescaped in the body (quotedScalarProblem); anything else is a
+// plain scalar, so it may not open with an indicator or contain ": ".
 func plainScalarProblem(value string) string {
 	if value == "" {
 		return ""
 	}
 	if first, last := value[0], value[len(value)-1]; len(value) >= 2 {
 		if (first == '\'' || first == '"') && first == last {
-			return ""
+			return quotedScalarProblem(value)
 		}
 		if first == '[' && last == ']' {
 			return ""
@@ -206,4 +208,50 @@ func plainScalarProblem(value string) string {
 		return `value holds ": " unquoted, which YAML reads as a nested mapping: ` + value
 	}
 	return ""
+}
+
+// quotedScalarProblem reports a delimiter inside a quoted scalar's body that
+// nothing escapes — the one way a value that carries its own quotes can
+// still end early, taking the rest of the line with it as garbage. YAML's
+// own doubling escape (two apostrophes inside a single-quoted scalar) is
+// legal and refused here all the same: nothing takt generates needs it,
+// and a description that wants an apostrophe can be double-quoted.
+func quotedScalarProblem(value string) string {
+	q := value[0]
+	body := value[1 : len(value)-1]
+	for i := range len(body) {
+		if body[i] != q {
+			continue
+		}
+		if q == '"' && i > 0 && body[i-1] == '\\' {
+			continue
+		}
+		return "value closes its " + string(q) + " quote early, at byte " +
+			strconv.Itoa(i+1) + ": " + value
+	}
+	return ""
+}
+
+// TestPlainScalarProblem drives the judgment the host files themselves
+// cannot: they are all valid, so every rejecting branch is unreachable
+// through TestCopilotHostFrontmatterIsParseable.
+func TestPlainScalarProblem(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ value, want string }{
+		{"", ""},
+		{"takt-planner", ""},
+		{`"a quoted: value"`, ""},
+		{`'a quoted: value'`, ""},
+		{`["*"]`, ""},
+		{`"an \" escaped quote"`, ""},
+		{"takt: a topic", `value holds ": " unquoted`},
+		{"[not, closed", "value opens with the YAML indicator ["},
+		{`'it's mine'`, "value closes its ' quote early"},
+		{`"he said "hi""`, `value closes its " quote early`},
+	} {
+		got := plainScalarProblem(c.value)
+		if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
+			t.Errorf("plainScalarProblem(%q) = %q, want %q", c.value, got, c.want)
+		}
+	}
 }

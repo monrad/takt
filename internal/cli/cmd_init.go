@@ -360,6 +360,12 @@ func writeLogsIgnore(bdir string) error {
 // attempted: an ignore rule for a directory that is gone is harmless, and
 // editing a line back out of a file the user also owns is not.
 //
+// The two rules are gitignore patterns and go in unescaped ([gitx.Repo]
+// documents whose business the escaping is). The slug is [bundle.ValidSlug]'s
+// [a-z0-9-], so a run's own name can never carry a glob metacharacter or a
+// leading `#`/`!`; only a `--dir` pointing at a directory whose name does
+// can reach that.
+//
 // It takes the workspace and the bundle dir rather than an *initRun because
 // `takt next` calls it too (acquireLock). The exclude lives in the
 // repository, not in the bundle, so init is the one place it can never be

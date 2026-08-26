@@ -319,6 +319,14 @@ func (r *Repo) CommonDir(ctx context.Context) (string, error) {
 // its negation gets gitignore's last-match-wins the right way round; a file
 // that already holds only the negation is the one state that cannot be
 // repaired by appending, and no caller writes one.
+//
+// A rule is written exactly as given: this is a gitignore pattern, not a
+// literal path, so escaping it is the caller's business. A path holding a
+// glob metacharacter (`*`, `?`, `[`) would match more than itself, and one
+// opening with `#` or `!` would be read as a comment or a negation. takt's
+// only caller ([excludeLogsDir] in internal/cli) builds the pattern from a
+// bundle slug, which [bundle.ValidSlug] holds to [a-z0-9-], so the only way
+// to reach any of them is a `--dir` naming such a directory.
 func (r *Repo) EnsureExclude(ctx context.Context, lines ...string) error {
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
