@@ -52,6 +52,7 @@ const (
 	keyCount         = "count"
 	keyGoals         = "goals"
 	keyProblems      = "problems"
+	keyMode          = "mode"
 	keyValid         = "valid"
 	keyFindings      = "findings"
 	keyWaves         = "waves"

@@ -134,6 +134,7 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 		// §5.3 row 21). The event is the durable record the attempt cap
 		// counts: three of them since the last `goals_attempts_reset` and
 		// the run asks `agent_invalid` instead of retrying again (§4.4).
+		// A usable reply ends the streak with a reset of its own below.
 		_ = bundle.AppendEvent(tgt.bdir, evGoalsInvalid, map[string]any{keyProblems: problems})
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
@@ -167,6 +168,7 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 	} else if err = finish.WriteGoals(tgt.bdir, rec); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
+	endAttemptStreak(tgt.bdir, evGoalsInvalid, evGoalsReset, map[string]any{keyReason: reasonRecorded})
 	return printJSON(env, map[string]any{keySHA: head, "all_achieved": len(unmet) == 0, "unmet": unmetList(unmet)})
 }
 
@@ -226,7 +228,10 @@ func unmetList(vs []finish.GoalVerdict) []map[string]any {
 // dispatch still pending and hands the brief out again, this time quoting
 // what was wrong with the last reply; after three rejections since the last
 // `alignment_attempts_reset` it asks `agent_invalid` rather than retry a
-// fourth time (spec §5.1, §5.3). Exiting 1 instead stopped the loop dead on a mistake the auditor
+// fourth time (spec §5.1, §5.3). A usable reply ends the streak: the record
+// appends that reset itself, with no problems on it, so neither the count
+// nor the quoted rejections carry into the next mode's brief.
+// Exiting 1 instead stopped the loop dead on a mistake the auditor
 // could have corrected on a second attempt, and did it for the one agent
 // whose result is advisory. takt's own invariants stay failures: an
 // unreadable --from file and an unusable --mode are a mis-wired session, and
@@ -250,7 +255,9 @@ func recordAlignment(env Env, bdir string, st *bundle.State, mode, from string) 
 	if err = writeAlignment(bdir, *a); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	return printJSON(env, map[string]any{"mode": mode, "ok": true})
+	endAttemptStreak(bdir, evAlignmentInvalid, evAlignmentReset,
+		map[string]any{keyReason: reasonRecorded, keyMode: mode})
+	return printJSON(env, map[string]any{keyMode: mode, "ok": true})
 }
 
 // The two things the alignment auditor is ever asked for (spec §7.3).

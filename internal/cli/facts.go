@@ -23,6 +23,10 @@ const (
 	evAlignmentReset   = "alignment_attempts_reset"
 	evGoalsInvalid     = "goals_invalid"
 	evGoalsReset       = "goals_attempts_reset"
+
+	// reasonRecorded marks the reset a usable reply appends, as against the
+	// one `agent_invalid`'s retry appends — which carries the problems.
+	reasonRecorded = "recorded"
 )
 
 // fileNonEmpty reports whether p exists and holds something.
@@ -165,6 +169,21 @@ func countSinceReset(events []bundle.Event, typ, reset string) int {
 		}
 	}
 	return n
+}
+
+// endAttemptStreak records that a usable reply ended a run of rejected ones:
+// the attempt cap starts over, and — because this reset carries no problems,
+// unlike the one `answer --gate agent_invalid --choice retry` writes — so
+// does what the next brief quotes back, which is what keeps a rejection from
+// one auditor mode out of the other's brief (spec §5.3 rows 10, 11, 21). A
+// run with no rejections to end appends nothing: a clean run's event log
+// stays clean.
+func endAttemptStreak(bdir, invalid, reset string, data map[string]any) {
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil || countSinceReset(events, invalid, reset) == 0 {
+		return
+	}
+	_ = bundle.AppendEvent(bdir, reset, data)
 }
 
 // lastProblems returns the rejection reasons the retried brief shows the

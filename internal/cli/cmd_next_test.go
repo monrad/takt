@@ -896,3 +896,126 @@ func TestAuditorRepliesTaktCannotParseAreCappedAtThree(t *testing.T) {
 		t.Fatalf("events:\n%s", ev)
 	}
 }
+
+// validClauses is a usable `clauses` reply for the "Add a greeting" run the
+// fixtures build, fenced the way an agent's final message carries JSON.
+const validClauses = "here:\n```json\n" +
+	`{"mode":"clauses","clauses":[{"id":"A1","text":"add a greeting","span":"Add a greeting"}]}` +
+	"\n```\n"
+
+// TestAValidRecordEndsTheAuditorsAttemptStreak covers the other half of the
+// cap: the counter is one counter for both auditor modes, so a reply takt
+// could use has to end the streak — otherwise two rejected `clauses`
+// replies would arm the gate on the `verdicts` pass's first mistake, and
+// the rejection of a reply that was since corrected would be quoted back
+// into the next mode's brief.
+func TestAValidRecordEndsTheAuditorsAttemptStreak(t *testing.T) {
+	t.Parallel()
+	root, bdir := auditedFixture(t)
+	garbage := filepath.Join(t.TempDir(), "reply.md")
+	if err := os.WriteFile(garbage, []byte("I could not find anything.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		rejectAuditor(t, root, "clauses", garbage)
+	}
+	good := filepath.Join(t.TempDir(), "clauses.md")
+	if err := os.WriteFile(good, []byte(validClauses), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
+		"--mode", "clauses", "--from", good, "--slug", "demo"); c != 0 || r["ok"] != true {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	if _, o, _ := next(t, root, nil); o["gate"] != "alignment_confirm" {
+		t.Fatalf("a recorded clause list must reach alignment_confirm: %v", o)
+	}
+	if c, _, e := runIn(t, root, nil,
+		"answer", "--gate", "alignment_confirm", "--choice", "confirm", "--slug", "demo"); c != 0 {
+		t.Fatal(e)
+	}
+	if b := auditorBriefOf(t, root, "verdicts"); strings.Contains(b, "Your previous reply was rejected") {
+		t.Fatalf("a recorded reply must not leave its rejections in the next mode's brief:\n%s", b)
+	}
+	for range 2 {
+		rejectAuditor(t, root, "verdicts", garbage)
+	}
+	// Five rejected replies in the run, two since the record: the cap counts
+	// the streak, not the run's history.
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" || o["gate"] == "agent_invalid" {
+		t.Fatalf("rejections before a valid record must not count towards the cap: %v", o)
+	}
+	ev, _ := os.ReadFile(filepath.Join(bdir, "events.jsonl"))
+	if n := strings.Count(string(ev), `"alignment_attempts_reset"`); n != 1 {
+		t.Fatalf("one record ends one streak, got %d resets:\n%s", n, ev)
+	}
+	for _, want := range []string{`"reason":"recorded"`, `"mode":"clauses"`} {
+		if !strings.Contains(resetLine(t, string(ev)), want) {
+			t.Fatalf("the reset must record %s:\n%s", want, resetLine(t, string(ev)))
+		}
+	}
+}
+
+// auditedFixture is planLoadFixture with the alignment audit switched back
+// on: a run whose only outstanding work is the auditor's two dispatches.
+func auditedFixture(t *testing.T) (string, string) {
+	t.Helper()
+	root, bdir := planLoadFixture(t)
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Config.Alignment = true
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	return root, bdir
+}
+
+// rejectAuditor answers the pending auditor dispatch with a reply takt
+// cannot parse, and checks it was reported rather than failed on.
+func rejectAuditor(t *testing.T, root, mode, from string) {
+	t.Helper()
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "dispatch" {
+		t.Fatalf("expected the auditor dispatch, got %v", o)
+	}
+	c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
+		"--mode", mode, "--from", from, "--slug", "demo")
+	if c != 0 || r[keyValidJSON] != false {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+}
+
+// auditorBriefOf drives one `next`, checks it dispatched the auditor in mode
+// and returns the brief it was given.
+func auditorBriefOf(t *testing.T, root, mode string) string {
+	t.Helper()
+	_, o, _ := next(t, root, nil)
+	agents, _ := o["agents"].([]any)
+	if len(agents) == 0 {
+		t.Fatalf("expected an auditor dispatch, got %v", o)
+	}
+	ag, _ := agents[0].(map[string]any)
+	if ag["mode"] != mode {
+		t.Fatalf("expected the %s dispatch, got %v", mode, o)
+	}
+	b, err := os.ReadFile(ag["brief"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// resetLine returns the one alignment_attempts_reset event of an event log.
+func resetLine(t *testing.T, events string) string {
+	t.Helper()
+	for ln := range strings.SplitSeq(events, "\n") {
+		if strings.Contains(ln, `"alignment_attempts_reset"`) {
+			return ln
+		}
+	}
+	t.Fatalf("no alignment_attempts_reset in:\n%s", events)
+	return ""
+}

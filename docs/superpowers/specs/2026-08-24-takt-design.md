@@ -258,10 +258,12 @@ One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: 
 `wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
 `plan_invalid`, `plan_attempts_reset`, `goals_invalid`, `alignment_attempts_reset`, `goals_attempts_reset`.
 Five decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
-planner attempt counting (`plan_invalid` / `plan_attempts_reset`), the auditor's and the assessor's attempt
-caps (`alignment_invalid` / `goals_invalid` since the last `*_attempts_reset`) and per-task review skips
-(`review_skipped`); everything else is the audit trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both carry
-`slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true` when `next` reconstructs a
+planner attempt counting (`plan_invalid` / `plan_attempts_reset`), the auditor's and the assessor's
+attempt caps (`alignment_invalid` / `goals_invalid` since the last `*_attempts_reset` — appended both by
+`agent_invalid`'s *retry*, carrying the `problems` forward, and by a valid record, carrying
+`reason: "recorded"` and no problems) and per-task review skips (`review_skipped`); everything else is
+the audit trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both
+carry `slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true` when `next` reconstructs a
 commit sha from git rather than recording it live — the repair for a crash between the wave commit and
 the write that would otherwise have recorded it (§5.4).
 
@@ -639,8 +641,9 @@ options as the spec gate.
    stored in `alignment.json` keyed by the anchor hash and reused on re-runs. A reply takt cannot parse
    is rejected with `valid: false` and an `<agent>_invalid` event; the brief handed out on the retry
    quotes the rejection reasons, and after three rejections since the last reset the run asks
-   (`agent_invalid`) instead of retrying again. Nothing is recorded either way, so the dispatch is
-   simply left pending and the audit retaken (§5.1).
+   (`agent_invalid`) instead of retrying again. A valid record ends the streak (an
+   `<agent>_attempts_reset` with reason `"recorded"`). Nothing is recorded on a rejection either way, so
+   the dispatch is simply left pending and the audit retaken (§5.1).
 2. The auditor in `verdicts` mode reads the clauses, `spec.md`, `plan.md`, `plan.index.json` and returns
    per clause `covered | narrowed | dropped | widened | contradicted` with a sentence each.
    `narrowed/dropped/contradicted` are reported as contraction, `widened` as creep — in the load commit
@@ -752,7 +755,8 @@ slice, which keeps every commit verified.
    event `goal_waived` per goal · *abort*, which — as at step 1 — only ends the turn). A reply takt
    cannot parse is rejected with `valid: false` and an `<agent>_invalid` event; the brief handed out on
    the retry quotes the rejection reasons, and after three rejections since the last reset the run asks
-   (`agent_invalid`) instead of retrying again.
+   (`agent_invalid`) instead of retrying again. A valid record ends the streak (an
+   `<agent>_attempts_reset` with reason `"recorded"`).
 3. **Retro** (`run retro`): the session writes `retro.md` from `inputs` (the plan summary, wave
    timings, failures and retries, review findings count, goal verdicts). `done --step retro`.
 4. **Disposition** (`ask branch_finish`): options depend on `branch_adopted`:
