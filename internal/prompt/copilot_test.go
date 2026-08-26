@@ -98,3 +98,93 @@ func TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents(t *testing.T) {
 		}
 	}
 }
+
+// yamlIndicators are the characters that make a plain YAML scalar something
+// other than a string — a flow collection, an alias, an anchor, a tag, a
+// block scalar, a directive — so a value opening with one has to be quoted.
+// The backtick is reserved by YAML for future use and is refused outright.
+const yamlIndicators = "[{*&!|>%@`"
+
+// TestCopilotHostFrontmatterIsParseable is the guard the op-table parity
+// tests do not give: a host file whose frontmatter the host's YAML parser
+// rejects never reaches the loop at all, however faithful its op table is.
+// The skill shipped with `"takt: <topic>"` inside an unquoted description —
+// a ": " in a plain scalar is a nested mapping in disguise (YAML 1.2 §7.3.3)
+// and made the whole file unloadable. Rather than take a YAML dependency for
+// five files, hold every value to what a plain scalar may hold: quote it, or
+// keep the indicators and ": " out of it.
+func TestCopilotHostFrontmatterIsParseable(t *testing.T) {
+	t.Parallel()
+	files, err := filepath.Glob("../../hosts/copilot/agents/*.agent.md")
+	if err != nil || len(files) == 0 {
+		t.Fatal("no generated agents found", err)
+	}
+	files = append(files, skillPath)
+	for _, f := range files {
+		md, lerr := prompt.Load(f)
+		if lerr != nil {
+			t.Fatal(lerr)
+		}
+		lines := frontmatterLines(md)
+		if len(lines) == 0 {
+			t.Errorf("%s: no frontmatter block", f)
+			continue
+		}
+		for _, ln := range lines {
+			key, value, ok := strings.Cut(ln, ":")
+			if !ok {
+				t.Errorf("%s: frontmatter line %q is not `key: value`", f, ln)
+				continue
+			}
+			if problem := plainScalarProblem(strings.TrimSpace(value)); problem != "" {
+				t.Errorf("%s: %s: %s", f, strings.TrimSpace(key), problem)
+			}
+		}
+	}
+}
+
+// frontmatterLines returns the raw lines between md's first two `---` lines.
+// prompt.Frontmatter cannot serve here: it hands back parsed values with one
+// layer of quotes stripped, and the quoting is what this test judges.
+func frontmatterLines(md string) []string {
+	var out []string
+	seen := 0
+	for line := range strings.SplitSeq(md, "\n") {
+		if strings.TrimSpace(line) == "---" {
+			seen++
+			if seen == 2 {
+				return out
+			}
+			continue
+		}
+		if seen == 1 {
+			out = append(out, line)
+		}
+	}
+	return nil
+}
+
+// plainScalarProblem reports why value would not survive a YAML parse, or ""
+// when it is safe. A quoted scalar and a flow sequence carry their own
+// delimiters and are taken as they are; anything else is a plain scalar, so
+// it may not open with an indicator or contain ": ".
+func plainScalarProblem(value string) string {
+	if value == "" {
+		return ""
+	}
+	if first, last := value[0], value[len(value)-1]; len(value) >= 2 {
+		if (first == '\'' || first == '"') && first == last {
+			return ""
+		}
+		if first == '[' && last == ']' {
+			return ""
+		}
+	}
+	if strings.IndexByte(yamlIndicators, value[0]) >= 0 {
+		return "value opens with the YAML indicator " + string(value[0]) + " unquoted: " + value
+	}
+	if strings.Contains(value, ": ") {
+		return `value holds ": " unquoted, which YAML reads as a nested mapping: ` + value
+	}
+	return ""
+}

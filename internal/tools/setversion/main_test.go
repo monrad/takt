@@ -139,6 +139,24 @@ func TestRunStampsTheCopilotSkill(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("skill = %q, want %q", got, want)
 	}
+
+	// Stamping the same version twice must be a byte-for-byte no-op: `task
+	// version:set` is run to confirm a release version as often as to change
+	// one, and a rewrite that drifted a byte per run would show up as a dirty
+	// tree nobody asked for.
+	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, dir); code != 0 {
+		t.Fatalf("second Run exit = %d", code)
+	}
+	for _, rel := range []string{skillPath, filepath.Join(".claude-plugin", "plugin.json"),
+		filepath.Join(".claude-plugin", "marketplace.json")} {
+		again, _ := os.ReadFile(filepath.Join(dir, rel))
+		if rel == skillPath && string(again) != want {
+			t.Fatalf("second stamp changed the skill: %q", again)
+		}
+		if !strings.Contains(string(again), "0.2.0") {
+			t.Fatalf("%s lost its version on the second stamp: %q", rel, again)
+		}
+	}
 }
 
 // TestSetVersionRewritesTheSkillHandshake drives the rewriter directly: the
@@ -161,6 +179,17 @@ func TestSetVersionRewritesTheSkillHandshake(t *testing.T) {
 	}
 	if err := setversion.RewriteExpect(p, "0.3.0"); err != nil {
 		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(p)
+	if string(b) != "Run `takt version --expect 0.3.0`. If it fails\n" {
+		t.Fatalf("rewriting an already-rewritten line: %q", b)
+	}
+	if err := setversion.RewriteExpect(p, "0.3.0"); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := os.ReadFile(p)
+	if string(again) != string(b) {
+		t.Fatalf("stamping the same version twice changed the file:\nfirst:  %q\nsecond: %q", b, again)
 	}
 	if err := os.WriteFile(p, []byte("no handshake here\n"), 0o600); err != nil {
 		t.Fatal(err)

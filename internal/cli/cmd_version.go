@@ -19,6 +19,10 @@ func cmdVersion(env Env) int {
 	if err := fs.Parse(env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
+	if *expect != "" && *expectManifest != "" {
+		return fail(env.Stderr, exitUsage, "--expect and --expect-manifest are mutually exclusive",
+			"pass the version inline with --expect, or the manifest to read it from with --expect-manifest")
+	}
 	if *expect != "" {
 		return versionExpect(env, *expect)
 	}

@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Resumable brainstorm → plan → execute → finish for this repository, driven by the takt binary. Use when the user says "takt" — "takt: <topic>" starts a run, "takt" alone resumes it, and "takt status", "takt doctor", "takt waive <N> <reason>", "takt unlock" are the verbs.
+description: 'Resumable brainstorm → plan → execute → finish for this repository, driven by the takt binary. Use when the user says "takt" — "takt: <topic>" starts a run, "takt" alone resumes it, and "takt status", "takt doctor", "takt waive <N> <reason>", "takt unlock" are the verbs.'
 ---
 
 # takt — the op loop (Copilot CLI host)

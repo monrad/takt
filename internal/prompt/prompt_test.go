@@ -150,13 +150,19 @@ func TestFrontmatter(t *testing.T) {
 // TestBody covers the two shapes [prompt.Body] cannot split — a file with no
 // frontmatter at all and one whose block is never closed — because both must
 // come back whole rather than half-eaten: the body is what every host copies
-// verbatim, so losing a line of it silently would ship a truncated agent.
+// verbatim, so losing a line of it silently would ship a truncated agent. The
+// CRLF and leading-blank-line cases pin the other half of the contract: Body
+// finds a frontmatter block wherever [prompt.Frontmatter] finds one, since a
+// file the parser reads as having a header and the renderer reads as having
+// none would ship that header into the body as prose.
 func TestBody(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, md, want string }{
 		{"frontmatter", "---\nname: x\n---\n\nbody\nmore\n", "body\nmore\n"},
 		{"none", "body only\n", "body only\n"},
 		{"unterminated", "---\nname: x\nbody\n", "---\nname: x\nbody\n"},
+		{"crlf", "---\r\nname: x\r\n---\r\n\r\nbody\r\n", "body\r\n"},
+		{"leading blank line", "\n---\nname: x\n---\n\nbody\n", "body\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

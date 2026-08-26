@@ -45,6 +45,36 @@ func Section(md, heading string) string {
 // and matching surrounding quotes are stripped from the value. It errors if
 // md has fewer than two `---` lines.
 func Frontmatter(md string) (map[string]string, error) {
+	front, _, ok := splitFrontmatter(md)
+	if !ok {
+		return nil, ErrNoFrontmatter
+	}
+	lines := strings.Split(front, "\n")
+	out := make(map[string]string, len(lines))
+	for _, ln := range lines {
+		key, value, found := strings.Cut(ln, ":")
+		if !found {
+			continue
+		}
+		out[strings.TrimSpace(key)] = unquote(strings.TrimSpace(value))
+	}
+	return out, nil
+}
+
+// splitFrontmatter cuts md at its `---`-delimited header: front is the text
+// between the first two delimiter lines, body everything after the second,
+// and ok reports whether both were found (front and body are empty and md is
+// returned as body when they were not).
+//
+// [Frontmatter] and [Body] both read a document through this one definition
+// of "where the header ends" on purpose. When they disagreed — one scanning
+// trimmed `---` lines, the other requiring the file to open with "---\n" —
+// a CRLF file or one with a blank first line parsed as having frontmatter
+// and rendered as having none, which copies the header into the body as
+// prose instead of dropping it.
+//
+//nolint:nonamedreturns // front/body are two same-typed strings; naming them is what tells the call site which is which
+func splitFrontmatter(md string) (front, body string, ok bool) {
 	lines := strings.Split(md, "\n")
 	start, end := -1, -1
 	for i, ln := range lines {
@@ -59,32 +89,21 @@ func Frontmatter(md string) (map[string]string, error) {
 		break
 	}
 	if start == -1 || end == -1 {
-		return nil, ErrNoFrontmatter
+		return "", md, false
 	}
-
-	out := make(map[string]string, end-start-1)
-	for _, ln := range lines[start+1 : end] {
-		key, value, ok := strings.Cut(ln, ":")
-		if !ok {
-			continue
-		}
-		out[strings.TrimSpace(key)] = unquote(strings.TrimSpace(value))
-	}
-	return out, nil
+	return strings.Join(lines[start+1:end], "\n"), strings.Join(lines[end+1:], "\n"), true
 }
 
 // Body returns the markdown after the frontmatter block, or the whole text
 // when there is none — the part of an agent definition that is the same on
-// every host, since only the envelope a host reads differs.
+// every host, since only the envelope a host reads differs. The blank line
+// that conventionally follows the block is dropped, CRLF included.
 func Body(md string) string {
-	if !strings.HasPrefix(md, "---\n") {
-		return md
-	}
-	_, body, ok := strings.Cut(md[len("---\n"):], "\n---\n")
+	_, body, ok := splitFrontmatter(md)
 	if !ok {
 		return md
 	}
-	return strings.TrimLeft(body, "\n")
+	return strings.TrimLeft(body, "\r\n")
 }
 
 // minQuotedLen is the shortest string that can carry a matching pair of

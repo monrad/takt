@@ -55,6 +55,31 @@ func TestVersionExpectAcceptsADevBuild(t *testing.T) {
 	}
 }
 
+// TestVersionExpectAndManifestAreMutuallyExclusive pins the one combination
+// that has no answer: --expect names the version inline, --expect-manifest
+// names a file to read it from, and a caller passing both means two
+// different things at once. Answering only the first would let a stale
+// manifest path sit unread in a release script forever, so it is a usage
+// error like any other bad flag combination.
+func TestVersionExpectAndManifestAreMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "plugin.json")
+	if err := os.WriteFile(manifest, []byte(`{"name":"takt","version":"0.1.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errb := runIn(t, dir, nil, "version", "--expect", "0.1.0", "--expect-manifest", manifest)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2: %s", code, errb)
+	}
+	if !strings.Contains(errb, "--expect and --expect-manifest are mutually exclusive") {
+		t.Errorf("error does not name the conflict: %s", errb)
+	}
+	if !strings.Contains(errb, "hint") {
+		t.Errorf("no hint: %s", errb)
+	}
+}
+
 // TestManifestMatches is a unit test on the exported helper the handshake
 // runs on: equal versions match; a mismatch does not; an unstamped
 // 0.0.0-dev binary matches anything, in dev mode.
