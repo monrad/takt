@@ -24,6 +24,13 @@ const validIndex = `{"schema":1,"spec_hash":"%s","tasks":[
 // keyReasonJSON is the event-data key takt records a takeover's reason under.
 const keyReasonJSON = "reason"
 
+// keyValidJSON and keyProblemsJSON are the fields `takt record --agent`
+// reports a rejected agent message with (spec §5.1).
+const (
+	keyValidJSON    = "valid"
+	keyProblemsJSON = "problems"
+)
+
 // goalsHash is the hash validateOpts binds a plan's spec_hash to.
 func goalsHash(b []byte) string { return cli.GoalsHash(b) }
 
@@ -175,6 +182,34 @@ func TestNextWalksBrainstormAndPlan(t *testing.T) {
 	if ag["agent"] != "alignment-auditor" || ag["mode"] != "clauses" {
 		t.Fatalf("expected auditor clauses, got %v", o)
 	}
+	// A malformed auditor reply is the agent's mistake, not takt's, and is
+	// reported the way the planner's and the assessor's are: {valid:false,
+	// problems} at exit 0, an `alignment_invalid` event, and nothing written
+	// — so the next call simply hands the same brief out again.
+	for _, bad := range []string{"no json block at all\n", "```json\n{\"mode\":\"clauses\"}\n```\n"} {
+		badFile := filepath.Join(t.TempDir(), "bad.txt")
+		if werr := os.WriteFile(badFile, []byte(bad), 0o600); werr != nil {
+			t.Fatal(werr)
+		}
+		c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
+			"--mode", "clauses", "--from", badFile, "--slug", "demo")
+		probs, _ := r[keyProblemsJSON].([]any)
+		if c != 0 || r[keyValidJSON] != false || len(probs) == 0 {
+			t.Fatalf("a malformed auditor reply must report {valid:false, problems} at exit 0: %d %v %s", c, r, e)
+		}
+	}
+	evs, eerr := bundle.ReadEvents(bdir)
+	if eerr != nil {
+		t.Fatal(eerr)
+	}
+	if !hasEventType(evs, "alignment_invalid") {
+		t.Fatalf("a rejected auditor reply must be on the event log: %+v", evs)
+	}
+	if _, o, _ = next(t, root, nil); o["op"] != "dispatch" ||
+		o["agents"].([]any)[0].(map[string]any)["mode"] != "clauses" {
+		t.Fatalf("a rejected reply must leave the auditor dispatch pending: %v", o)
+	}
+
 	out := filepath.Join(t.TempDir(), "clauses.txt")
 	_ = os.WriteFile(out, []byte("here:\n```json\n"+
 		`{"mode":"clauses","clauses":[{"id":"A1","text":"add a greeting","span":"Add a greeting"}]}`+
@@ -630,4 +665,14 @@ func TestDoneIsANoOpOnADoneStep(t *testing.T) {
 		got["ignored"] == true {
 		t.Fatalf("%d %v", code, got)
 	}
+}
+
+// hasEventType reports whether the log holds an event of this type.
+func hasEventType(evs []bundle.Event, typ string) bool {
+	for _, e := range evs {
+		if e.Type == typ {
+			return true
+		}
+	}
+	return false
 }

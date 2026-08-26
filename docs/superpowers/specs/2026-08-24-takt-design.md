@@ -252,7 +252,7 @@ Field notes:
 
 One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: `init`, `phase`, `spec_written`,
 `goals_frozen`, `goals_amended`, `gate_opened`, `gate_reviewed`, `gate_skipped`, `gate_overridden`,
-`gate_answered`, `alignment_clauses`, `alignment_verdicts`, `plan_loaded`, `wave_dispatched`,
+`gate_answered`, `alignment_clauses`, `alignment_verdicts`, `alignment_invalid`, `plan_loaded`, `wave_dispatched`,
 `task_recorded`, `digest_ignored`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`,
 `retro`, `pr_pushed`, `disposition`, `archived`, `lock_taken`, `lock_released`, `recovered`,
 `wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
@@ -319,7 +319,7 @@ only bundle is archived reports "no active run" to a bare command rather than an
 | `takt init <topic…> [--slug s] [--autonomy auto\|step] [--no-review-…] [--no-goals] [--no-alignment]` | Creates the bundle in phase `brainstorm`, applies the branch rule, commits the bundle (if in-repo). Refuses if the slug exists. |
 | `takt next [--force] [--recover]` | Heartbeat (persisted only when the lease needs renewing — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the bundle byte-identical on disk. Always returns in < 1 s. |
 | `takt record --task N --attempt A (--status done\|failed\|blocked --summary "…" [--blockers "…"] \| --from <file>)` | Records an implementer result. `--from` parses the trailing `STATUS:` / `SUMMARY:` / `BLOCKERS:` lines of the agent's final message. A stale attempt is logged and ignored (exit 0, `"ignored": true`). |
-| `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor JSON; returns validation errors instead of failing. |
+| `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor's or the auditor's JSON. What the agent got wrong is returned, not failed on — `{"valid": false, "problems": [...]}` at exit 0, logged as `plan_invalid` / `goals_invalid` / `alignment_invalid`, with nothing recorded, so `next` finds the dispatch still pending and hands the brief out again. |
 | `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>] [--confirm <slug>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). `--confirm <slug>` is required for `branch_finish`'s `discard` — typing the slug back. `--reason` is
 also how a choice carries its argument where it needs one: `no_verification`'s *specify* has no flag of
 its own, and the verify command to add is passed as `--reason "<command>"`. |
@@ -627,7 +627,9 @@ options as the spec gate.
 1. `takt:alignment-auditor` in `clauses` mode reads the anchor and returns `A1..An` (each quoting its
    span). `ask alignment_confirm` shows them; the user confirms or edits (edits arrive via
    `takt answer --gate alignment_confirm --choice edit --file <clauses.json>`). Confirmed clauses are
-   stored in `alignment.json` keyed by the anchor hash and reused on re-runs.
+   stored in `alignment.json` keyed by the anchor hash and reused on re-runs. A reply with no usable JSON
+   in it records nothing and is reported as `{valid: false, problems}` (§5.1), which leaves the dispatch
+   pending — the audit is simply retaken.
 2. The auditor in `verdicts` mode reads the clauses, `spec.md`, `plan.md`, `plan.index.json` and returns
    per clause `covered | narrowed | dropped | widened | contradicted` with a sentence each.
    `narrowed/dropped/contradicted` are reported as contraction, `widened` as creep — in the load commit

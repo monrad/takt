@@ -217,31 +217,32 @@ func unmetList(vs []finish.GoalVerdict) []map[string]any {
 
 // recordAlignment stores the auditor's clauses or verdicts in alignment.json,
 // bound to the anchor they were produced from (spec §7.3).
+//
+// What the auditor got wrong is a problem list, not a failure: it answers on
+// the same contract the planner and the assessor do — `{valid:false,
+// problems}` at exit 0, the rejection on the event log as
+// `alignment_invalid`, and nothing written — so `takt next` finds the
+// dispatch still pending and simply hands the brief out again (spec §5.1,
+// §5.3). Exiting 1 instead stopped the loop dead on a mistake the auditor
+// could have corrected on a second attempt, and did it for the one agent
+// whose result is advisory. takt's own invariants stay failures: an
+// unreadable --from file and an unusable --mode are a mis-wired session, and
+// a bundle that cannot be written is broken (spec §13).
 func recordAlignment(env Env, bdir string, st *bundle.State, mode, from string) int {
+	if mode != alignmentModeClauses && mode != alignmentModeVerdicts {
+		return fail(env.Stderr, exitUsage, "--mode must be clauses or verdicts", "")
+	}
 	raw, err := os.ReadFile(from)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
-	}
-	js, err := backend.ExtractJSON(string(raw))
-	if err != nil {
-		return fail(env.Stderr, exitError, "no JSON block in the auditor's message: "+err.Error(),
-			"re-dispatch the auditor")
 	}
 	a, _ := readAlignment(bdir)
 	if a == nil || a.AnchorHash != anchorHash(st.Topic) {
 		a = &alignmentFile{AnchorHash: anchorHash(st.Topic)}
 	}
-	switch mode {
-	case "clauses":
-		if code := applyClauses(env, bdir, a, js); code != 0 {
-			return code
-		}
-	case "verdicts":
-		if code := applyVerdicts(env, bdir, a, js); code != 0 {
-			return code
-		}
-	default:
-		return fail(env.Stderr, exitUsage, "--mode must be clauses or verdicts", "")
+	if problems := applyAuditorMessage(bdir, a, mode, string(raw)); len(problems) > 0 {
+		_ = bundle.AppendEvent(bdir, "alignment_invalid", map[string]any{keyProblems: problems})
+		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
 	if err = writeAlignment(bdir, *a); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
@@ -249,31 +250,57 @@ func recordAlignment(env Env, bdir string, st *bundle.State, mode, from string) 
 	return printJSON(env, map[string]any{"mode": mode, "ok": true})
 }
 
+// The two things the alignment auditor is ever asked for (spec §7.3).
+const (
+	alignmentModeClauses  = "clauses"
+	alignmentModeVerdicts = "verdicts"
+)
+
+// applyAuditorMessage pulls the JSON block out of the auditor's final message
+// and applies it to a, returning the problems that make the message unusable
+// — and mutating a only when there are none.
+func applyAuditorMessage(bdir string, a *alignmentFile, mode, message string) []string {
+	js, err := backend.ExtractJSON(message)
+	if err != nil {
+		return []string{"no JSON block in the auditor's message: " + err.Error()}
+	}
+	if mode == alignmentModeClauses {
+		return applyClauses(bdir, a, js)
+	}
+	return applyVerdicts(bdir, a, js)
+}
+
 // applyClauses replaces the clause list, which un-confirms it and drops any
 // verdicts judged against the old clauses.
-func applyClauses(env Env, bdir string, a *alignmentFile, js []byte) int {
+func applyClauses(bdir string, a *alignmentFile, js []byte) []string {
 	var msg struct {
 		Clauses []brief.Clause `json:"clauses"`
 	}
-	if err := json.Unmarshal(js, &msg); err != nil || len(msg.Clauses) == 0 {
-		return fail(env.Stderr, exitError, "auditor JSON has no clauses", "")
+	if err := json.Unmarshal(js, &msg); err != nil {
+		return []string{"the auditor's JSON block does not parse: " + err.Error()}
+	}
+	if len(msg.Clauses) == 0 {
+		return []string{"the auditor's JSON block has no clauses"}
 	}
 	a.Clauses, a.Confirmed, a.Verdicts = msg.Clauses, false, nil
 	_ = bundle.AppendEvent(bdir, "alignment_clauses", map[string]any{keyCount: len(msg.Clauses)})
-	return 0
+	return nil
 }
 
 // applyVerdicts stores the per-clause drift verdicts.
-func applyVerdicts(env Env, bdir string, a *alignmentFile, js []byte) int {
+func applyVerdicts(bdir string, a *alignmentFile, js []byte) []string {
 	var msg struct {
 		Verdicts []alignmentVerdict `json:"verdicts"`
 	}
-	if err := json.Unmarshal(js, &msg); err != nil || len(msg.Verdicts) == 0 {
-		return fail(env.Stderr, exitError, "auditor JSON has no verdicts", "")
+	if err := json.Unmarshal(js, &msg); err != nil {
+		return []string{"the auditor's JSON block does not parse: " + err.Error()}
+	}
+	if len(msg.Verdicts) == 0 {
+		return []string{"the auditor's JSON block has no verdicts"}
 	}
 	a.Verdicts = msg.Verdicts
 	_ = bundle.AppendEvent(bdir, "alignment_verdicts", map[string]any{keyCount: len(msg.Verdicts)})
-	return 0
+	return nil
 }
 
 // digestInput is the `--task` half of `takt record`'s command line: the

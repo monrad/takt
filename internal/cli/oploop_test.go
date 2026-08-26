@@ -363,9 +363,12 @@ func (d *driver) playAuditor(ag map[string]any) {
 		body = `{"mode":"verdicts","verdicts":[{"id":"A1","verdict":"covered","evidence":"tasks 1-2"}]}`
 	}
 	msg := d.message("here it is:\n```json\n" + body + "\n```\n")
-	if code, _, errb := d.cmd("record", "--agent", "alignment-auditor",
-		"--mode", mode, "--from", msg, "--slug", "demo"); code != 0 {
-		d.t.Fatalf("record auditor %s: %s", mode, errb)
+	// ok:true, not just exit 0: a malformed reply is reported as
+	// {valid:false, problems} at exit 0 too, and a driver that only looked at
+	// the exit code would drive the loop in a circle rather than fail here.
+	if code, out, errb := d.cmd("record", "--agent", "alignment-auditor",
+		"--mode", mode, "--from", msg, "--slug", "demo"); code != 0 || out["ok"] != true {
+		d.t.Fatalf("record auditor %s: %d %v %s", mode, code, out, errb)
 	}
 }
 
