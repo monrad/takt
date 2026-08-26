@@ -2,6 +2,12 @@
 // With --check it writes nothing and exits 1 listing the files that are
 // stale, which is what `task hosts:check` and the prompt parity test
 // enforce.
+//
+// "Stale" covers both directions. A generated file whose content no longer
+// matches its source is stale, and so is one whose source is gone: renaming
+// or deleting an agent left the old .agent.md behind, where the host went on
+// loading it — a definition nothing in the repository produces any more, and
+// one no content comparison could ever notice.
 package main
 
 import (
@@ -27,13 +33,16 @@ func main() {
 	os.Exit(run(*root, *check))
 }
 
-// run renders every agents/*.md under root and returns the process exit code.
+// run renders every agents/*.md under root, sweeps the generated files no
+// source claims any more, and returns the process exit code.
 func run(root string, check bool) int {
 	srcs, err := filepath.Glob(filepath.Join(root, "agents", "*.md"))
 	if err != nil || len(srcs) == 0 {
 		fmt.Fprintln(os.Stderr, "hostgen: no agents/*.md under", root)
 		return exitFailure
 	}
+	dstDir := filepath.Join(root, "hosts", "copilot", "agents")
+	generated := make(map[string]bool, len(srcs))
 	stale := 0
 	for _, src := range srcs {
 		name := strings.TrimSuffix(filepath.Base(src), ".md")
@@ -42,7 +51,8 @@ func run(root string, check bool) int {
 			fmt.Fprintln(os.Stderr, "hostgen:", rerr)
 			return exitFailure
 		}
-		dst := filepath.Join(root, "hosts", "copilot", "agents", hosts.CopilotAgentName(name)+".agent.md")
+		dst := filepath.Join(dstDir, hosts.CopilotAgentName(name)+".agent.md")
+		generated[dst] = true
 		if cur, _ := os.ReadFile(dst); bytes.Equal(cur, out) {
 			continue
 		}
@@ -57,10 +67,43 @@ func run(root string, check bool) int {
 		}
 		fmt.Fprintln(os.Stdout, "wrote", dst)
 	}
-	if stale > 0 {
+	orphaned, err := sweepOrphans(dstDir, generated, check)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hostgen:", err)
+		return exitFailure
+	}
+	if stale+orphaned > 0 {
 		return 1
 	}
 	return 0
+}
+
+// sweepOrphans reports (--check) or deletes every *.agent.md in dstDir that
+// this run did not generate, and returns how many --check found. Deleting is
+// safe because the directory holds nothing but generated files: the whole of
+// it is rewritten from agents/*.md on every gen, so anything the sweep does
+// not recognise came from a source that has since been renamed or removed.
+func sweepOrphans(dstDir string, generated map[string]bool, check bool) (int, error) {
+	dsts, err := filepath.Glob(filepath.Join(dstDir, "*.agent.md"))
+	if err != nil {
+		return 0, err
+	}
+	orphaned := 0
+	for _, dst := range dsts {
+		if generated[dst] {
+			continue
+		}
+		if check {
+			fmt.Fprintln(os.Stderr, "orphaned:", dst)
+			orphaned++
+			continue
+		}
+		if rerr := os.Remove(dst); rerr != nil {
+			return 0, rerr
+		}
+		fmt.Fprintln(os.Stdout, "removed", dst)
+	}
+	return orphaned, nil
 }
 
 // render reads one Claude Code agent definition and returns the Copilot file

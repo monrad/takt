@@ -75,12 +75,21 @@ func TestCopilotSkillHandshakeMatchesTheManifest(t *testing.T) {
 	mustContain(t, md, "takt version --expect "+m.Version, "the skill's handshake must pin the manifest version")
 }
 
+// TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents checks the two
+// directions separately, because they fail differently. Every source must
+// have produced its destination byte for byte — that is staleness. And every
+// destination must have a source: renaming or deleting an agent leaves the
+// old .agent.md in place, and the host goes on loading a definition nothing
+// in the repository produces any more, which no content comparison would
+// ever visit.
 func TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents(t *testing.T) {
 	t.Parallel()
+	const dstDir = "../../hosts/copilot/agents"
 	srcs, gerr := filepath.Glob("../../agents/*.md")
 	if gerr != nil || len(srcs) == 0 {
 		t.Fatal("no agents found", gerr)
 	}
+	generated := make(map[string]bool, len(srcs))
 	for _, src := range srcs {
 		name := strings.TrimSuffix(filepath.Base(src), ".md")
 		in, _ := os.ReadFile(src)
@@ -88,13 +97,23 @@ func TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dst := filepath.Join("../../hosts/copilot/agents", hosts.CopilotAgentName(name)+".agent.md")
+		dst := filepath.Join(dstDir, hosts.CopilotAgentName(name)+".agent.md")
+		generated[dst] = true
 		got, err := os.ReadFile(dst)
 		if err != nil {
 			t.Fatalf("%s: %v — run `task hosts:gen`", dst, err)
 		}
 		if string(got) != string(want) {
 			t.Errorf("%s is stale — run `task hosts:gen`", dst)
+		}
+	}
+	dsts, err := filepath.Glob(filepath.Join(dstDir, "*.agent.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dst := range dsts {
+		if !generated[dst] {
+			t.Errorf("%s has no agents/*.md source — run `task hosts:gen` to sweep it", dst)
 		}
 	}
 }
