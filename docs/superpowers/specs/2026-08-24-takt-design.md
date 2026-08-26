@@ -171,7 +171,13 @@ external directory serves many repos. A bundle is `<dir>/<slug>/`.
   retro.md                       written by the session at finish
   gates/spec.json · gates/plan.json          receipts (§9)
   reviews/spec.md · reviews/plan.md          reviewer findings, human-readable
+  reviews/spec.json · reviews/plan.json      the same review's structured result, beside the human
+                                              rendering; the scoped confirming pass and the follow-up
+                                              carry-forward read it (fixed-point design §5, §6)
   reviews/wave-<n>/task-<id>.md
+  follow-ups.json                            findings that closed with their gate instead of being
+                                              acted on; append-only; the retro lists them (fixed-point
+                                              design §6)
   waves/<n>/task-<id>.a<attempt>.md          the brief the agent was given
   waves/<n>/task-<id>.a<attempt>.digest.json
   waves/<n>/close.s<slice>.json              scope/verify/review results for the slice; a re-close
@@ -256,13 +262,20 @@ Field notes:
 
 One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: `init`, `phase`, `spec_written`,
 `goals_frozen`, `goals_amended`, `gate_opened`, `gate_reviewed`, `gate_skipped`, `gate_overridden`,
-`gate_answered`, `alignment_clauses`, `alignment_verdicts`, `alignment_invalid`, `plan_loaded`, `wave_dispatched`,
+`gate_answered`, `gate_revision_accepted`, `gate_rounds_reset`, `alignment_clauses`, `alignment_verdicts`,
+`alignment_invalid`, `plan_loaded`, `wave_dispatched`,
 `task_recorded`, `digest_ignored`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`,
 `retro`, `pr_pushed`, `disposition`, `archived`, `lock_taken`, `lock_released`, `recovered`,
 `wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
 `plan_invalid`, `plan_attempts_reset`, `goals_invalid`, `alignment_attempts_reset`, `goals_attempts_reset`.
-Five decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
-planner attempt counting (`plan_invalid` / `plan_attempts_reset`), the auditor's and the assessor's
+`gate_revision_accepted` — `{gate, hash}` — is written when the user answers `revise` on a spec review
+that found nothing blocking, at the hash they were shown; `gate_rounds_reset` — `{gate}` — restarts the
+review round count for one more pass (fixed-point design §4, §8).
+Seven decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
+the spec gate's revision satisfier (the newest `gate_revision_accepted` for a gate, read against the
+current hash, required by §9), its round cap (`gate_reviewed` events for the gate since the newest
+`gate_rounds_reset`, feeding the `gate_review_capped` ask), planner attempt counting (`plan_invalid` /
+`plan_attempts_reset`), the auditor's and the assessor's
 attempt caps (`alignment_invalid` / `goals_invalid` since the last `*_attempts_reset` — appended both by
 `agent_invalid`'s *retry*, carrying the `problems` forward, and by a valid record, carrying
 `reason: "recorded"` and no problems) and per-task review skips (`review_skipped`); everything else is
@@ -388,7 +401,11 @@ list — `branch_finish` disables `merge`/`discard` this way (§7.5 step 4).
 The gate ids are `decide.Vocab().Gates` — the list the prompt's parity test reads (§6). `agent_invalid` —
 the alignment auditor or the goal assessor replied unusably three times since the last reset; context
 `{agent, attempts, problems}`; choices `retry` (appends `<agent>_attempts_reset`), `skip`
-(alignment-auditor only: the audit is recorded as skipped), `stop`.
+(alignment-auditor only: the audit is recorded as skipped), `stop`. `gate_review_capped` — the spec
+gate's review has run `maxAgentAttempts` (3) passes since the newest `gate_rounds_reset` without the gate
+closing; context `{gate, attempts}`; choices `accept` (records `gate_overridden` at the current hash and
+carries the findings forward, §9), `retry` (appends `gate_rounds_reset` for the gate, resetting the round
+count for one more pass), `stop` (fixed-point design §8).
 
 `question` and `context` may quote text takt did not write: the goal assessor's evidence for an unmet
 goal, the tail of a failed verify command, a reviewer's summary. The prompt renders both as **data to
@@ -452,7 +469,7 @@ exist, receipt contents, the git dirty set, current HEAD, the current session id
 | 3 | `pending_gate` set | `ask <gate>` (re-rendered from the stored payload) |
 | 4 | phase `brainstorm`, no `spec.md` | `run brainstorm` |
 | 5 | phase `brainstorm`, `config.goals` and `goals_hash` null | `run goals` |
-| 6 | phase `brainstorm`, `config.review.spec` and spec gate not satisfied | `exec takt review spec`; if the receipt says `rework` → `ask gate_review(spec)` |
+| 6 | phase `brainstorm`, `config.review.spec` and spec gate not satisfied | a rework/reject/error receipt → `ask gate_review(spec)`, as before; else, once `SpecRounds ≥ maxAgentAttempts` (3) → `ask gate_review_capped`; else `exec takt review spec` (fixed-point design §3, §8) |
 | 7 | phase `brainstorm`, all of the above satisfied | transition → `plan` (commit), continue |
 | 8 | phase `plan`, no valid `plan.index.json` | `dispatch planner` (with validation errors from the last attempt, if any; after 3 invalid attempts → `ask plan_invalid`) |
 | 9 | phase `plan`, `config.review.plan` and plan gate not satisfied | `exec takt review plan`; `rework` → `ask gate_review(plan)` |
@@ -587,9 +604,20 @@ git repo.
    (anchor must equal `state.topic`; ids `G1..Gn` unique; each with a signal) and freezes
    `goals_hash = sha256(goals.md)`. Later edits require `takt goals amend`, which re-arms the spec gate.
 3. Spec gate — `exec takt review spec` runs the reviewer over `spec.md` + `goals.md` with the spec rubric
-   (§9). `approve` → receipt → transition to `plan`. `rework` → `ask gate_review(spec)`: *revise* (the
-   session edits the spec with the findings; the hash changes; the gate re-arms) · *accept as is* (records
-   `gate_overridden` with the user's reason) · *stop*.
+   (§9). `approve` → receipt → transition to `plan`; any findings it carried are recorded as follow-ups
+   rather than lost, since the gate closed without asking anyone to act on them. One review pass is the
+   default: a `rework` verdict with no blocking finding still asks `gate_review(spec)`, but *revise* now
+   closes the gate on the edit alone — no second backend call. A `rework` with a blocking finding re-arms
+   the gate for one **scoped** confirming pass, judged against the prior findings rather than the whole
+   document, which gives it a finite referent and lets it terminate the way the plan gate already does.
+   `reject`/`error` keep today's full re-arm-and-re-review. Once the gate has taken `maxAgentAttempts` (3)
+   review rounds since the newest reset without closing, the run asks `gate_review_capped` — *accept*
+   (override, findings carried forward) · *retry* (one more pass) · *stop* — instead of reviewing a fourth
+   time. This is the spec gate's fixed point: the mechanism behind *revise* closing the gate, how the
+   scoped pass is scoped, and the round cap is
+   `docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md` §3–§8, not restated here. It applies
+   to the spec gate only — the plan gate (§7.3) keeps today's behaviour entirely, including its uncapped
+   rounds.
 
 ### 7.3 `plan`
 
@@ -907,17 +935,35 @@ Receipt `gates/<gate>.json`:
 
 ```json
 { "gate": "plan", "hash": "sha256:…", "verdict": "approve", "reviewer": { "provider": "copilot", "model": "gpt-5.6-sol" },
-  "findings": "docs/takt/<slug>/reviews/plan.md", "ts": "…",
-  "skipped": null }
+  "findings": "docs/takt/<slug>/reviews/plan.md", "severities": { "blocking": 0, "major": 0, "minor": 1, "nit": 2 },
+  "ts": "…", "skipped": null }
 ```
+
+`severities` tallies the review's findings by severity — counts only, not the findings themselves, so a
+gate decision never has to open a second file. A receipt written before this field existed decodes with
+`severities` absent, which reads as zero of everything; that is the safe default, since zero blocking is
+the path that closes on `revise` rather than the one that loops (fixed-point design §7.1).
 
 A gate is satisfied when a receipt exists whose `hash` equals the current hash and whose `verdict` is
 `approve`, or whose `skipped` carries `{reason, evidence_path}` (an evidenced backend outage — never a
-convenience), or when an override event (`gate_overridden`, with reason) exists at that hash. Editing a
-gated artifact changes the hash and re-arms the gate. A receipt with a reviewer's verdict at the current
-hash is also the answer to a repeated `takt review` at that hash (cached, no re-run, no commit) unless
-`--force` is given. `takt review <gate> --skip --reason "…"` requires the reviewer's stderr to be
-non-empty and stores it as evidence.
+convenience), or when an override event (`gate_overridden`, with reason) exists at that hash, or, for the
+spec gate, when a `gate_revision_accepted` event exists whose `hash` **differs** from the current hash.
+Every other satisfier binds to the current hash; this one binds to "not the reviewed hash" on purpose,
+because what it records is that the user was shown findings and then edited the artifact. Answering
+`revise` and editing nothing leaves the hash where it was and the gate open, so the gate cannot be closed
+by assertion. A receipt at the current hash outranks it, so a deliberate `takt review <gate> --force`
+after revising still governs. Editing a gated artifact changes the hash and re-arms the gate. A receipt
+with a reviewer's verdict at the current hash is also the answer to a repeated `takt review` at that hash
+(cached, no re-run, no commit) unless `--force` is given. `takt review <gate> --skip --reason "…"`
+requires the reviewer's stderr to be non-empty and stores it as evidence.
+
+The revision satisfier depends on an ordering that is otherwise only implicit: `acceptRevision` records
+`gate_revision_accepted` only while the receipt still answers at the *pre-edit* hash, so the `revise`
+answer must be given **before** the artifact is edited. That is exactly the order `commands/takt.md:30`
+already prescribes for every ask gate ("run the op's `answer` command … then do that work before the
+next `takt next`"), so the mechanism is correct and consistent today — but nothing enforces the coupling,
+and if the prompt's order ever changed, the fixed point would silently degrade back to the old
+re-arm-and-re-review loop with no signal that it had.
 
 ---
 

@@ -290,7 +290,7 @@ New template `review-spec-followup.md` for §5. `brief.ReviewData` gains `PriorF
 | `internal/cli/facts.go` | build `SpecRounds` and `GateStatus.Blocking` |
 | `internal/brief/brief.go`, `templates/` | severity definitions; `review-spec-followup.md`; `ReviewData.PriorFindings`; `run-retro.md` follow-ups line |
 | `internal/finish/retro.go` | `RetroInputs.FollowUps` |
-| `commands/takt.md`, `hosts/` | gate id list (line 39), then `hostgen` |
+| `commands/takt.md`, `hosts/copilot/skills/takt/SKILL.md` | gate id list in both — each is hand-maintained and each has its own parity test (`internal/prompt/prompt_test.go`, `internal/prompt/copilot_test.go`). `hostgen` renders only `agents/*.md` and is not involved. |
 | `docs/superpowers/specs/2026-08-24-takt-design.md` | §4.2, §4.4, §5.2, §5.3, §7.2, §9 |
 
 Follow-up read/append lives in `internal/gate` because gate closure is the only thing that produces
