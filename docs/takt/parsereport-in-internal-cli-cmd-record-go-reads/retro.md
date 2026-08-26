@@ -32,9 +32,11 @@ itself; `takt verify` passed all 16 commands at the same sha.
   which matches "decoration"; the task description demanded the literal word
   "decorated". Attempt 1 passed every verify command and was still reworked by the
   reviewer on exactly that word. When a plan mandates wording, the grep and the prose
-  have to mandate the same string. Attempt 2 (escalated sonnet → opus) fixed it.
-- **The spec gate ran six review passes** (findings 2, 4, 3, 3, 2, then approve) and the
-  plan gate four (2, 2, 2, 1, then accepted). Nearly every finding was real, but a
+  have to mandate the same string. Attempt 2 (escalated sonnet → opus) fixed it. Filed
+  as #30.
+- **The spec gate ran six review passes** (findings 2, 4, 3, 3, 2, 2 — the last on the
+  approving pass) and the plan gate four (2, 2, 2, 1, then accepted): 23 gate findings,
+  plus one on task 4's wave review. Nearly every finding was real, but a
   majority were defects *the previous revision introduced* — the interior-run guard
   written to answer pass 3 created the contradictions pass 4 found, which the
   opener rule then replaced. Reviewing a spec that is being rewritten between passes
@@ -58,55 +60,67 @@ itself; `takt verify` passed all 16 commands at the same sha.
 - `STATUS: done**` — a closing run on a line that opened nothing — deliberately keeps its
   stars and fails the digest check. Documented as a non-goal with a test, so a future
   change to it is a deliberate one.
-- Dogfood findings from this run (issue #20) are listed below and should become issues.
+- Dogfood findings from this run (issue #20) are listed below and were filed as #23-#37.
 
 ## Dogfood notes (issue #20)
 
 Observations about **takt itself**, which is what this run existed to collect.
 
-- **`retro-inputs.json` reports `review_findings: 0`.** This run produced 14 gate-review
-  findings (spec 6 passes, plan 4) and one task rework with a finding. Whatever the
-  counter counts, it is not what the retro needs.
+- **`retro-inputs.json` reports `review_findings: 0`.** This run produced 23 gate-review
+  findings (spec six passes: 2, 4, 3, 3, 2, 2; plan four: 2, 2, 2, 1) and one more on
+  task 4's wave review — 24 in total. Whatever the counter counts, it is not what the
+  retro needs. Filed as #23.
 - **The goal assessor cited the wrong file.** G1, G2 and G3's citations point at
   `internal/cli/execute_test.go:34-75` and similar, but the tests it names
   (`TestParseReportAcceptsTheDecorationCrossProduct`, `TestParseReportMustNotMatch`) live
   in `internal/cli/cmd_record_test.go`. The verdicts are right and the evidence prose is
-  right; the `path:line` citations are not, and nothing validates them.
+  right; the `path:line` citations are not, and nothing validates them. Filed as #24.
 - **`wave_timings` lost wave 0's first attempt.** Only the attempt that committed
-  (attempt 2) appears, so the retro cannot see how long the reworked attempt took.
+  (attempt 2) appears, so the retro cannot see how long the reworked attempt took. Filed as #25.
 - **Answering a gate before `takt next` arms it is a silent no-op.** Reading
   `reviews/spec.md` and running `takt answer --gate gate_review --choice revise` before
   the `ask` op had been emitted printed `{"ignored": true, "reason": "no pending gate
   gate_review"}` at exit 0. Correct, but the JSON gives no hint (`run takt next first`),
-  and a session that trusts exit 0 would proceed as if the gate were answered.
+  and a session that trusts exit 0 would proceed as if the gate were answered. Filed as #27.
 - **"Revise" at the plan gate has no defined mechanism.** The plan artifacts are written
   by the planner agent, but the gate's revise option is satisfied by the session editing
   `plan.index.json` / `plan.md` by hand — the loop never re-dispatches the planner, and
-  nothing in the op text says which is intended.
+  nothing in the op text says which is intended. Filed as #28.
 - **An approve freezes its own leftovers.** Minors on the approving pass can only be
   folded in by changing the artifact, which re-arms the hash-bound gate and costs another
-  backend call. There is no "accept with these minors recorded as follow-ups" path.
+  backend call. There is no "accept with these minors recorded as follow-ups" path. Filed as #29.
 - **Dispatch briefs are large and must be pasted verbatim.**
   `briefs/alignment-verdicts.md` is 41KB (clauses + anchor + spec + plan + index) and each
   wave-0 task brief is ~22KB, of which the shared spec excerpt is the bulk. The op table
   requires the brief's *contents* as the subagent prompt, so every dispatch reads the file
   into the session and writes the same bytes back out — roughly 2× the brief per dispatch,
   ~136KB for this run. A `--brief-path` convention would remove it, at the cost of the
-  agent reading artifacts the session never saw.
+  agent reading artifacts the session never saw. Filed as #31.
 - **Gate churn is permanent history.** 27 commits on the branch, 11 of them
   `gate gate_review: revise` / `... reviewed: rework` bookkeeping. Squashing is the user's
   call at `branch_finish`, but the default shape of a small change's history is mostly
-  gate traffic.
+  gate traffic. Filed as #32.
 - **`takt status` shows `tasks: 0 total` during the plan phase** (before the index is
   materialised into state) and prints an empty `alignment:` section even once clauses are
-  confirmed. Both read as "nothing there" rather than "not yet".
+  confirmed. Both read as "nothing there" rather than "not yet". Filed as #33.
 - **Issue #20 says the retro lands in `finish/retro.md`; the `retro` op writes
   `retro.md`** at the bundle root. The issue text is what is stale, but the two should
-  agree.
+  agree. Filed as #35.
+- **`branch_finish`'s recommended option cannot be chosen in this flow.** `takt init`
+  puts the primary worktree on the run branch; `branch_finish` then disables "merge
+  locally" *because* the primary worktree is on the run branch (`"merge_allowed": false`,
+  `merge_blocked: "…is on takt/<slug>, not main; merge by hand after archiving"`). Plan
+  5's Task 8 instructs the operator to choose exactly that option. The run finished
+  through `pr` instead. Filed as #26.
+- **`takt doctor` prints "1 finding(s), 0 error(s)" on a clean workspace**, where the
+  single finding is the `PASS  index-lock` row itself. Filed as #34.
+- **`gh pr create --fill` titled the PR after the branch** — "takt/parsereport in internal
+  cli cmd record go reads" — because every commit subject is takt bookkeeping and `--fill`
+  had nothing better to use. Filed as #36.
 - **Session cwd drift is a real hazard for the loop-driver.** A `cd` into the bundle in
   one Bash call persisted, and a later repo-relative path reported "No such file or
   directory" for a file that exists. `takt` itself was unaffected — it walks up to the
-  repository root — but the session driving the loop should use absolute paths.
+  repository root — but the session driving the loop should use absolute paths. Filed as #37.
 
 ### Models and timings observed
 
