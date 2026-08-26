@@ -64,10 +64,11 @@ never consumed as a marker. `#` is the one exception, because `##` is a real hea
 a run of seven or more is not a marker.
 
 **Decoration run.** A maximal run of the characters `*`, `_` and `` ` ``. A run may
-mix them (`` *` `` is one run of length two); the runs at the two ends of a value are
-**balanced** only when their text is byte-identical (`**`…`**` is balanced, `**`…`*`
-is not, `` *_ ``…`` _* `` is not). Balance decides only whether a *pair* is stripped as
-a wrapper — never whether the line is accepted.
+mix them (`` *` `` is one run of length two). Runs are never required to match each
+other: the run before the key, the run opening the value and the run closing the value
+are three independent slots, and `**`…`*` is as acceptable as `**`…`**`. A run is
+*interior* to a value when it starts after the first byte and ends before the last —
+the one distinction step 4 draws.
 
 ### Step 1 — strip leading markers
 
@@ -78,10 +79,12 @@ markers such as `> 1. `.
 The required whitespace is what disambiguates `*`: `* STATUS: done` is a bullet,
 `**STATUS:** done` is emphasis, and only the first form is consumed here.
 
-### Step 2 — split the decoration run
+### Step 2 — drop the decoration before the key
 
-Take the leading decoration run off the front of what remains and keep it as `deco`
-(possibly empty). Nothing later requires `deco` to be closed.
+Drop the leading decoration run from the front of what remains. It is consumed here and
+plays no further part: nothing requires it to be closed, and the value is cleaned by
+its own rules in step 4. Making the value's cleaning independent of the key's
+decoration is what keeps every slot in the grammar independent.
 
 ### Step 3 — match the key
 
@@ -95,17 +98,23 @@ line that merely mentions `STATUS:` mid-sentence can never match.
 With `rest` = what follows the key:
 
 1. `strings.TrimSpace(rest)`.
-2. If `deco` is non-empty: drop `deco` from the **front** of the value if it is there
-   (the `**STATUS:** done` shape), otherwise drop it from the **end** if it is there
-   (the whole-line-wrapped `**STATUS: done**` shape). If it is at neither end, leave
-   the value alone — the run was simply never closed, and the line still counts.
-3. Drop one **balanced** wrapper as defined above (the `STATUS: **done**` shape).
-   Trim again.
+2. Repeatedly drop a leading decoration run and the whitespace after it, until the
+   value no longer starts with one. Repetition is required, not cosmetic: in
+   `` `STATUS:` `done` `` the first run is the *key's* closer and the second opens the
+   value, and a single strip would leave `` `done ``.
+3. Drop one trailing decoration run, if the value ends with one **and** the value has
+   no *interior* decoration run — a run that starts after the first byte and ends
+   before the last. Trim.
 4. For `STATUS`, lowercase the result, as today.
 
-Step 3's balance requirement is deliberate: `SUMMARY: fixed *parseReport*` keeps its
-internal emphasis intact, because no `deco` preceded the key and the value's start and
-end runs do not match.
+The interior guard in step 3 is the whole subtlety, and it is what distinguishes
+punctuation from content. `STATUS: done**` has no interior run, so the stray `**` is
+decoration and comes off. `SUMMARY: fixed *parseReport*` has one (the `*` before
+`parseReport`), so the trailing `*` is the closer of an emphasis the author meant, and
+the value survives verbatim.
+
+Every accepted shape below follows from these three steps alone; the decoration before
+the key never reaches the value.
 
 ### Accepted shapes — the axes
 
@@ -113,22 +122,29 @@ The accepted set is a cross-product, not a list of examples. A line is a trailer
 when it is
 
 ```
-<marker>* <deco>?<KEY>:<deco>? <deco>?<value><deco>?
+<marker>* <Dk-open>?<KEY>:<Dk-close>? <Do>?<value><Dc>?
 ```
 
 with every `<deco>` independent and optional — no `<deco>` has to be matched by
-another. The axes the tests enumerate:
+another, and any slot may be empty. The axes the tests enumerate:
 
 | axis | representative classes | boundaries also tested |
 |---|---|---|
 | marker prefix (M) | none · `-` · `*` · `+` · `>` · `#` · `1.` | `######` (six, accepted) · `#######` (seven, rejected) · `0.` · `007.` · `2)` · stacked `> - 1.` |
-| decoration placement (P) | none · key · value · key+value · whole line | opened-and-never-closed · closing run only · mismatched pair |
-| decoration run (D) | `*` · `**` · `_` · `__` · `` ` `` | mixed run `` *` `` |
+| run before the key (Dk-open) | none · `*` · `**` · `_` · `__` · `` ` `` | mixed run `` *` `` |
+| run after the key's colon (Dk-close) | none · `*` · `**` · `_` · `__` · `` ` `` | — |
+| run opening the value (Do) | none · `*` · `**` · `_` · `__` · `` ` `` | — |
+| run closing the value (Dc) | none · `*` · `**` · `_` · `__` · `` ` `` | — |
 | key (K) | `STATUS` · `SUMMARY` · `BLOCKERS` | — |
 
-The M/D/P/K values in the first column are **representative classes**, not the whole
-language: the grammar above is the authority, and the boundary column is what pins the
-places where a plausible implementation could disagree with it.
+The four decoration slots vary **independently**: no combination is excluded, and a
+mismatched pair (`*STATUS:** done`) or a lone closer (`STATUS: done**`) is as
+acceptable as a matched one. That independence is the grammar, so the tests enumerate
+the full product rather than a diagonal through it.
+
+The values in the first column are **representative classes**, not the whole language:
+the grammar above is the authority, and the boundary column is what pins the places
+where a plausible implementation could disagree with it.
 
 Worked examples:
 
@@ -176,16 +192,19 @@ of the accepted table are its counter-examples.
 
 `internal/cli/cmd_record_test.go` proves the grammar rather than a handful of examples:
 
-- **Cross-product case.** Nested table-driven loops over the marker axis (M), the
-  decoration-run axis (D) and the placement axis (P), asserted for each key (K). Every
-  generated line must yield the expected key and the value `done` / `fixed the parser`
-  / `none` with all decoration removed. The subtest name carries M/D/P/K so a failure
-  names the exact combination.
+- **Cross-product case.** Nested table-driven loops over M × Dk-open × Dk-close × Do ×
+  Dc × K — the full product of the axes above, every slot independent (7 × 6 × 6 × 6 ×
+  6 × 3 lines, all pure string work). Every generated line must yield the expected key
+  and the value `done` / `fixed the parser` / `none` with all decoration removed. The
+  assertion is inline (`t.Errorf` naming the combination and the line), not one
+  `t.Run` per case: tens of thousands of subtest frames would cost more than the
+  strings they check.
 - **Boundary rows** from the second column of the axes table: `######` accepted and
   `#######` rejected, `0.` and `007.` and `2)` accepted, stacked `> - 1.` accepted, a
   mixed decoration run accepted.
-- **Unbalanced decoration rows:** opened-and-never-closed, closing-run-only and
-  mismatched-pair lines all parse, per the tolerance ruling.
+- **Interior-run rows:** a value with an interior decoration run keeps its trailing
+  run (`fixed *parseReport*`), and one without loses it (`done**`) — the two sides of
+  the step 3 guard.
 - **Must-not-match rows**, one per line of the must-not-match table, asserting the
   field stays empty.
 - **Emphasis preservation:** `SUMMARY: fixed *parseReport*` keeps its internal `*`.
@@ -224,7 +243,8 @@ The new file follows the internal-test convention already used by `slug_test.go`
 | What may an ordered marker look like? | One or more ASCII digits, leading zeros allowed, then `.` or `)`, then whitespace. | Removes the "zero, leading zeros, arbitrary digits" ambiguity the review named. | assumed (spec review, minor) |
 | Is the M/D/P/K matrix the language, or a sample of it? | A sample: representative classes plus the boundary cases that pin the grammar's edges. | The grammar is the authority; a finite matrix could never be the definition. | assumed (spec review pass 2, minor) |
 | Are the `--status` / `--summary` / `--blockers` overrides proven anywhere? | Not today — this change adds the case to `execute_test.go`. | G2 claims the overrides still win and nothing tested it; the claim needs evidence, not assertion. | assumed (spec review pass 2, minor) |
-| When are the decoration runs around a value stripped? | Only when byte-identical at both ends, or when they close the run that preceded the key. | Asymmetric emphasis inside a summary is content, not decoration. | assumed |
+| When are the decoration runs around a value stripped? | A leading run always; a trailing run only when the value has no interior run. | Asymmetric emphasis inside a summary is content, not decoration — an interior run is the evidence that the trailing one closes something the author wrote. | assumed (spec review pass 3, major) |
+| Do the key's decoration and the value's interact? | No — the run before the key is consumed in step 2; the key's closing run and the value's opening run are both eaten by step 4's repeated leading strip. | Coupling them made `*STATUS:** done` yield `* done`; a single strip left `` `STATUS:` `done` `` as `` `done ``. | assumed (spec review pass 3, major) |
 | Does `*` need following whitespace to count as a list marker? | Yes. | Without it, `**STATUS:**` would lose one `*` to the marker stripper. | assumed |
 | Is `regexp` used? | No — plain `strings` steps. | The package is stdlib-only by constraint and the repo's parsing style is explicit string handling; the steps are simpler to read than one dense pattern. | assumed |
 | Does anything about the digest schema or `recordTask`'s validation change? | No. | The failure was purely in extraction. | assumed |

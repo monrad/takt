@@ -10,3 +10,4 @@
 {"ts":"2026-08-26T16:24:05.212956118Z","type":"gate_reviewed","data":{"findings":3,"gate":"spec","hash":"sha256:2e1a8e9af7596bfc0889a1c1481af50c794c4f81033f9a00e4e43479dfb80756","provider":"copilot","verdict":"rework"}}
 {"ts":"2026-08-26T16:25:35.775296662Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-26T16:25:42.203697373Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
+{"ts":"2026-08-26T16:28:21.846609283Z","type":"gate_reviewed","data":{"findings":3,"gate":"spec","hash":"sha256:adebe0f0f61d68693af0355c326a9500d3a90c289c601616a238ab5effc66845","provider":"copilot","verdict":"rework"}}
