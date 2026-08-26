@@ -17,7 +17,12 @@ const (
 // preceded by whitespace. That distinction matters — .goreleaser.yaml's cask
 // hook embeds Ruby's `"#{staged_path}/takt"`, where the `#` follows a quote
 // and is not a comment at all.
-var commentTail = regexp.MustCompile(`(^|[ \t])#[^\n]*`)
+//
+// `(?m)` is what makes "start of the line" mean every line rather than the
+// start of the file: without it a comment written hard against column 0 —
+// which is how both files write their header and section comments — was left
+// in the text the assertions scan, and could satisfy one on its own.
+var commentTail = regexp.MustCompile(`(?m)(^|[ \t])#[^\n]*`)
 
 // goosBlock captures the items of the builds' `goos:` list, so the platform
 // assertion reads the setting itself rather than the whole file: a comment

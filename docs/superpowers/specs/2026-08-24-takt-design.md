@@ -407,8 +407,11 @@ user; the anchor is the verbatim topic), `retro`, `push_pr`.
 { "op": "stop", "narration": "wave 0 in flight: 2 of 3 results recorded", "reason": "wave_in_flight" }
 ```
 
-Reasons: `wave_in_flight` (agents of this session may still be running — wait for their results),
-`archived`, `read_only`.
+Reasons: `wave_in_flight` (agents of this session may still be running — wait for their results) and
+`archived` — the two `decide.Vocab().StopReasons`, which is the list the prompt's parity test reads and the
+source of truth for this sentence. There is no `read_only` stop: the `owner` gate's read-only choice (§4.6)
+is acted on by the session, which inspects the run with `takt status` and ends its turn without asking takt
+for another op.
 
 An archived run's `stop` also carries `context` — git-derived facts about what the disposition did just
 now (e.g. `{"merged": "<sha>"}`, `{"deleted": true}`), read fresh from git on every call rather than

@@ -112,7 +112,9 @@ homebrew_casks:
       owner: monrad
       name: homebrew-tap
       branch: main
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      # `index .Env` for the same reason skip_upload below uses it: an unset
+      # variable is "" rather than a template error.
+      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
     directory: Casks
     homepage: https://github.com/monrad/takt
     description: Resumable brainstorm-plan-execute workflow with a deterministic Go core
