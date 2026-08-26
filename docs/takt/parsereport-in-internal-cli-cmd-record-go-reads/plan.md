@@ -51,7 +51,11 @@ survives only when every other slot is empty), the boundary rows (`######` vs
 `#######`, `0.`/`007.`/`2)`, stacked `> - 1.`, mixed run), both sides of the opener
 rule, `STATUS:done`, every must-not-match row asserting empty fields, the blunt
 `**SUMMARY: fixed *parseReport***` case, the whole-message last-occurrence case, and
-the undecorated regression. Scoped as one task because the tests are the only thing
+the undecorated regression, and the marker boundaries that separate the grammar from a
+plausible misreading of it: `--` and `>>` are not markers (so those lines do not match
+at all), a tab satisfies the marker whitespace, an ordered marker is ASCII digits with
+no sign, and `**` reaches the key through the decoration path rather than the marker
+one. Scoped as one task because the tests are the only thing
 that can make the verify fail-before/pass-after, and the two files are one change.
 It carries the repo gates (`go test -race ./...`, `golangci-lint run ./...`) and G6 —
 though task 2 touches Go code afterwards and repeats them, so the final assembled state
@@ -117,6 +121,13 @@ sentence in the spec of record, fully specified, with grep-pinned evidence.
   budgets in the golden config; the spec's four-step decomposition is designed for
   that, and `golangci-lint run ./...` is in task 1's verify so a violation fails the
   task, not the run.
+- **What a grep can and cannot prove.** The docs tasks' verifies are tripwires: they
+  fail when the edit lands in the wrong file, the wrong sentence or the wrong table row,
+  and they fail when a required semantic word is missing. They cannot judge whether the
+  prose is *correct* — no grep can. That judgement belongs to the wave review, which
+  reads the diff, and to the G4/G5 goal assessment, which reads the finished files. The
+  words chosen ("decorated", "marker", "plain", "backtick", "uppercase", "opened") are
+  the ones the sentence has to contain to say what the spec says.
 - **Grep-mandated wording.** Tasks 3 and 4 constrain one word of prose each so their
   verifies can fail before the work, and anchor the grep to the sentence or table row
   being changed so the check cannot be satisfied from elsewhere in the file. If a
