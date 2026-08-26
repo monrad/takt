@@ -1,8 +1,8 @@
-# Review: spec — rework
+# Review: spec — approve
 
-The design is close, but its test oracle and marker grammar contain contradictions that must be resolved before planning.
+The spec is coherent, explicitly scoped, testable, aligned with goals.md, and includes the required decisions table. Minor clarification and coverage gaps remain.
 
-- **blocking** spec.md:0 — Cross-product expectation contradicts lone-closer semantics: The cross-product test requires every decoration combination to yield a value with all decoration removed. But combinations containing only Dc have no opener, so step 4.3 and the explicit `STATUS: done**` case require Dc to remain. Exclude closer-only combinations from that expectation or define their expected decorated values.
-- **major** spec.md:0 — Optional-space claim contradicts marker grammar: The accepted-shape section says every space is optional, while the marker definition requires whitespace after each marker and the must-not-match table rejects `-STATUS: done`. State explicitly that only non-marker spacing is optional.
+- **minor** spec.md:0 — Whitespace wording is broader than the grammar: The accepted-shapes section says spacing “around the colon” is optional, which can imply `STATUS : done`; the normative steps only permit optional whitespace after the colon. State that whitespace before the colon is forbidden.
+- **minor** spec.md:0 — Negative tests do not cover every key: G3 applies lowercase and missing-colon rejection to keys generally, but the must-not-match rows only exercise STATUS. Include equivalent SUMMARY and BLOCKERS cases so an inconsistent per-key implementation cannot pass.
 
 _copilot / gpt-5.6-sol_

@@ -136,7 +136,9 @@ when it is
 <marker>* <Dk-open>?<KEY>:<Dk-close>? <Do>?<value><Dc>?
 ```
 
-with every space optional (`STATUS:done` is a trailer line), and
+where the whitespace **after a marker is mandatory** (that is what makes `-STATUS: done`
+a non-match) while the spacing around the colon and around the value is optional
+(`STATUS:done` is a trailer line), with
 
 every `<deco>` slot independent and optional — no slot has to be matched by another,
 and any of them may be empty. One restriction follows from step 4.3 rather than from
@@ -218,11 +220,19 @@ emit. `--status` remains the escape hatch.
 
 - **Cross-product case.** Nested table-driven loops over M × Dk-open × Dk-close × Do ×
   Dc × K — the full product of the axes above, every slot independent (7 × 6 × 6 × 6 ×
-  6 × 3 lines, all pure string work). Every generated line must yield the expected key
-  and the value `done` / `fixed the parser` / `none` with all decoration removed. The
-  assertion is inline (`t.Errorf` naming the combination and the line), not one
-  `t.Run` per case: tens of thousands of subtest frames would cost more than the
-  strings they check.
+  6 × 3 lines, all pure string work). The expected value is computed from the same
+  opener rule the parser follows, not assumed uniform:
+
+  ```go
+  want := value                       // "done" / "fixed the parser" / "none"
+  if dkOpen == "" && dkClose == "" && do == "" && dc != "" {
+      want = value + dc               // a closer with no opener is left in place
+  }
+  ```
+
+  Every other combination yields the bare value. The assertion is inline (`t.Errorf`
+  naming the combination and the line), not one `t.Run` per case: tens of thousands of
+  subtest frames would cost more than the strings they check.
 - **Boundary rows** from the second column of the axes table: `######` accepted and
   `#######` rejected, `0.` and `007.` and `2)` accepted, stacked `> - 1.` accepted, a
   mixed decoration run accepted.
@@ -274,6 +284,8 @@ The new file follows the internal-test convention already used by `slug_test.go`
 | When are the decoration runs around a value stripped? | Leading runs always; a trailing run only on a line that already gave up an opener. | Makes the change a no-op for every line with no decoration at all — `SUMMARY: changed wildcard *` is byte-identical to before — which is what G2 promises. | assumed (spec review pass 4, major) |
 | What happens to a closing run with no opener anywhere (`STATUS: done**`)? | Left in place; the digest is rejected and `--status` is the escape hatch. | Rescuing it would cost the compatibility guarantee above. Documented as a non-goal with a test, not an oversight. | assumed (spec review pass 4, major) |
 | Is the whitespace after the colon required? | No. `STATUS:done` parses, as it does today. | The old parser trimmed the remainder; a regression row keeps it that way. | assumed (spec review pass 4, minor) |
+| Is the whitespace after a marker required? | Yes — that spacing alone is mandatory, and `-STATUS: done` is a non-match because of it. | Without it `**STATUS:**` would lose a star to the marker stripper; the optional-space claim covers only the colon and the value. | assumed (spec review pass 5, major) |
+| Does every cross-product combination expect a bare value? | No — a combination whose only decoration is the closing run expects the closer to survive, per the opener rule. | The oracle has to be the rule, or the test would contradict the documented `STATUS: done**` non-goal. | assumed (spec review pass 5, blocking) |
 | Do the key's decoration and the value's interact? | No — the run before the key is consumed in step 2; the key's closing run and the value's opening run are both eaten by step 4's repeated leading strip. | Coupling them made `*STATUS:** done` yield `* done`; a single strip left `` `STATUS:` `done` `` as `` `done ``. | assumed (spec review pass 3, major) |
 | Does `*` need following whitespace to count as a list marker? | Yes. | Without it, `**STATUS:**` would lose one `*` to the marker stripper. | assumed |
 | Is `regexp` used? | No — plain `strings` steps. | The package is stdlib-only by constraint and the repo's parsing style is explicit string handling; the steps are simpler to read than one dense pattern. | assumed |
