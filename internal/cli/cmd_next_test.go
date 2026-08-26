@@ -799,34 +799,12 @@ func hasEventType(evs []bundle.Event, typ string) bool {
 // resets the count through `alignment_attempts_reset` and hands the auditor
 // a brief that quotes what was wrong with its last one, the cap re-arms, and
 // *skip* ends the audit for good.
-//
-//nolint:gocognit // one scripted walk of the cap, deliberately not split
 func TestAuditorRepliesTaktCannotParseAreCappedAtThree(t *testing.T) {
 	t.Parallel()
-	root, bdir := planLoadFixture(t)
-	st, _ := bundle.LoadState(bdir)
-	st.Config.Alignment = true
-	if err := bundle.SaveState(bdir, st); err != nil {
-		t.Fatal(err)
-	}
-	garbage := filepath.Join(t.TempDir(), "reply.md")
-	if err := os.WriteFile(garbage, []byte("I could not find any clauses.\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reject := func() {
-		t.Helper()
-		_, o, _ := next(t, root, nil)
-		if o["op"] != "dispatch" {
-			t.Fatalf("expected the auditor dispatch, got %v", o)
-		}
-		c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
-			"--mode", "clauses", "--from", garbage, "--slug", "demo")
-		if c != 0 || r[keyValidJSON] != false {
-			t.Fatalf("%d %v %s", c, r, e)
-		}
-	}
+	root, bdir := auditedFixture(t)
+	garbage := unusableReply(t)
 	for range 3 {
-		reject()
+		rejectAuditor(t, root, "clauses", garbage)
 	}
 	_, o, _ := next(t, root, nil)
 	if o["op"] != "ask" || o["gate"] != "agent_invalid" {
@@ -836,20 +814,7 @@ func TestAuditorRepliesTaktCannotParseAreCappedAtThree(t *testing.T) {
 	if ctx["agent"] != "alignment-auditor" || ctx["attempts"] != 3.0 {
 		t.Fatalf("context: %v", ctx)
 	}
-	if c, _, e := runIn(
-		t,
-		root,
-		nil,
-		"answer",
-		"--gate",
-		"agent_invalid",
-		"--choice",
-		"retry",
-		"--slug",
-		"demo",
-	); c != 0 {
-		t.Fatal(e)
-	}
+	answerGate(t, root, "agent_invalid", "retry")
 	_, o, _ = next(t, root, nil)
 	if o["op"] != "dispatch" {
 		t.Fatalf("retry must dispatch the auditor again: %v", o)
@@ -861,25 +826,12 @@ func TestAuditorRepliesTaktCannotParseAreCappedAtThree(t *testing.T) {
 		t.Fatalf("the retried brief must carry the rejection reasons:\n%s", b)
 	}
 	for range 3 {
-		reject()
+		rejectAuditor(t, root, "clauses", garbage)
 	}
 	if _, o, _ = next(t, root, nil); o["gate"] != "agent_invalid" {
 		t.Fatalf("the cap re-arms after a retry: %v", o)
 	}
-	if c, _, e := runIn(
-		t,
-		root,
-		nil,
-		"answer",
-		"--gate",
-		"agent_invalid",
-		"--choice",
-		"skip",
-		"--slug",
-		"demo",
-	); c != 0 {
-		t.Fatal(e)
-	}
+	answerGate(t, root, "agent_invalid", "skip")
 	_, o, _ = next(t, root, nil)
 	if o["gate"] == "agent_invalid" {
 		t.Fatalf("skip must end the audit: %v", o)
@@ -890,10 +842,11 @@ func TestAuditorRepliesTaktCannotParseAreCappedAtThree(t *testing.T) {
 		}
 	}
 	// The events are the durable record (spec §4.4).
-	ev, _ := os.ReadFile(filepath.Join(bdir, "events.jsonl"))
-	if strings.Count(string(ev), `"alignment_invalid"`) != 6 ||
-		strings.Count(string(ev), `"alignment_attempts_reset"`) != 1 {
-		t.Fatalf("events:\n%s", ev)
+	if n := countEvents(t, bdir, "alignment_invalid"); n != 6 {
+		t.Fatalf("six rejected replies, %d on the log", n)
+	}
+	if resets := eventsOfType(t, bdir, "alignment_attempts_reset"); len(resets) != 1 {
+		t.Fatalf("only the retry resets this walk: %+v", resets)
 	}
 }
 
@@ -912,49 +865,82 @@ const validClauses = "here:\n```json\n" +
 func TestAValidRecordEndsTheAuditorsAttemptStreak(t *testing.T) {
 	t.Parallel()
 	root, bdir := auditedFixture(t)
-	garbage := filepath.Join(t.TempDir(), "reply.md")
-	if err := os.WriteFile(garbage, []byte("I could not find anything.\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	garbage := unusableReply(t)
 	for range 2 {
 		rejectAuditor(t, root, "clauses", garbage)
 	}
-	good := filepath.Join(t.TempDir(), "clauses.md")
-	if err := os.WriteFile(good, []byte(validClauses), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
-		"--mode", "clauses", "--from", good, "--slug", "demo"); c != 0 || r["ok"] != true {
-		t.Fatalf("%d %v %s", c, r, e)
-	}
+	recordClauses(t, root)
 	if _, o, _ := next(t, root, nil); o["gate"] != "alignment_confirm" {
 		t.Fatalf("a recorded clause list must reach alignment_confirm: %v", o)
 	}
-	if c, _, e := runIn(t, root, nil,
-		"answer", "--gate", "alignment_confirm", "--choice", "confirm", "--slug", "demo"); c != 0 {
-		t.Fatal(e)
-	}
+	answerGate(t, root, "alignment_confirm", "confirm")
 	if b := auditorBriefOf(t, root, "verdicts"); strings.Contains(b, "Your previous reply was rejected") {
 		t.Fatalf("a recorded reply must not leave its rejections in the next mode's brief:\n%s", b)
 	}
 	for range 2 {
 		rejectAuditor(t, root, "verdicts", garbage)
 	}
-	// Five rejected replies in the run, two since the record: the cap counts
+	// Four rejected replies in the run, two since the record: the cap counts
 	// the streak, not the run's history.
 	_, o, _ := next(t, root, nil)
 	if o["op"] != "dispatch" || o["gate"] == "agent_invalid" {
 		t.Fatalf("rejections before a valid record must not count towards the cap: %v", o)
 	}
-	ev, _ := os.ReadFile(filepath.Join(bdir, "events.jsonl"))
-	if n := strings.Count(string(ev), `"alignment_attempts_reset"`); n != 1 {
-		t.Fatalf("one record ends one streak, got %d resets:\n%s", n, ev)
+	resets := eventsOfType(t, bdir, "alignment_attempts_reset")
+	if len(resets) != 1 {
+		t.Fatalf("one record ends one streak, got %d resets: %+v", len(resets), resets)
 	}
-	for _, want := range []string{`"reason":"recorded"`, `"mode":"clauses"`} {
-		if !strings.Contains(resetLine(t, string(ev)), want) {
-			t.Fatalf("the reset must record %s:\n%s", want, resetLine(t, string(ev)))
-		}
+	if resets[0].Data["reason"] != "recorded" || resets[0].Data["mode"] != "clauses" {
+		t.Fatalf("the reset must say a record ended the streak, and in which mode: %+v", resets[0])
 	}
+}
+
+// TestAValidRecordAfterARetryClearsTheQuotedRejection is the streak's other
+// end. `agent_invalid`'s *retry* forwards the problems onto its own reset so
+// that the retried brief can quote them — the count is back at zero while
+// the reasons are not — so the record that answers them has to retire them
+// too, or every later brief opens with a rejection that was already put
+// right.
+func TestAValidRecordAfterARetryClearsTheQuotedRejection(t *testing.T) {
+	t.Parallel()
+	root, bdir := auditedFixture(t)
+	garbage := unusableReply(t)
+	for range 3 {
+		rejectAuditor(t, root, "clauses", garbage)
+	}
+	if _, o, _ := next(t, root, nil); o["gate"] != "agent_invalid" {
+		t.Fatalf("three rejections must ask: %v", o)
+	}
+	answerGate(t, root, "agent_invalid", "retry")
+	recordClauses(t, root)
+	if _, o, _ := next(t, root, nil); o["gate"] != "alignment_confirm" {
+		t.Fatalf("a recorded clause list must reach alignment_confirm: %v", o)
+	}
+	answerGate(t, root, "alignment_confirm", "confirm")
+	if b := auditorBriefOf(t, root, "verdicts"); strings.Contains(b, "Your previous reply was rejected") {
+		t.Fatalf("a record must retire the reasons the retry forwarded:\n%s", b)
+	}
+	resets := eventsOfType(t, bdir, "alignment_attempts_reset")
+	if len(resets) != 2 {
+		t.Fatalf("the retry resets, then the record does: %+v", resets)
+	}
+	if _, ok := resets[0].Data["problems"].([]any); !ok {
+		t.Fatalf("the retry's reset carries the problems forward: %+v", resets[0])
+	}
+	if resets[1].Data["reason"] != "recorded" {
+		t.Fatalf("the record's reset retires them: %+v", resets[1])
+	}
+}
+
+// unusableReply is an auditor message with no JSON block in it at all —
+// the shape `record --agent alignment-auditor` rejects.
+func unusableReply(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "reply.md")
+	if err := os.WriteFile(p, []byte("I could not find anything.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 // auditedFixture is planLoadFixture with the alignment audit switched back
@@ -1008,14 +994,41 @@ func auditorBriefOf(t *testing.T, root, mode string) string {
 	return string(b)
 }
 
-// resetLine returns the one alignment_attempts_reset event of an event log.
-func resetLine(t *testing.T, events string) string {
+// eventsOfType returns the run's events of type typ, in order.
+func eventsOfType(t *testing.T, bdir, typ string) []bundle.Event {
 	t.Helper()
-	for ln := range strings.SplitSeq(events, "\n") {
-		if strings.Contains(ln, `"alignment_attempts_reset"`) {
-			return ln
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []bundle.Event
+	for _, e := range events {
+		if e.Type == typ {
+			out = append(out, e)
 		}
 	}
-	t.Fatalf("no alignment_attempts_reset in:\n%s", events)
-	return ""
+	return out
+}
+
+// recordClauses answers the pending clauses dispatch with a usable reply.
+func recordClauses(t *testing.T, root string) {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "clauses.md")
+	if err := os.WriteFile(p, []byte(validClauses), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
+		"--mode", "clauses", "--from", p, "--slug", "demo")
+	if c != 0 || r["ok"] != true {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+}
+
+// answerGate answers the run's pending gate with choice.
+func answerGate(t *testing.T, root, gate, choice string) {
+	t.Helper()
+	if c, _, e := runIn(t, root, nil,
+		"answer", "--gate", gate, "--choice", choice, "--slug", "demo"); c != 0 {
+		t.Fatalf("answer %s %s: %s", gate, choice, e)
+	}
 }

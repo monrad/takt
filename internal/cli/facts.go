@@ -175,12 +175,22 @@ func countSinceReset(events []bundle.Event, typ, reset string) int {
 // the attempt cap starts over, and — because this reset carries no problems,
 // unlike the one `answer --gate agent_invalid --choice retry` writes — so
 // does what the next brief quotes back, which is what keeps a rejection from
-// one auditor mode out of the other's brief (spec §5.3 rows 10, 11, 21). A
-// run with no rejections to end appends nothing: a clean run's event log
-// stays clean.
+// one auditor mode out of the other's brief (spec §5.3 rows 10, 11, 21).
+//
+// There are two ways to have something to end: rejections since the last
+// reset, and a retry's reset carrying the problems of the ones before it —
+// those problems outlive the count on purpose (the retried brief quotes
+// them), so the record that answers them has to retire them. With neither,
+// nothing is appended: a clean run's log stays clean, and so does a second
+// valid record in a row.
+//
+// A lost append is tolerated, as everywhere else this log is written: the
+// cost is that the streak keeps counting, and the next brief keeps quoting
+// the old rejection, until some later reset lands.
 func endAttemptStreak(bdir, invalid, reset string, data map[string]any) {
 	events, err := bundle.ReadEvents(bdir)
-	if err != nil || countSinceReset(events, invalid, reset) == 0 {
+	if err != nil ||
+		(countSinceReset(events, invalid, reset) == 0 && len(lastProblems(events, invalid, reset)) == 0) {
 		return
 	}
 	_ = bundle.AppendEvent(bdir, reset, data)

@@ -440,8 +440,9 @@ func TestFinishAndArchivedStop(t *testing.T) {
 
 func TestQuestionShapes(t *testing.T) {
 	t.Parallel()
-	for _, g := range []string{"owner", "gate_review", "alignment_confirm", "plan_invalid", "wave_failures", "review_error"} {
-		q := decide.Question(g, map[string]any{"gate": "spec", "slug": "demo"})
+	for _, g := range []string{"owner", "gate_review", "alignment_confirm", "plan_invalid", "agent_invalid",
+		"wave_failures", "review_error"} {
+		q := decide.Question(g, map[string]any{"gate": "spec", "slug": "demo", "agent": "alignment-auditor"})
 		if q.Op != op.Ask || q.Gate != g || len(q.Options) < 2 || q.Answer == "" || q.Question == "" {
 			t.Errorf("%s: %+v", g, q)
 		}
@@ -555,6 +556,18 @@ func choices(q op.Op) string {
 	return strings.Join(out, ",")
 }
 
+// capRow is one row of the agent_invalid cap table: what Decide must do,
+// for which agent, and — when it dispatches — in which mode.
+type capRow struct {
+	name         string
+	facts        decide.Facts
+	wantOp       string // "" asserts only that the row does not raise the gate
+	wantGate     string
+	wantAgent    string
+	wantMode     string
+	wantAttempts int
+}
+
 // TestAgentInvalidGateCapsTheAuditor covers spec §5.3 rows 10 and 11: three
 // replies takt could not parse and the run asks instead of handing the same
 // brief out a fourth time.
@@ -565,50 +578,46 @@ func TestAgentInvalidGateCapsTheAuditor(t *testing.T) {
 	audited := decide.AlignmentFacts{
 		ClausesPresent: true, ClausesConfirmed: true, VerdictsPresent: true, ClauseCount: 2,
 	}
-	cases := []struct {
-		name     string
-		facts    decide.Facts
-		wantOp   string
-		wantGate string
-		wantAg   string
-	}{
+	const auditor = "alignment-auditor"
+	for _, c := range []capRow{
 		{"clauses, two rejections: dispatch", planFacts(decide.AlignmentFacts{}, 2),
-			"dispatch", "", "alignment-auditor"},
+			"dispatch", "", auditor, "clauses", 0},
 		{"clauses, three rejections: ask", planFacts(decide.AlignmentFacts{}, 3),
-			"ask", "agent_invalid", ""},
+			"ask", "agent_invalid", auditor, "", 3},
 		{"verdicts, two rejections: dispatch", planFacts(confirmed, 2),
-			"dispatch", "", "alignment-auditor"},
-		{"verdicts, three rejections: ask", planFacts(confirmed, 3),
-			"ask", "agent_invalid", ""},
-		{"verdicts present: no ask despite rejections", planFacts(audited, 3), "", "", ""},
-	}
-	for _, c := range cases {
+			"dispatch", "", auditor, "verdicts", 0},
+		{"verdicts, four rejections: ask", planFacts(confirmed, 4),
+			"ask", "agent_invalid", auditor, "", 4},
+		{"verdicts present: no ask despite rejections", planFacts(audited, 3), "", "", "", "", 0},
+	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			assertCapRow(t, mustDecide(t, planSt, c.facts), c.wantOp, c.wantGate, c.wantAg)
+			assertCapRow(t, mustDecide(t, planSt, c.facts), c)
 		})
 	}
 }
 
-// assertCapRow checks one row of the cap table. An empty wantOp asserts only
-// that the row does not raise the gate — whatever else it decides.
-func assertCapRow(t *testing.T, d decide.Decision, wantOp, wantGate, wantAgent string) {
+// assertCapRow checks one row of the cap table.
+func assertCapRow(t *testing.T, d decide.Decision, c capRow) {
 	t.Helper()
-	switch wantOp {
+	switch c.wantOp {
 	case "":
 		if d.Action == decide.ActAsk && d.Op.Gate == "agent_invalid" {
 			t.Fatalf("must not ask: %+v", d)
 		}
 	case "ask":
-		if d.Action != decide.ActAsk || d.Op.Gate != wantGate {
+		if d.Action != decide.ActAsk || d.Op.Gate != c.wantGate {
 			t.Fatalf("%+v", d)
 		}
-		if d.Op.Context["agent"] != "alignment-auditor" || d.Op.Context["attempts"] != 3 {
+		if d.Op.Context["agent"] != c.wantAgent || d.Op.Context["attempts"] != c.wantAttempts {
 			t.Fatalf("context %+v", d.Op.Context)
 		}
 	case "dispatch":
-		if d.Action != decide.ActDispatch || d.Agent == nil || d.Agent.Agent != wantAgent {
+		if d.Action != decide.ActDispatch || d.Agent == nil {
 			t.Fatalf("%+v", d)
+		}
+		if d.Agent.Agent != c.wantAgent || d.Agent.Mode != c.wantMode {
+			t.Fatalf("agent %+v", d.Agent)
 		}
 	}
 }

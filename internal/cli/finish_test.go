@@ -262,6 +262,49 @@ func TestGoalAssessorDispatchRecordAndCheck(t *testing.T) {
 	}
 }
 
+// TestAValidAssessmentEndsTheAssessorsAttemptStreak is the assessor's half
+// of the streak reset (spec §5.3 row 21): the cap counts the rejections
+// since the last reset, and a reply takt could use ends that run — with a
+// reset that names the record as its reason and carries no problems, so
+// nothing stale is quoted back into a later brief. The assessor has one
+// mode, so its reset names none.
+func TestAValidAssessmentEndsTheAssessorsAttemptStreak(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t)
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	if o := d.nextOp(); o["op"] != "dispatch" {
+		t.Fatalf("expected the goal-assessor dispatch: %v", o)
+	}
+	bad := filepath.Join(t.TempDir(), "bad.txt")
+	if err := os.WriteFile(bad, []byte("I had a look and it all seems fine.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, got, errb := d.cmd("record", "--agent", "goal-assessor", "--from", bad, "--slug", "demo")
+	if code != 0 || got["valid"] != false {
+		t.Fatalf("a rejected assessment is a document, not a failure: %d %v %s", code, got, errb)
+	}
+	if n := countEvents(t, bdir, "goals_invalid"); n != 1 {
+		t.Fatalf("one rejection appends one goals_invalid, got %d", n)
+	}
+	if n := countEvents(t, bdir, "goals_attempts_reset"); n != 0 {
+		t.Fatalf("a rejection ends nothing, got %d resets", n)
+	}
+	if code, got, errb = recordGoalVerdict(t, d, "achieved"); code != 0 || got["all_achieved"] != true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	resets := eventsOfType(t, bdir, "goals_attempts_reset")
+	if len(resets) != 1 {
+		t.Fatalf("a valid assessment ends the streak exactly once: %+v", resets)
+	}
+	if resets[0].Data["reason"] != "recorded" {
+		t.Fatalf("the reset must name the record as its reason: %+v", resets[0])
+	}
+	if _, ok := resets[0].Data["mode"]; ok {
+		t.Fatalf("the assessor has no mode to name: %+v", resets[0])
+	}
+}
+
 func TestGoalsUnmetGateWaiveAndFix(t *testing.T) {
 	t.Parallel()
 	d, bdir := finishRun(t)
@@ -569,17 +612,7 @@ func TestPushPRDoneRecordsTheURL(t *testing.T) {
 // countEvents is how many events of one type the run has logged.
 func countEvents(t *testing.T, bdir, typ string) int {
 	t.Helper()
-	events, err := bundle.ReadEvents(bdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n := 0
-	for _, e := range events {
-		if e.Type == typ {
-			n++
-		}
-	}
-	return n
+	return len(eventsOfType(t, bdir, typ))
 }
 
 // forgetSha reproduces the window review I2 names: markVerified and
