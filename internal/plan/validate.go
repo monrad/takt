@@ -62,7 +62,17 @@ func validateHeader(idx Index, o ValidateOpts, add func(int, string, string)) {
 	if idx.Schema != 1 {
 		add(0, "schema", fmt.Sprintf("unsupported schema %d (want 1)", idx.Schema))
 	}
-	if o.SpecHash != "" && idx.SpecHash != o.SpecHash {
+	// An index with no spec_hash and one with the wrong spec_hash are
+	// different defects with different repairs. takt stamps the field itself
+	// at `record --agent planner` (spec §7.3), so an empty one means the plan
+	// was never recorded — not that it was drafted against a spec that has
+	// since moved, which is what the drift message sends the reader looking
+	// for.
+	switch {
+	case o.SpecHash == "":
+	case idx.SpecHash == "":
+		add(0, "spec_hash", "spec_hash not yet recorded — run `takt record --agent planner`")
+	case idx.SpecHash != o.SpecHash:
 		add(0, "spec_hash", "spec_hash does not match the current spec.md — the plan was drafted against an older spec")
 	}
 }

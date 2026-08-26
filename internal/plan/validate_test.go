@@ -85,6 +85,7 @@ func TestValidateRules(t *testing.T) {
 		{"goal unserved", func(i *plan.Index) { i.Tasks[7].Goals = []string{"G1"} }, 0, "G6"},
 		{"unknown class", func(i *plan.Index) { i.Tasks[0].Class = "magic" }, 1, "class"},
 		{"stale spec hash", func(i *plan.Index) { i.SpecHash = "sha256:ffff" }, 0, "spec_hash"},
+		{"unrecorded spec hash", func(i *plan.Index) { i.SpecHash = "" }, 0, "not yet recorded"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -96,6 +97,30 @@ func TestValidateRules(t *testing.T) {
 				t.Fatalf("want problem on task %d containing %q, got %v", c.taskID, c.want, ps)
 			}
 		})
+	}
+}
+
+// TestValidateSeparatesUnrecordedFromStaleSpecHash covers the review's M5:
+// an index with no spec_hash at all has not been stamped yet — `takt record
+// --agent planner` is what writes it — and reporting that as "drafted
+// against an older spec" sends the reader looking for a drift between two
+// specs when there is only one. A hash that is present and wrong still is
+// drift, and still says so.
+func TestValidateSeparatesUnrecordedFromStaleSpecHash(t *testing.T) {
+	t.Parallel()
+	idx := loadFixture(t)
+	idx.SpecHash = ""
+	ps := plan.Validate(idx, opts(t))
+	if !hasProblem(ps, 0, "spec_hash not yet recorded — run `takt record --agent planner`") {
+		t.Fatalf("an unstamped index must say so: %v", ps)
+	}
+	if hasProblem(ps, 0, "older spec") {
+		t.Fatalf("an unstamped index must not be reported as drift: %v", ps)
+	}
+
+	idx.SpecHash = "sha256:ffff"
+	if ps = plan.Validate(idx, opts(t)); !hasProblem(ps, 0, "older spec") {
+		t.Fatalf("a spec_hash that is present and wrong is still drift: %v", ps)
 	}
 }
 

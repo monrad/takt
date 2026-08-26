@@ -605,6 +605,9 @@ A planning turn on Fable can run several minutes; the session simply waits for t
   - `test` — tests against an implementation that already exists.
   - `docs` — prose: ADRs, READMEs, changelogs.
 - `spec_hash` equals the current `sha256(spec.md)` (a plan drafted against an older spec is rejected).
+  An index with no `spec_hash` at all is a separate problem with a separate message — takt stamps that
+  field itself at `record --agent planner`, so an empty one means the plan was never recorded, not that
+  the spec has moved under it.
 
 Validation errors are returned to the session, which re-dispatches the planner with them appended
 (row 8); after three invalid attempts the run asks.
