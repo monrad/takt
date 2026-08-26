@@ -7,6 +7,7 @@ import (
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/finish"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
 )
@@ -52,7 +53,7 @@ func TestBuildRetroInputs(t *testing.T) {
 		}},
 		{Wave: 1, Attempt: 1, Tasks: []wave.TaskResult{{Task: 3, Status: "done"}}},
 	}
-	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil)
+	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, nil)
 	if in.Tasks != 3 || in.Waves != 2 || in.ReviewFindings != len(findings) {
 		t.Fatalf("%+v", in)
 	}
@@ -92,6 +93,56 @@ func TestBuildRetroInputs(t *testing.T) {
 	}
 }
 
+// TestBuildRetroInputsCarriesFollowUps checks that follow-ups.json's items
+// pass straight through to RetroInputs — BuildRetroInputs stays pure, so it
+// takes them as data the same way it already takes events and closes.
+func TestBuildRetroInputsCarriesFollowUps(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	st := &bundle.State{Slug: "demo", Topic: "Add a greeting", Tasks: []bundle.Task{
+		{ID: 1, Wave: 0, Status: "done", Attempt: 2},
+		{ID: 2, Wave: 0, Status: "waived", Attempt: 1},
+		{ID: 3, Wave: 1, Status: "done", Attempt: 1},
+	}}
+	idx := plan.Index{Tasks: []plan.Task{{ID: 1}, {ID: 2}, {ID: 3}}}
+	ev := func(after time.Duration, typ string, w, sl, a int) bundle.Event {
+		return bundle.Event{
+			TS: t0.Add(after), Type: typ,
+			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
+		}
+	}
+	events := []bundle.Event{
+		ev(0, "wave_dispatched", 0, 1, 1),
+		ev(5*time.Minute, "wave_dispatched", 0, 1, 2),
+		ev(9*time.Minute, "wave_committed", 0, 1, 2),
+		ev(10*time.Minute, "wave_dispatched", 0, 2, 1),
+		ev(13*time.Minute, "wave_committed", 0, 2, 1),
+		ev(14*time.Minute, "wave_dispatched", 1, 1, 1),
+		ev(16*time.Minute, "wave_committed", 1, 1, 1),
+	}
+	findings := []backend.Finding{
+		{Severity: "major", File: "a.go", Line: 12, Title: "unchecked error", Detail: "err is dropped"},
+		{Severity: "nit", File: "b.go", Line: 3, Title: "stale comment", Detail: "says wave 0"},
+	}
+	closes := []wave.CloseResult{
+		{Wave: 0, Attempt: 2, Tasks: []wave.TaskResult{
+			{Task: 1, Status: "done", Review: &backend.ReviewResult{Verdict: "approve", Findings: findings}},
+			{Task: 2, Status: "blocked", Reason: "needs schema"},
+		}},
+		{Wave: 1, Attempt: 1, Tasks: []wave.TaskResult{{Task: 3, Status: "done"}}},
+	}
+	fu := []gate.FollowUp{
+		{Gate: "spec", Severity: "minor", Title: "wording", Source: gate.SourceApprove},
+	}
+	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, fu)
+	if len(in.FollowUps) != 1 {
+		t.Fatalf("want 1 follow-up, got %d", len(in.FollowUps))
+	}
+	if in.FollowUps[0].Severity != "minor" || in.FollowUps[0].Title != "wording" {
+		t.Fatalf("follow-up lost detail: %+v", in.FollowUps[0])
+	}
+}
+
 // TestWaveTimingsPairAcrossTheSliceUpgrade covers a bundle that straddles
 // the upgrade to per-slice records. Its wave_dispatched events were written
 // by a build that had no slice to record; the wave_committed that answers
@@ -120,7 +171,7 @@ func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
 		legacy(5*time.Minute, "wave_dispatched", 1, 1),
 		legacy(9*time.Minute, "wave_committed", 1, 1),
 	}
-	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil)
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil, nil)
 	if len(in.WaveTimings) != 2 {
 		t.Fatalf("both spans must pair: %+v", in.WaveTimings)
 	}
