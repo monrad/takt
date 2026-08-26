@@ -15,6 +15,11 @@ const promptPath = "../../commands/takt.md"
 
 // handshakeLine is the exact command the prompt's Handshake section must
 // run: the plugin/binary version check (spec §6).
+// promptCmd is how the prompt writes a takt invocation: a code span opening
+// with the binary's name. Splitting a line on it yields one segment per
+// command the line names.
+const promptCmd = "`takt "
+
 const handshakeLine = `takt version --expect-manifest "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"`
 
 func TestPromptNamesEveryOpGateStepAndReason(t *testing.T) {
@@ -64,21 +69,23 @@ func TestPromptHandshakeVerbsAndInvariants(t *testing.T) {
 }
 
 // taktCommandsNamed returns the subcommand of every `takt <name>` the prompt
-// spells out: the first word after the token, minus the closing backtick.
-// Placeholders (`takt <cmd>`) and bare flags are skipped, as is the text
-// before the first token on a line.
+// spells out: the first word after the token, minus the closing backtick and
+// whatever sentence punctuation follows it. Placeholders (`takt <cmd>`) and
+// bare flags are skipped. The prose before a line's first token is not a
+// command name, so it is cut away rather than scanned.
 func taktCommandsNamed(md string) []string {
 	var out []string
 	for line := range strings.SplitSeq(md, "\n") {
-		for tok := range strings.SplitSeq(line, "`takt ") {
-			if tok == line {
-				continue
-			}
+		_, rest, found := strings.Cut(line, promptCmd)
+		if !found {
+			continue
+		}
+		for tok := range strings.SplitSeq(rest, promptCmd) {
 			fields := strings.Fields(tok)
 			if len(fields) == 0 {
 				continue
 			}
-			name := strings.TrimRight(fields[0], "`")
+			name := strings.TrimRight(fields[0], "`.,;:)")
 			if name == "" || strings.HasPrefix(name, "<") || strings.HasPrefix(name, "-") {
 				continue
 			}
