@@ -1071,3 +1071,95 @@ func answerGate(t *testing.T, root, gate, choice string) {
 		t.Fatalf("answer %s %s: %s", gate, choice, e)
 	}
 }
+
+// TestTheSessionSidecarStaysInvisibleAfterABranchSwitch covers what the
+// tracked logs/.gitignore alone cannot do: that rule lives on the run
+// branch, so checking a worktree back out on the base takes it away and
+// leaves the untracked sidecar showing as `?? docs/` — which, in the primary
+// worktree, is enough to hide the `merge` disposition. init also records the
+// bundle's logs directory in the repository's own .git/info/exclude, which
+// every worktree honours whatever branch it has checked out (spec §4.6).
+func TestTheSessionSidecarStaysInvisibleAfterABranchSwitch(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	if _, err := os.Stat(bundle.SessionPath(bdir)); err != nil {
+		t.Fatal("init must record the holder:", err)
+	}
+	testutil.Git(t, root, "checkout", "main")
+	if _, err := os.Stat(bundle.SessionPath(bdir)); err != nil {
+		t.Fatal("git leaves an untracked file behind; this test is about that file:", err)
+	}
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("the sidecar must be invisible on the base branch:\n%s", out)
+	}
+	// Exits 0 only when the path is ignored; testutil.Git fails the test
+	// otherwise, so the call is the assertion.
+	testutil.Git(t, root, "check-ignore", "-q", "docs/takt/demo/logs/session.json")
+}
+
+// TestNextWithAGeneratedIdLeavesTheTrackedBundleUntouched covers the other
+// half of "a next that decides nothing leaves the tracked bundle
+// byte-identical" (spec §4.6). With neither CLAUDE_CODE_SESSION_ID nor
+// TAKT_SESSION set, every process invents its own id and takes the previous
+// generated holder over — and recording that takeover in events.jsonl, a
+// tracked file, dirtied the worktree on every single call. Nobody could have
+// been driving, so there is nothing to record; a *named* session taking over
+// a generated holder still logs it (TestNextOwnerGateProtectsAnEnvNamedSession).
+func TestNextWithAGeneratedIdLeavesTheTrackedBundleUntouched(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("precondition: init commits the bundle: %q", out)
+	}
+	for range 2 {
+		if c, o, e := next(t, root, nil); c != 0 || o["op"] != "run" {
+			t.Fatalf("%d %v %s", c, o, e)
+		}
+	}
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("a next with no session id must leave the tracked bundle alone:\n%s", out)
+	}
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.Type == "lock_taken" {
+			t.Fatalf("nobody was driving, so nothing was taken over: %+v", e)
+		}
+	}
+	// The lock is still taken, and still marked as an id takt invented.
+	sess, err := bundle.ReadSession(bdir)
+	if err != nil || sess == nil || !sess.Generated {
+		t.Fatalf("holder: %+v %v", sess, err)
+	}
+}
+
+// TestNextRestoresADeletedLogsIgnore covers a bundle that predates the
+// ignore rule: commitBundle stages the bundle directory wholesale, so a lock
+// written into a logs/ with no .gitignore would ride into the next takt
+// commit. next writes the rule before it writes the lock.
+func TestNextRestoresADeletedLogsIgnore(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	env := map[string]string{"TAKT_SESSION": "S"}
+	ign := filepath.Join(bdir, "logs", ".gitignore")
+	if err := os.Remove(ign); err != nil {
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root, env); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	if _, err := os.Stat(ign); err != nil {
+		t.Fatal("next must put the ignore rule back before it writes the lock:", err)
+	}
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	if c, _, e := runIn(t, root, env, "done", "--step", "brainstorm", "--slug", "demo"); c != 0 {
+		t.Fatal(e)
+	}
+	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); strings.Contains(
+		files, "logs/session.json",
+	) {
+		t.Fatalf("the lock must never reach a commit:\n%s", files)
+	}
+}

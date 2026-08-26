@@ -118,21 +118,36 @@ func (r *nextRun) acquireLock() (int, bool) {
 		})
 		return printOp(r.env, q), true
 	}
+	// The rule that keeps the bundle's untracked area out of git goes in
+	// first, every time: a bundle created before it existed has a logs/ with
+	// no .gitignore, and commitBundle stages the bundle directory wholesale,
+	// so the lock written below would ride into this run's next commit.
+	// Writing the same bytes over an existing rule changes nothing.
+	if err = writeLogsIgnore(r.bdir); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), ""), true
+	}
 	if err = bundle.WriteSession(r.bdir, next); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
-	// Every takeover is recorded: an expired heartbeat, an explicit --force,
-	// and the silent takeover of a holder that recorded generated=true and
-	// can therefore never come back. The last one is invisible to the user
-	// by design, which is exactly why it belongs in the log — spec §4.6 has
-	// takt record recovery as an event rather than repairing state silently
-	// (review M7).
+	// Every takeover of a session that could have been driving is recorded:
+	// an expired heartbeat, an explicit --force, and the silent takeover of
+	// a holder that recorded generated=true and can therefore never come
+	// back. The last one is invisible to the user by design, which is
+	// exactly why it belongs in the log — spec §4.6 has takt record recovery
+	// as an event rather than repairing state silently (review M7).
+	//
+	// With one exception: when the *acquirer's* id is generated too, nobody
+	// could have been driving — neither id was ever handed to a second
+	// process — so there is no takeover to report, and appending one would
+	// rewrite events.jsonl, a tracked file, on every single `takt next` a
+	// session without CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes. A named
+	// session taking over a generated holder still logs it.
 	switch {
 	case outcome == bundle.LockStolen, outcome == bundle.LockForced && r.force:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome),
 		})
-	case outcome == bundle.LockForced && orphaned:
+	case outcome == bundle.LockForced && orphaned && !r.genID:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome), keyReason: "orphaned",
 		})
