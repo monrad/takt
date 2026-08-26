@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/monrad/takt/internal/cli"
+	"github.com/monrad/takt/internal/version"
 )
 
 // TestVersionExpectManifest is the task-4 brief's handshake test: the test
@@ -29,6 +30,28 @@ func TestVersionExpectManifest(t *testing.T) {
 	missCode, _, errb := runIn(t, dir, nil, "version", "--expect-manifest", missing)
 	if missCode != 1 || !strings.Contains(errb, "hint") {
 		t.Fatalf("%d %s", missCode, errb)
+	}
+}
+
+// TestVersionExpectAcceptsADevBuild pins the dev exception on `--expect`,
+// the flag the Copilot CLI skill's handshake runs: `task build` is a plain
+// `go build` with no ldflags, so every developer binary — and a `go install
+// ./cmd/takt` — reports 0.0.0-dev, and a strict comparison would fail the
+// handshake on all of them. It is the same judgment `--expect-manifest`
+// makes, so the reply carries `"dev": true` the same way (spec §6).
+//
+// A stamped binary's mismatch cannot be reached through the command — the
+// test binary is always 0.0.0-dev — so TestManifestFailure covers that
+// branch of the judgment directly.
+func TestVersionExpectAcceptsADevBuild(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	code, got, errb := runIn(t, dir, nil, "version", "--expect", "0.1.0")
+	if code != 0 || got["dev"] != true || got["version"] != version.Dev {
+		t.Fatalf("exit %d, got %v, stderr %s", code, got, errb)
+	}
+	if _, ok := got["manifest"]; ok {
+		t.Errorf("--expect names no manifest, so the reply must not report one: %v", got)
 	}
 }
 

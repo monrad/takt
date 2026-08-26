@@ -19,16 +19,35 @@ func cmdVersion(env Env) int {
 	if err := fs.Parse(env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
-	if *expect != "" && *expect != version.Current() {
-		return fail(env.Stderr, 1,
-			"takt version "+version.Current()+" does not match expected "+*expect,
-			"install the takt binary matching the plugin version")
+	if *expect != "" {
+		return versionExpect(env, *expect)
 	}
 	if *expectManifest != "" {
 		return versionExpectManifest(env, *expectManifest)
 	}
 	if err := writeJSON(env.Stdout, map[string]string{keyVersion: version.Current()}); err != nil {
 		return 1
+	}
+	return 0
+}
+
+// versionExpect implements `takt version --expect <version>` (spec §6): the
+// handshake of a host that carries the version in its own prompt instead of
+// reading a manifest — the Copilot CLI skill, whose line `task version:set`
+// stamps, since that host has no plugin root to point at. The judgment is
+// the manifest one, dev exception included: `task build` is a plain `go
+// build` with no ldflags, so every development binary reports [version.Dev]
+// and must pass the handshake rather than fail it.
+func versionExpect(env Env, want string) int {
+	if problem, hint := manifestFailure(version.Current(), "--expect", want); problem != "" {
+		return fail(env.Stderr, exitError, problem, hint)
+	}
+	out := map[string]any{keyVersion: version.Current()}
+	if _, dev := ManifestMatches(version.Current(), want); dev {
+		out["dev"] = true
+	}
+	if err := writeJSON(env.Stdout, out); err != nil {
+		return exitError
 	}
 	return 0
 }

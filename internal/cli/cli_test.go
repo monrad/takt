@@ -36,13 +36,20 @@ func TestVersionPrintsJSON(t *testing.T) {
 	}
 }
 
-func TestVersionExpectMismatchExits1(t *testing.T) {
+// TestVersionExpectRefusesAVersionlessExpectation replaces the strict-compare
+// test this flag used to carry. `--expect` now makes the same judgment as
+// `--expect-manifest`, so the 0.0.0-dev test binary matches whatever version
+// a host's prompt pins (TestVersionExpectAcceptsADevBuild covers the reply's
+// shape, TestManifestFailure the stamped binary's mismatch). What no build
+// may match is an expectation with no version in it — a handshake line that
+// lost its version is a broken host, not a match.
+func TestVersionExpectRefusesAVersionlessExpectation(t *testing.T) {
 	t.Parallel()
-	code, _, errb := run(t, "version", "--expect", "9.9.9")
+	code, _, errb := run(t, "version", "--expect", "   ")
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if !strings.Contains(errb, `"error"`) || !strings.Contains(errb, "9.9.9") {
+	if !strings.Contains(errb, `"error"`) || !strings.Contains(errb, `"hint"`) {
 		t.Fatalf("stderr = %q", errb)
 	}
 }
