@@ -25,3 +25,5 @@
 {"ts":"2026-08-26T17:23:20.613944083Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-26T17:24:30.774481556Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-26T17:26:07.314845383Z","type":"gate_reviewed","data":{"findings":2,"gate":"plan","hash":"sha256:73ff00262431f7fb393dbbcec4b2c0c9837f9c9d54aab96b81ec5ce02fbcbf4e","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-26T17:26:12.259572819Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-26T17:27:25.562963206Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
