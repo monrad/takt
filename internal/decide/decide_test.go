@@ -755,6 +755,32 @@ func TestSpecReviewRoundsAreCapped(t *testing.T) {
 	}
 }
 
+// TestPendingReworkVerdictOutranksTheRoundCap pins the load-bearing order in
+// decideBrainstorm: a rework verdict waiting to be answered must win even
+// when the round count has also reached the cap. Immediately after a third
+// consecutive rework verdict with no intervening edit, both conditions are
+// true at once — needsRework(f.SpecGate) and f.SpecRounds >= maxAgentAttempts
+// — and the user must still be shown gate_review (there is a verdict to
+// answer), never gate_review_capped. If the two checks in decideBrainstorm
+// were ever swapped, this test would fail where
+// TestSpecReviewRoundsAreCapped could not: that test never sets
+// f.SpecGate.Verdict, so needsRework is false throughout and it cannot tell
+// the checks apart.
+func TestPendingReworkVerdictOutranksTheRoundCap(t *testing.T) {
+	t.Parallel()
+	st := state(bundle.PhaseBrainstorm)
+	f := decide.Facts{HasSpec: true, HasGoals: true, GoalsFrozen: true}
+	f.SpecGate = decide.GateStatus{Satisfied: false, Verdict: "rework"}
+	f.SpecRounds = 3
+	d, err := decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActAsk || d.Op.Gate != "gate_review" {
+		t.Fatalf("a verdict waiting to be answered must outrank the round cap: %+v", d)
+	}
+}
+
 func TestCappedGateIsInTheVocabulary(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(decide.Vocab().Gates, "gate_review_capped") {
