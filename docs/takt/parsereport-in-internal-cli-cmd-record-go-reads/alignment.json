@@ -27,5 +27,32 @@
       "span": "mention the tolerance in the implementer agent's report contract in agents/implementer.md"
     }
   ],
-  "confirmed": true
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "plan.md Task 1 and plan.index.json task 1 description direct parseReport's new helpers to strip leading markers (list, quote, heading, ordered) and decoration runs of '*','_','`' around both the key and the value, matching the clause exactly."
+    },
+    {
+      "id": "A2",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1 states 'recordTask, the digest schema and the --status/--summary/--blockers cmp.Or overrides are untouched' and mandates 'the undecorated-trailer regression parsing exactly as before' as one of the required test rows in cmd_record_test.go."
+    },
+    {
+      "id": "A3",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1 requires cmd_record_test.go to contain 'the full cross-product' over marker/decoration/key axes plus explicit opener-rule rows (e.g. 'STATUS: **done**', 'STATUS:done'), which is table-driven coverage of every decorated shape named in the clause and more."
+    },
+    {
+      "id": "A4",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1 lists 'one row per line of the must-not-match table (mid-sentence mention, ...) asserting fields stay empty', and plan.md Task 1's oracle description repeats the mid-sentence-STATUS non-match requirement."
+    },
+    {
+      "id": "A5",
+      "verdict": "covered",
+      "evidence": "plan.md Task 3 and plan.index.json task 3 amend the report-contract sentence in agents/implementer.md to state the tolerance, with a grep verify requiring the word 'decorated' on that same sentence, then regenerate the Copilot agent for parity."
+    }
+  ]
 }

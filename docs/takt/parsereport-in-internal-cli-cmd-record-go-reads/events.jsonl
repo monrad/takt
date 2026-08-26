@@ -34,3 +34,6 @@
 {"ts":"2026-08-26T17:29:52.720252237Z","type":"alignment_clauses","data":{"count":5}}
 {"ts":"2026-08-26T17:29:52.727031163Z","type":"gate_opened","data":{"gate":"alignment_confirm"}}
 {"ts":"2026-08-26T17:30:08.981593343Z","type":"gate_answered","data":{"choice":"confirm","gate":"alignment_confirm"}}
+{"ts":"2026-08-26T17:33:38.695289609Z","type":"alignment_verdicts","data":{"count":5}}
+{"ts":"2026-08-26T17:33:38.703408228Z","type":"plan_loaded","data":{"tasks":4,"waves":2}}
+{"ts":"2026-08-26T17:33:38.703436608Z","type":"phase","data":{"from":"plan","to":"execute"}}
