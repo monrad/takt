@@ -145,6 +145,23 @@ type ReviewData struct {
 	PriorFindings []PriorFinding
 }
 
+// PriorFindingLines renders the previous pass's findings as one block, so
+// the scoped template can quote them in a single delimiter pair the way
+// alignment-verdicts.md quotes ClauseLines.
+//
+// They have to be quoted. A finding is a reviewer's summary of a
+// user-authored spec.md, so a directive planted in the spec can be laundered
+// through a finding's title or detail into the next reviewer's instructions
+// unless it arrives inside the markers, declared as data — the invariant
+// this package's doc comment states for every artifact it renders.
+func (d ReviewData) PriorFindingLines() string {
+	var b strings.Builder
+	for _, f := range d.PriorFindings {
+		fmt.Fprintf(&b, "%s %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, f.Detail)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // RunData fills the `run` op instruction templates. Every field is set for
 // every step — the templates pick out what they need — so a step that grows
 // an input does not have to be threaded through the others.
