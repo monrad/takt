@@ -102,3 +102,25 @@ func mustContain(t *testing.T, text, needle, what string) {
 		t.Errorf("%s (looked for %q)", what, needle)
 	}
 }
+
+// TestFrontmatter covers two edge cases the agent parity test never
+// exercises: a quoted value, which must come back with its surrounding
+// quotes stripped, and a value that itself contains ": ", which must split
+// only on the first colon.
+func TestFrontmatter(t *testing.T) {
+	t.Parallel()
+	md := "---\n" +
+		"name: \"quoted-name\"\n" +
+		"description:  Turns X into Y: a colon inside the value  \n" +
+		"---\nbody\n"
+	fm, err := prompt.Frontmatter(md)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fm["name"] != "quoted-name" {
+		t.Errorf("surrounding quotes not stripped: %q", fm["name"])
+	}
+	if want := "Turns X into Y: a colon inside the value"; fm["description"] != want {
+		t.Errorf("value with an embedded colon split wrong: got %q, want %q", fm["description"], want)
+	}
+}
