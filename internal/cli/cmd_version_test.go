@@ -17,7 +17,9 @@ func TestVersionExpectManifest(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	manifest := filepath.Join(dir, "plugin.json")
-	os.WriteFile(manifest, []byte(`{"name":"takt","version":"0.1.0"}`), 0o600)
+	if err := os.WriteFile(manifest, []byte(`{"name":"takt","version":"0.1.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	// the test binary is 0.0.0-dev: accepted with dev:true
 	code, got, _ := runIn(t, dir, nil, "version", "--expect-manifest", manifest)
 	if code != 0 || got["dev"] != true || got["manifest"] != "0.1.0" {

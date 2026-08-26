@@ -14,13 +14,13 @@ import (
 
 const promptPath = "../../commands/takt.md"
 
-// handshakeLine is the exact command the prompt's Handshake section must
-// run: the plugin/binary version check (spec §6).
 // promptCmd is how the prompt writes a takt invocation: a code span opening
 // with the binary's name. Splitting a line on it yields one segment per
 // command the line names.
 const promptCmd = "`takt "
 
+// handshakeLine is the exact command the prompt's Handshake section must
+// run: the plugin/binary version check (spec §6).
 const handshakeLine = `takt version --expect-manifest "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"`
 
 func TestPromptNamesEveryOpGateStepAndReason(t *testing.T) {
@@ -54,7 +54,10 @@ func TestPromptNamesEveryOpGateStepAndReason(t *testing.T) {
 
 func TestPromptHandshakeVerbsAndInvariants(t *testing.T) {
 	t.Parallel()
-	md, _ := prompt.Load(promptPath)
+	md, err := prompt.Load(promptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mustContain(t, prompt.Section(md, "Handshake"), handshakeLine, "handshake line missing or changed")
 	verbs := prompt.Section(md, "Verbs")
 	for _, cmd := range []string{"init", "status", "doctor", "waive", "unlock"} {

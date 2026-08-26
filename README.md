@@ -24,16 +24,28 @@ nix profile install github:monrad/takt
 
 ```nix
 {
-  inputs.takt.url = "github:monrad/takt";
-  # ...
-  outputs = { self, nixpkgs, takt, ... }: {
-    # home-manager:
-    homeConfigurations.you.home.packages = [ takt.packages.${system}.default ];
-    # or, via the overlay, if you'd rather reach it as pkgs.takt:
-    # nixpkgs.overlays = [ takt.overlays.default ];
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    takt.url = "github:monrad/takt";
   };
+
+  outputs =
+    { nixpkgs, ... }@inputs:
+    {
+      # A home-manager module. `pkgs` comes from the module system; `inputs`
+      # is your own flake's, passed in through home-manager's
+      # `extraSpecialArgs` (or NixOS's `specialArgs`).
+      homeModules.default =
+        { pkgs, ... }:
+        {
+          home.packages = [ inputs.takt.packages.${pkgs.system}.default ];
+        };
+    };
 }
 ```
+
+takt also exports `overlays.default`, so `nixpkgs.overlays = [ inputs.takt.overlays.default ]` makes it
+`pkgs.takt` anywhere in the configuration instead.
 
 **Homebrew** (macOS and Linuxbrew — a cask, not a formula: goreleaser 2.17 deprecated `brews` in favour of
 `homebrew_casks`):
@@ -73,8 +85,12 @@ For local development against a checkout instead of GitHub, add the marketplace 
 /plugin marketplace add /path/to/takt
 ```
 
-`claude plugin validate .`, run from the repo root, checks the plugin and marketplace manifests without
-installing anything — useful after editing either one by hand.
+`claude plugin validate .`, run from the repo root, checks the **marketplace** manifest without installing
+anything — that is what a directory holding `.claude-plugin/marketplace.json` resolves to. The plugin
+manifest and the components are separate targets:
+`claude plugin validate .claude-plugin/plugin.json`, `claude plugin validate agents` and
+`claude plugin validate commands`. Add `--strict` to any of them to fail on what the runtime would
+otherwise tolerate.
 
 The plugin depends on `superpowers` (`claude-plugins-official`); Claude Code installs it automatically as
 part of installing `takt`.
@@ -263,6 +279,10 @@ TAKT_E2E=1 go test ./internal/cli/ -run TestLiveEndToEnd -timeout 45m
 
 Set `TAKT_E2E_LOGDIR=<dir>` to keep the live implementers' prompts, stdout and stderr after the run —
 without it they go to a temp directory the test framework deletes on the way out.
+
+Both suites, and takt itself, identify the driving session as `CLAUDE_CODE_SESSION_ID` if it is set and
+`TAKT_SESSION` only otherwise — so inside a Claude Code session, exporting `TAKT_SESSION` changes nothing
+(spec §4.6).
 
 The live implementer runs `claude -p` with `--permission-mode acceptEdits` and Bash access, in the
 throwaway repo, under the developer's real `HOME` (the reviewer CLIs need real credentials to answer at
