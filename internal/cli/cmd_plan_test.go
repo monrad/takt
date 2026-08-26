@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -179,5 +180,46 @@ func TestRecordPlannerRequiresPlanMD(t *testing.T) {
 	}
 	if rc, _, rerrb := runIn(t, root, nil, "review", "plan", "--slug", "demo"); rc != 0 {
 		t.Fatalf("and that review must actually run: %s", rerrb)
+	}
+}
+
+// TestRecordPlannerStampsSpecHash covers review fix round 1: the planner
+// has no Bash and no way to compute a sha256, so whatever it writes for
+// spec_hash — empty or a wrong guess — must be discarded and replaced with
+// takt's own hash of spec.md when the plan is recorded, not treated as a
+// validation failure.
+func TestRecordPlannerStampsSpecHash(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, agentHash string }{
+		{"empty", ""},
+		{"wrong", "sha256:not-the-real-hash"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			root, bdir := setupRun(t)
+			testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+			testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# plan\n")
+			testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json",
+				strings.Replace(validIndex, "%s", c.agentHash, 1))
+
+			code, out, errb := runIn(t, root, nil,
+				"record", "--agent", "planner", "--from", "/dev/null", "--slug", "demo")
+			if code != 0 || out["valid"] != true {
+				t.Fatalf("%d %v %s", code, out, errb)
+			}
+
+			raw, err := os.ReadFile(filepath.Join(bdir, "plan.index.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var idx map[string]any
+			if uerr := json.Unmarshal(raw, &idx); uerr != nil {
+				t.Fatal(uerr)
+			}
+			if want := specHash(t, bdir); idx["spec_hash"] != want {
+				t.Fatalf("spec_hash on disk = %v, want takt's own hash %s", idx["spec_hash"], want)
+			}
+		})
 	}
 }

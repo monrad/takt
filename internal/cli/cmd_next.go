@@ -711,8 +711,11 @@ func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
 	return out, nil
 }
 
-// plannerSchema is quoted into the planner brief (spec §7.3).
-const plannerSchema = `{ "schema": 1, "spec_hash": "sha256:<sha256 of spec.md>", "tasks": [ { "id": 1, ` +
+// plannerSchema is quoted into the planner brief (spec §7.3). spec_hash is
+// left blank: the planner has no Bash and no way to compute a sha256, so
+// takt stamps the real hash of spec.md when the plan is recorded, replacing
+// whatever the agent wrote here (review fix round 1).
+const plannerSchema = `{ "schema": 1, "spec_hash": "", "tasks": [ { "id": 1, ` +
 	`"title": "…", "description": "…", "files": ["path/relative/to/repo"], "verify": ["go test ./pkg/..."], ` +
 	`"depends_on": [], "goals": ["G1"], "class": "implement" } ] }`
 

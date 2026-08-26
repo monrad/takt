@@ -64,6 +64,9 @@ func cmdRecord(env Env) int {
 // recordPlanner validates what the planner wrote and reports the problems
 // instead of failing, so the loop can re-dispatch it (spec §5.3 row 8).
 func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
+	if code := stampPlannerSpecHash(env, tgt.bdir); code != 0 {
+		return code
+	}
 	facts, err := gatherFacts(ctx, tgt.ws, tgt.bdir, tgt.st, false, false, timeNow(), "")
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
@@ -84,6 +87,33 @@ func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: facts.IndexProblems})
 	}
 	return printJSON(env, map[string]any{keyValid: true})
+}
+
+// stampPlannerSpecHash overwrites plan.index.json's spec_hash with takt's
+// own hash of spec.md before anything validates the index. The planner has
+// no Bash and no way to compute a sha256 itself, so spec_hash is takt's
+// fact, not the agent's: whatever the planner wrote there — a guess, a
+// placeholder, or nothing — is discarded. A missing or unparseable
+// plan.index.json is not an error here; gatherFacts reports that the
+// ordinary way once this returns.
+func stampPlannerSpecHash(env Env, bdir string) int {
+	idx, err := readIndex(bdir)
+	if err != nil {
+		return 0
+	}
+	if !fileNonEmpty(filepath.Join(bdir, "spec.md")) {
+		return fail(env.Stderr, exitError, "spec.md is missing or empty",
+			"write the approved spec to "+filepath.Join(bdir, "spec.md")+" first")
+	}
+	spec, err := os.ReadFile(filepath.Join(bdir, "spec.md"))
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	idx.SpecHash = goals.Hash(spec)
+	if err = writeIndex(bdir, idx); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	return 0
 }
 
 // recordGoals parses the assessor's verdicts, validates them against

@@ -74,6 +74,11 @@ func TestPlannerAndReviewBriefs(t *testing.T) {
 		!strings.Contains(p, "depends_on") ||
 		!strings.Contains(p, "at most 12") {
 		t.Fatalf("%v\n%s", err, p)
+	} else if !strings.Contains(p, "takt fills it in") || strings.Contains(p, "must be the sha256") {
+		// Review fix round 1: the planner has no Bash and no way to compute
+		// a sha256 — spec_hash is takt's fact, stamped when the plan is
+		// recorded, never something the brief asks the agent to derive.
+		t.Fatalf("planner brief still asks the agent to compute spec_hash:\n%s", p)
 	}
 	for _, gate := range []string{"spec", "plan", "task"} {
 		r, err := brief.Render(
