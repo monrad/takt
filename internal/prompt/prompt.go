@@ -1,5 +1,7 @@
 // Package prompt reads the command prompt so tests can hold it to the Go
-// vocabulary (spec §6, §14 "prompt" row). It has no runtime callers.
+// vocabulary (spec §6, §14 "prompt" row). The takt binary never calls it:
+// its callers are those tests and internal/hosts, which reuses the
+// frontmatter parser to render agents/*.md for other hosts.
 package prompt
 
 import (
@@ -69,6 +71,20 @@ func Frontmatter(md string) (map[string]string, error) {
 		out[strings.TrimSpace(key)] = unquote(strings.TrimSpace(value))
 	}
 	return out, nil
+}
+
+// Body returns the markdown after the frontmatter block, or the whole text
+// when there is none — the part of an agent definition that is the same on
+// every host, since only the envelope a host reads differs.
+func Body(md string) string {
+	if !strings.HasPrefix(md, "---\n") {
+		return md
+	}
+	_, body, ok := strings.Cut(md[len("---\n"):], "\n---\n")
+	if !ok {
+		return md
+	}
+	return strings.TrimLeft(body, "\n")
 }
 
 // minQuotedLen is the shortest string that can carry a matching pair of

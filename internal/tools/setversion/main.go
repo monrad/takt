@@ -1,9 +1,12 @@
-// Command setversion rewrites the "version" field(s) in the takt plugin
-// manifests (.claude-plugin/plugin.json, .claude-plugin/marketplace.json) to
-// a new semver — `task version:set VERSION=x.y.z` (task-4 brief). It edits
-// the files as text: a regexp substitution on each `"version": "…"` line,
-// so everything else in the file — key order, indentation, the rest of the
-// content — is untouched and the diff stays a single-line change per file.
+// Command setversion rewrites takt's declared version — the "version"
+// field(s) in the plugin manifests (.claude-plugin/plugin.json,
+// .claude-plugin/marketplace.json) and the handshake line of the Copilot CLI
+// skill, which has no manifest to read — to a new semver: `task version:set
+// VERSION=x.y.z` (task-4 brief, spec §6.1). It edits the files as text: a
+// regexp substitution on each `"version": "…"` line and on the skill's
+// `takt version --expect <x.y.z>`, so everything else in the file — key
+// order, indentation, the rest of the content — is untouched and the diff
+// stays a single-line change per file.
 package main
 
 import (
@@ -22,6 +25,11 @@ var manifests = []string{
 	filepath.Join(".claude-plugin", "marketplace.json"),
 }
 
+// skill is the Copilot CLI host's skill, rewritten alongside the manifests:
+// that host has no plugin root to read a manifest from, so its handshake
+// carries the version as text (spec §6.1).
+var skill = filepath.Join("hosts", "copilot", "skills", "takt", "SKILL.md")
+
 // semverPattern is the x.y.z shape `manifest_test.go` expects and the only
 // form setversion accepts.
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
@@ -29,6 +37,12 @@ var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 // versionLine matches one `"version": "…"` line's quoted value, so the
 // rewrite is a text substitution rather than a JSON round-trip.
 var versionLine = regexp.MustCompile(`("version":\s*")[^"]*(")`)
+
+// expectVersion captures the version in a skill's handshake command. It is
+// anchored on the x.y.z shape rather than on "the rest of the token": the
+// version is written inside a code span and followed by a full stop, so a
+// \S+ would swallow the closing backtick and the punctuation with it.
+var expectVersion = regexp.MustCompile(`takt version --expect (\d+\.\d+\.\d+)`)
 
 func main() {
 	dir, err := os.Getwd()
@@ -58,6 +72,10 @@ func Run(args []string, stderr io.Writer, dir string) int {
 			return 1
 		}
 	}
+	if err := rewriteExpect(filepath.Join(dir, skill), v); err != nil {
+		fmt.Fprintln(stderr, "setversion:", err)
+		return 1
+	}
 	return 0
 }
 
@@ -74,5 +92,27 @@ func rewriteVersion(path, v string) error {
 	out := versionLine.ReplaceAll(b, []byte(`${1}`+v+`${2}`))
 	//nolint:gosec // G703: path is dir (the Taskfile's cwd, or a test's t.TempDir()) joined with one of the
 	// two fixed relative names in manifests; no caller-supplied value ever reaches this write.
+	return os.WriteFile(path, out, 0o600)
+}
+
+// rewriteExpect replaces the version in the first `takt version --expect
+// <x.y.z>` of path with v, refusing a file that has no such line: the
+// handshake is load-bearing — a skill that lost it would run against any
+// binary — so a silent no-op there is worse than a failed release step.
+func rewriteExpect(path, v string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	m := expectVersion.FindSubmatchIndex(b)
+	if m == nil {
+		return fmt.Errorf("%s: no `takt version --expect <x.y.z>` handshake line found", path)
+	}
+	out := make([]byte, 0, len(b))
+	out = append(out, b[:m[2]]...)
+	out = append(out, v...)
+	out = append(out, b[m[3]:]...)
+	//nolint:gosec // G703: path is dir (the Taskfile's cwd, or a test's t.TempDir()) joined with the fixed
+	// relative name in skill, or the test's own temporary file; no caller-supplied value ever reaches this write.
 	return os.WriteFile(path, out, 0o600)
 }

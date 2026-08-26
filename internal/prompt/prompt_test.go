@@ -146,3 +146,23 @@ func TestFrontmatter(t *testing.T) {
 		t.Errorf("value with an embedded colon split wrong: got %q, want %q", fm["description"], want)
 	}
 }
+
+// TestBody covers the two shapes [prompt.Body] cannot split — a file with no
+// frontmatter at all and one whose block is never closed — because both must
+// come back whole rather than half-eaten: the body is what every host copies
+// verbatim, so losing a line of it silently would ship a truncated agent.
+func TestBody(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ name, md, want string }{
+		{"frontmatter", "---\nname: x\n---\n\nbody\nmore\n", "body\nmore\n"},
+		{"none", "body only\n", "body only\n"},
+		{"unterminated", "---\nname: x\nbody\n", "---\nname: x\nbody\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := prompt.Body(c.md); got != c.want {
+				t.Errorf("Body(%q) = %q, want %q", c.md, got, c.want)
+			}
+		})
+	}
+}

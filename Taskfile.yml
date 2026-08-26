@@ -17,11 +17,22 @@ tasks:
       - golangci-lint run ./...
 
   check:
-    desc: build + test + lint.
+    desc: build + test + lint + host parity.
     cmds:
       - task: build
       - task: test
       - task: lint
+      - task: hosts:check
+
+  hosts:gen:
+    desc: Regenerate hosts/copilot/agents/*.agent.md from agents/*.md.
+    cmds:
+      - go run ./internal/tools/hostgen
+
+  hosts:check:
+    desc: Fail when a generated host file is stale.
+    cmds:
+      - go run ./internal/tools/hostgen --check
 
   snapshot:
     desc: Build an unpublished release snapshot with goreleaser into dist/.

@@ -107,6 +107,8 @@ agents/implementer.md          model per task class (D22) · Read, Edit, Write, 
 agents/planner.md              fable  · Read, Grep, Glob, Write
 agents/goal-assessor.md        sonnet · Read, Grep, Glob, Bash (read-only commands)
 agents/alignment-auditor.md    sonnet · Read, Grep, Glob
+hosts/copilot/skills/takt/SKILL.md  the Copilot CLI host's op loop (§6.1)
+hosts/copilot/agents/*.agent.md     generated from agents/*.md — never hand-edited
 cmd/takt/main.go                    subcommand dispatch (stdlib flag)
 internal/bundle/                    dir resolution, state I/O, events, session lock
 internal/plan/                      index schema, validation, wave assignment
@@ -120,13 +122,16 @@ internal/doctor/
 internal/goals/                     goals.md parsing, hashing
 internal/prompt/                    parses commands/takt.md, the agent defs and the manifests for the
                                      op/gate-parity, handshake and version-agreement tests (§14)
+internal/hosts/                     renders agents/*.md for other hosts (§6.1)
+internal/tools/hostgen/             `task hosts:gen` / `hosts:check` — writes and checks the generated
+                                     Copilot agent files
 internal/tools/setversion/          `task version:set` — the one thing that rewrites the two manifests'
-                                     version fields
+                                     version fields and the Copilot skill's handshake line
 flake.nix                           packages.default via buildGoModule
 .goreleaser.yaml                    release build: GitHub release + the monrad/homebrew-tap cask (§15)
 .github/workflows/                  ci.yml (vet/lint/test) and release.yml (the tag-version gate, then
                                      goreleaser)
-Taskfile.yml                        build, test, lint, check, snapshot, version:set
+Taskfile.yml                        build, test, lint, check, snapshot, hosts:gen, version:set
 LICENSE                             MIT
 docs/superpowers/specs/             this document
 ```
@@ -531,6 +536,20 @@ Deliberately short — an op table and a list of invariants, no phase logic. Con
 
 The prompt contains no phase logic. A test asserts that every op kind and every `ask` gate id `Decide` can
 emit appears in the prompt's table (masterplan's `op-table-parity` idea).
+
+### 6.1 GitHub Copilot CLI host
+
+The op protocol (§5.2) is host-neutral; a host is a prompt that executes ops plus the agent definitions its
+delegation tool needs. The Copilot CLI host is `hosts/copilot/skills/takt/SKILL.md` — the same op table as
+`commands/takt.md`, with `ask_user` for `ask`, delegation to custom agents named `takt-<agent>` for
+`dispatch`, and `takt version --expect <version>` for the handshake (no plugin root on this host;
+`task version:set` stamps the line; a `0.0.0-dev` build passes with `"dev": true` exactly as
+`--expect-manifest` does) — and `hosts/copilot/agents/takt-*.agent.md`, generated from `agents/*.md` by
+`go run ./internal/tools/hostgen` (body verbatim; frontmatter `name`, `description`, `tools: ["*"]`; no
+`model` — Copilot chooses subagent models itself, so the op's `model` is advisory there). Parity tests in
+`internal/prompt` hold the skill to `decide.Vocab()`, `op.Kinds()` and `cli.Commands()` exactly as they hold
+the Claude Code command, and fail when a generated agent file is stale. Codex and Pi hosts remain out of
+scope.
 
 ---
 
@@ -1060,7 +1079,7 @@ into `state.config` at `init` so a config change mid-run does not change the run
 | `wave` | Temp git repos (`t.TempDir()` + `git init`): scripted "agents" that edit in scope, out of scope, create untracked files, and change nothing; scope verify and revert; verify runner with a failing command; commit staging never includes baseline-dirty files. |
 | `backend` | `fake` reviewer driven by a fixture file; parsing of fenced JSON; timeout → `error`; live behind `TAKT_LIVE=1`: one review smoke per backend (`TestLiveCopilotReviewsASpec`, `TestLiveClaudeReviewsASpec`) plus the copilot→claude fallback order against the real `claude` binary (`TestLiveFallbackOrder`). |
 | `brief` | Golden files for every template; the delimiter token never collides with content. |
-| `prompt` | Parse `commands/takt.md`; assert every op kind, gate id, run step, exec command and stop reason `decide` can emit is present, and that the handshake, verb and invariant lines hold (`TestPromptNamesEveryOpGateStepAndReason`, `TestPromptHandshakeVerbsAndInvariants`); agent frontmatter matches spec §3.3 (`TestAgentDefinitionsMatchSpec`); `plugin.json` and `marketplace.json` agree on version (`TestPluginManifestsAgreeOnVersion`); `flake.nix` and `.goreleaser.yaml` both stamp it (`TestFlakeReadsThePluginVersion`, `TestGoreleaserStampsTheVersion`). |
+| `prompt` | Parse `commands/takt.md`; assert every op kind, gate id, run step, exec command and stop reason `decide` can emit is present, and that the handshake, verb and invariant lines hold (`TestPromptNamesEveryOpGateStepAndReason`, `TestPromptHandshakeVerbsAndInvariants`); agent frontmatter matches spec §3.3 (`TestAgentDefinitionsMatchSpec`); `plugin.json` and `marketplace.json` agree on version (`TestPluginManifestsAgreeOnVersion`); `flake.nix` and `.goreleaser.yaml` both stamp it (`TestFlakeReadsThePluginVersion`, `TestGoreleaserStampsTheVersion`). The Copilot skill is held to the same vocabulary and its handshake to the manifest version, and every generated `hosts/copilot/agents/*.agent.md` is re-rendered and compared (`TestCopilotSkillNamesEverythingTheBinaryCanEmit`, `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents`). |
 | `cli` | Golden stdout/stderr per command; exit codes. |
 | e2e (opt-in, `TAKT_E2E=1`) | A throwaway repo, a two-wave plan, `haiku` implementers via a session-less driver that executes ops like the prompt would; kill/resume at each op boundary (G1) (`TestLiveEndToEnd`). |
 

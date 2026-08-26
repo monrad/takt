@@ -95,6 +95,26 @@ otherwise tolerate.
 The plugin depends on `superpowers` (`claude-plugins-official`); Claude Code installs it automatically as
 part of installing `takt`.
 
+## GitHub Copilot CLI
+
+The same op loop runs under the Copilot CLI (1.0.80 or newer) as a skill plus four custom agents. Install
+the binary as above, then:
+
+```sh
+copilot skill add /path/to/takt/hosts/copilot/skills/takt          # or symlink it into ~/.copilot/skills/takt
+mkdir -p ~/.copilot/agents && cp /path/to/takt/hosts/copilot/agents/*.agent.md ~/.copilot/agents/
+```
+
+Start `copilot` at the repository root and say `takt: <topic>` to begin a run, `takt` to resume,
+`takt status` / `takt doctor` / `takt waive <N> <reason>` / `takt unlock` for the verbs. Differences from
+the Claude Code plugin: questions arrive through Copilot's `ask_user` tool; the op's `model` is advisory —
+Copilot picks subagent models from its `/subagents` setting (the agent files carry no `model`); the agents
+are installed with `tools: ["*"]`, so the read-only agents (assessor, auditor) are read-only by their own
+text, not by the host; the brainstorm step is a plain conversation (no superpowers skill). The agent files
+are generated from `agents/*.md` by `task hosts:gen` and checked by `task hosts:check` and the test suite;
+the skill's `takt version --expect <version>` line is stamped by `task version:set`; a `0.0.0-dev`
+development build passes it with `"dev": true`.
+
 ## Use
 
 - `/takt "<topic>"` — starts a new run: `takt init` creates the bundle, then the loop begins.
