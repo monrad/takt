@@ -15,3 +15,8 @@ var ParseInterspersed = parseInterspersed
 // GoalsHash is [goals.Hash], the hash validateOpts binds a plan's spec_hash
 // to, exposed so a test can build a plan index the validator accepts.
 var GoalsHash = goals.Hash
+
+// ManifestFailure is [manifestFailure], the whole handshake judgment, so a
+// stamped binary's branches can be tested from a test binary that is always
+// 0.0.0-dev.
+var ManifestFailure = manifestFailure

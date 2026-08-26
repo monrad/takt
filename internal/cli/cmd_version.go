@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/monrad/takt/internal/version"
 )
@@ -53,12 +54,10 @@ func versionExpectManifest(env Env, path string) int {
 		return fail(env.Stderr, 1, "cannot parse plugin manifest "+path+": "+err.Error(),
 			"check CLAUDE_PLUGIN_ROOT and the plugin installation")
 	}
-	ok, dev := ManifestMatches(version.Current(), m.Version)
-	if !ok {
-		return fail(env.Stderr, 1,
-			"takt version "+version.Current()+" does not match plugin version "+m.Version,
-			"install takt "+m.Version+" (nix/brew/go install) or update the plugin")
+	if problem, hint := manifestFailure(version.Current(), path, m.Version); problem != "" {
+		return fail(env.Stderr, exitError, problem, hint)
 	}
+	_, dev := ManifestMatches(version.Current(), m.Version)
 	out := map[string]any{keyVersion: version.Current(), "manifest": m.Version}
 	if dev {
 		out["dev"] = true
@@ -67,6 +66,27 @@ func versionExpectManifest(env Env, path string) int {
 		return 1
 	}
 	return 0
+}
+
+// manifestFailure judges a plugin manifest's declared version against the
+// running binary's and returns the {error, hint} pair to fail with, or two
+// empty strings when the handshake passes.
+//
+// The empty-version check comes first and applies to every build. A manifest
+// with no version is a broken bundle, not a version disagreement: a stamped
+// binary reported it as "does not match plugin version " with nothing after
+// it, and an unstamped one matched it like any other manifest and let the
+// loop start against a bundle whose version nothing knows.
+func manifestFailure(binary, path, manifest string) (string, string) {
+	if strings.TrimSpace(manifest) == "" {
+		return "plugin manifest " + path + " has no version field",
+			"reinstall the takt plugin, or set the version in a checkout with `task version:set <x.y.z>`"
+	}
+	if ok, _ := ManifestMatches(binary, manifest); !ok {
+		return "takt version " + binary + " does not match plugin version " + manifest,
+			"install takt " + manifest + " (nix/brew/go install) or update the plugin"
+	}
+	return "", ""
 }
 
 // ManifestMatches reports whether binary — takt's own build version —
