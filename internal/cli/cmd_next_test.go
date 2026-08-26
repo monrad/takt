@@ -606,15 +606,15 @@ func TestReviewIsIdempotentAtAHash(t *testing.T) {
 // round 1: the `g == gate.Spec` guard in runReview is what keeps the scoped
 // confirming pass to the spec gate only — the plan gate must always render
 // review-plan, never review-spec-followup, no matter what the spec gate's
-// own receipt says. priorBlockingFindings itself has no way to know which
-// gate is being reviewed (it always reads gates/spec.json), so the guard in
-// runReview is the only thing standing between a blocking spec-gate rework
-// and a plan-gate review being scoped by mistake.
+// own records say. priorFindingsForScopedPass itself has no way to know which
+// gate is being reviewed (it always reads the spec gate's own records), so
+// the guard in runReview is the only thing standing between a blocking
+// spec-gate rework and a plan-gate review being scoped by mistake.
 //
 // It drives a real plan-gate review through runReview (not
-// priorBlockingFindings directly) while a spec-gate receipt sits on disk
-// answering rework/blocking at a stale hash — exactly the state a re-armed
-// spec gate leaves behind — then inspects the prompt the fake reviewer
+// priorFindingsForScopedPass directly) while the spec gate's records sit on
+// disk answering rework/blocking — exactly the state a re-armed spec gate
+// leaves behind — then inspects the prompt the fake reviewer
 // actually received (logged verbatim by logPrompt, internal/backend/fake.go)
 // to confirm it is the plan rubric, not the scoped one.
 func TestPlanGateNeverRendersTheScopedSpecFollowupTemplate(t *testing.T) {
@@ -649,10 +649,11 @@ func TestPlanGateNeverRendersTheScopedSpecFollowupTemplate(t *testing.T) {
 		t.Fatalf("%d %v %s", c, r, e)
 	}
 
-	// Overwrite the spec gate's receipt and stored findings to look exactly
-	// like a re-armed gate: rework, one blocking finding, at a hash that is
-	// deliberately stale (the receipt from before the edit that re-armed
-	// it) — this is what priorBlockingFindings is documented to read.
+	// Overwrite the spec gate's stored findings — and its receipt, for
+	// realism — to look exactly like a re-armed gate: rework, one blocking
+	// finding, the receipt at a deliberately stale hash (the one from before
+	// the edit that re-armed it). reviews/spec.json is what
+	// priorFindingsForScopedPass reads.
 	testutil.WriteFile(t, root, "docs/takt/demo/reviews/spec.json",
 		`{"verdict":"rework","summary":"one blocking","findings":[`+
 			`{"severity":"blocking","file":"spec.md","line":1,"title":"wrong claim","detail":"executeRun does not set ActiveWave"}]}`)

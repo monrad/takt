@@ -128,7 +128,7 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	}
 	tmpl, prior := "review-"+g, []brief.PriorFinding(nil)
 	if g == gate.Spec {
-		if prior = priorBlockingFindings(tgt.bdir); len(prior) > 0 {
+		if prior = priorFindingsForScopedPass(tgt.bdir); len(prior) > 0 {
 			tmpl = "review-spec-followup"
 		}
 	}
@@ -242,7 +242,7 @@ func preserveEvidence(bdir, g, src string) (string, error) {
 // An `error` verdict records neither. It is the backend failing, not a
 // reviewer's answer — the same reason cachedReceipt refuses to let one
 // short-circuit a re-run — and the stored findings are a live referent
-// rather than a log: priorBlockingFindings reads the .json to scope the
+// rather than a log: priorFindingsForScopedPass reads the .json to scope the
 // confirming pass, and the carry-forward reads it on accept. Overwriting
 // them with an errored result's empty findings would let one transient
 // backend failure delete the blocking findings a previous pass earned and
@@ -289,21 +289,30 @@ func writeResultJSON(path string, res backend.ReviewResult) error {
 	return bundle.WriteJSONAtomic(path, res)
 }
 
-// priorBlockingFindings returns the previous spec pass's findings when that
-// pass asked for rework over something blocking — the one case a second
+// priorFindingsForScopedPass returns the previous spec pass's findings when
+// that pass asked for rework over something blocking — the one case a second
 // review call is spent on (fixed-point design §5). The pass that follows is
 // scoped to these, which is what gives it a finite referent and lets it
-// terminate; "is this spec unambiguous?" never could.
+// terminate; "is this spec unambiguous?" never could. It returns the whole
+// finding list, not just the blocking ones: the blocking finding is what
+// buys the pass, and the pass then confirms everything the previous one said.
 //
-// The receipt it reads answers at the previous hash by construction: this is
-// only consulted once an edit has re-armed the gate.
-func priorBlockingFindings(bdir string) []brief.PriorFinding {
-	r, err := gate.ReadReceipt(bdir, gate.Spec)
-	if err != nil || r == nil || r.Verdict != gate.VerdictRework || r.Severities["blocking"] == 0 {
-		return nil
-	}
+// Both halves of the judgement — the verdict, and whether anything was
+// blocking — come from reviews/<gate>.json rather than from the receipt,
+// because the two artifacts have different jobs. The receipt records the
+// gate's state *including* its failures, which is why an errored pass still
+// writes one; the findings file records the content of the last pass a
+// reviewer actually answered, which is why storeFindings leaves it alone on
+// an error verdict. Scoping is a content question, so an errored pass is
+// transparent to it: a transient backend failure between a blocking rework
+// and its confirming pass must not silently widen that pass back to the
+// whole document, which is exactly what reading the receipt did. Taking both
+// halves from one artifact also makes the decision self-consistent — the
+// findings file carries no hash and no pass identity, so pairing it with the
+// receipt was convention, not a checkable invariant.
+func priorFindingsForScopedPass(bdir string) []brief.PriorFinding {
 	res, err := readReviewResult(bdir, gate.Spec)
-	if err != nil || len(res.Findings) == 0 {
+	if err != nil || res.Verdict != backend.VerdictRework || res.SeverityCounts()["blocking"] == 0 {
 		return nil
 	}
 	out := make([]brief.PriorFinding, 0, len(res.Findings))
