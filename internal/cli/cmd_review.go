@@ -126,8 +126,15 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	for _, name := range present {
 		files[name] = readArtifact(tgt.bdir, name)
 	}
-	prompt, err := brief.Render("review-"+g, brief.ReviewData{
-		Gate: g, Title: tgt.slug + " " + g, Token: tok, Schema: backend.ResultSchema, Files: files,
+	tmpl, prior := "review-"+g, []brief.PriorFinding(nil)
+	if g == gate.Spec {
+		if prior = priorBlockingFindings(tgt.bdir); len(prior) > 0 {
+			tmpl = "review-spec-followup"
+		}
+	}
+	prompt, err := brief.Render(tmpl, brief.ReviewData{
+		Gate: g, Title: tgt.slug + " " + g, Token: tok, Schema: backend.ResultSchema,
+		Files: files, PriorFindings: prior,
 	})
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
@@ -259,6 +266,32 @@ func writeResultJSON(path string, res backend.ReviewResult) error {
 		return err
 	}
 	return bundle.WriteJSONAtomic(path, res)
+}
+
+// priorBlockingFindings returns the previous spec pass's findings when that
+// pass asked for rework over something blocking — the one case a second
+// review call is spent on (fixed-point design §5). The pass that follows is
+// scoped to these, which is what gives it a finite referent and lets it
+// terminate; "is this spec unambiguous?" never could.
+//
+// The receipt it reads answers at the previous hash by construction: this is
+// only consulted once an edit has re-armed the gate.
+func priorBlockingFindings(bdir string) []brief.PriorFinding {
+	r, err := gate.ReadReceipt(bdir, gate.Spec)
+	if err != nil || r == nil || r.Verdict != gate.VerdictRework || r.Severities["blocking"] == 0 {
+		return nil
+	}
+	res, err := readReviewResult(bdir, gate.Spec)
+	if err != nil || len(res.Findings) == 0 {
+		return nil
+	}
+	out := make([]brief.PriorFinding, 0, len(res.Findings))
+	for _, f := range res.Findings {
+		out = append(out, brief.PriorFinding{
+			Severity: f.Severity, File: f.File, Line: f.Line, Title: f.Title, Detail: f.Detail,
+		})
+	}
+	return out
 }
 
 // readReviewResult reads reviews/<gate>.json, the structured result

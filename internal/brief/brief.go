@@ -123,13 +123,26 @@ type GoalAssessorData struct {
 	Problems      []string
 }
 
-// ReviewData fills the three reviewer templates.
+// PriorFinding is one finding from the pass a scoped review is confirming.
+// brief keeps its own shape rather than importing internal/backend so this
+// package stays a leaf; the caller maps backend.Finding onto it.
+type PriorFinding struct {
+	Severity string
+	File     string
+	Title    string
+	Detail   string
+	Line     int
+}
+
+// ReviewData fills the reviewer templates.
 type ReviewData struct {
 	Gate, Title, Token, Schema string
 	Files                      map[string]string
 	Diff                       string
 	TaskDescription            string
 	VerifyOutput               string
+	// PriorFindings is non-empty only for the scoped confirming pass.
+	PriorFindings []PriorFinding
 }
 
 // RunData fills the `run` op instruction templates. Every field is set for

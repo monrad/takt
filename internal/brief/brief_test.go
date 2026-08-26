@@ -163,6 +163,40 @@ func TestPlannerAndReviewBriefs(t *testing.T) {
 // the assertions can name the markers they expect.
 const quoteToken = "UNTRUSTED-ARTIFACT-abcdefabcdefabcd"
 
+// TestReviewSpecFollowupQuotesThePriorFindings covers the scoped confirming
+// pass (fixed-point design §5): after a blocking rework, the next review is
+// not a fresh judgement of the whole spec but a check of whether the prior
+// findings were addressed, so the brief must quote each one verbatim and
+// forbid raising new ones — that prohibition is what gives the pass a
+// finite, checkable referent.
+func TestReviewSpecFollowupQuotesThePriorFindings(t *testing.T) {
+	t.Parallel()
+	out, err := brief.Render("review-spec-followup", brief.ReviewData{
+		Gate: "spec", Title: "demo spec", Token: "TOK", Schema: "{}",
+		Files: map[string]string{"spec.md": "# spec\n"},
+		PriorFindings: []brief.PriorFinding{
+			{
+				Severity: "blocking",
+				File:     "spec.md",
+				Line:     42,
+				Title:    "wrong claim",
+				Detail:   "executeRun does not set ActiveWave",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"blocking", "spec.md", "42", "wrong claim", "executeRun"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the scoped brief must quote the prior finding; missing %q in:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "Do NOT raise new findings") {
+		t.Fatal("the scoped brief must forbid new findings — that is what gives it a finite referent")
+	}
+}
+
 // TestAgentAuthoredTextIsQuoted covers review I7: the previous attempt's
 // report, the reviewer's findings, and the planner's task text all reach an
 // implementer as text some other agent wrote. Each has to arrive inside the

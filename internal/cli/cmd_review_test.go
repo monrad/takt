@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/gate"
@@ -76,6 +77,52 @@ func TestCarryFindingsRecordsEveryFindingWithItsSeverity(t *testing.T) {
 	}
 	if len(after.Items) != 2 {
 		t.Fatal("carrying no findings must add nothing")
+	}
+}
+
+func TestPriorBlockingFindingsSelectsTheScopedPassOnlyAfterABlockingRework(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		verdict string
+		sev     map[string]int
+		want    int
+	}{
+		{"blocking rework", "rework", map[string]int{"blocking": 1, "minor": 1}, 2},
+		{"rework without blocking", "rework", map[string]int{"minor": 1}, 0},
+		{"approve", "approve", map[string]int{"minor": 1}, 0},
+		{"reject", "reject", map[string]int{"blocking": 1}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			bdir := t.TempDir()
+			res := backend.ReviewResult{
+				Verdict: c.verdict,
+				Findings: []backend.Finding{
+					{Severity: "blocking", File: "spec.md", Line: 4, Title: "t1", Detail: "d1"},
+					{Severity: "minor", File: "spec.md", Line: 9, Title: "t2", Detail: "d2"},
+				},
+			}
+			if err := writeResultJSON(filepath.Join(bdir, "reviews", "spec.json"), res); err != nil {
+				t.Fatal(err)
+			}
+			rc := gate.Receipt{Gate: gate.Spec, Hash: "sha256:old", Verdict: c.verdict,
+				Severities: c.sev, TS: time.Now()}
+			if err := gate.WriteReceipt(bdir, rc); err != nil {
+				t.Fatal(err)
+			}
+			got := priorBlockingFindings(bdir)
+			if len(got) != c.want {
+				t.Fatalf("prior findings = %d, want %d", len(got), c.want)
+			}
+			if c.want > 0 && (got[0].Title != "t1" || got[0].Line != 4) {
+				t.Fatalf("finding lost detail: %+v", got[0])
+			}
+		})
+	}
+	if got := priorBlockingFindings(t.TempDir()); got != nil {
+		t.Fatalf("no receipt at all must scope nothing, got %v", got)
 	}
 }
 
