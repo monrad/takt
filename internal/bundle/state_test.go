@@ -2,6 +2,7 @@
 package bundle
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func TestSaveLoadRoundTripAndKeyOrder(t *testing.T) {
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "state.json"))
 	text := string(raw)
-	for _, pair := range [][2]string{{`"schema"`, `"slug"`}, {`"slug"`, `"phase"`}, {`"phase"`, `"branch"`}, {`"tasks"`, `"session"`}} {
+	for _, pair := range [][2]string{{`"schema"`, `"slug"`}, {`"slug"`, `"phase"`}, {`"phase"`, `"branch"`}, {`"tasks"`, `"disposition"`}} {
 		if strings.Index(text, pair[0]) > strings.Index(text, pair[1]) {
 			t.Errorf("key order: %s must precede %s", pair[0], pair[1])
 		}
@@ -102,6 +103,41 @@ func TestLoadRejectsNewerSchemaAndBadPhase(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"schema": 1, "slug": "x", "phase": "flying"}`), 0o644)
 	if _, err := LoadState(dir); err == nil {
 		t.Fatal("unknown phase must be refused")
+	}
+}
+
+// TestSchemaOneStateLoadsAndIsSavedAsSchemaTwoWithoutTheSession pins the
+// migration: schema 1 carried the advisory lock in state.json, a tracked
+// file. Such a file must still load — encoding/json drops the unknown
+// session key, which is the whole migration — and the next save must stamp
+// schema 2 and write no session key at all.
+func TestSchemaOneStateLoadsAndIsSavedAsSchemaTwoWithoutTheSession(t *testing.T) {
+	t.Parallel()
+	bdir := t.TempDir()
+	st := sample()
+	st.Schema = 1
+	b, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := strings.Replace(string(b), `"schema":1,`,
+		`"schema":1,"session":{"id":"old","host":"h","heartbeat":"2026-08-24T18:02:11Z"},`, 1)
+	if err = os.WriteFile(StatePath(bdir), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadState(bdir)
+	if err != nil {
+		t.Fatal("a schema-1 state with a session key must load:", err)
+	}
+	if err = SaveState(bdir, loaded); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := os.ReadFile(StatePath(bdir))
+	if !strings.Contains(string(saved), `"schema": 2`) || strings.Contains(string(saved), `"session"`) {
+		t.Fatalf("saved state must be schema 2 without a session key:\n%s", saved)
+	}
+	if _, err = LoadState(bdir); err != nil {
+		t.Fatal(err)
 	}
 }
 

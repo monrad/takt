@@ -9,8 +9,11 @@ import (
 	"time"
 )
 
-// SchemaVersion is the state.json schema this binary writes and reads.
-const SchemaVersion = 1
+// SchemaVersion is the state.json schema this binary writes. Schema 1
+// carried the session lock in state.json; 2 moved it to logs/session.json
+// (spec §4.6). A schema-1 file loads (its session key is ignored) and the
+// next SaveState stamps 2.
+const SchemaVersion = 2
 
 // Phases (spec §4.3): the only progress enum.
 const (
@@ -102,19 +105,6 @@ type Disposition struct {
 	Applied bool      `json:"applied"`
 }
 
-// Session is the advisory lock holder (spec §4.6). Generated records how
-// the id was obtained: false when the environment supplied it
-// (CLAUDE_CODE_SESSION_ID / TAKT_SESSION), true when takt invented one
-// because neither was set. Only the holder's own record can answer that —
-// a takt-invented id and an environment-supplied one are indistinguishable
-// as strings (review finding 1).
-type Session struct {
-	ID        string    `json:"id"`
-	Host      string    `json:"host"`
-	Heartbeat time.Time `json:"heartbeat"`
-	Generated bool      `json:"generated,omitempty"`
-}
-
 // State is state.json. Field order is the on-disk key order.
 type State struct {
 	Schema          int               `json:"schema"`
@@ -136,7 +126,6 @@ type State struct {
 	VerifiedSHA     *string           `json:"verified_sha"`
 	GoalsCheckedSHA *string           `json:"goals_checked_sha"`
 	Disposition     *Disposition      `json:"disposition"`
-	Session         *Session          `json:"session"`
 }
 
 // StatePath returns bundleDir/state.json.
@@ -170,7 +159,9 @@ func LoadState(bundleDir string) (*State, error) {
 var renameFile = os.Rename
 
 // SaveState writes state.json atomically, through [WriteJSONAtomic] (spec
-// §13). Nil slices are normalised so JSON shows [] not null.
+// §13). Nil slices are normalised so JSON shows [] not null, and the schema
+// is stamped with SchemaVersion, so a state loaded from an older file is
+// written back at the current version.
 func SaveState(bundleDir string, s *State) error {
 	if err := s.Validate(); err != nil {
 		return err
@@ -181,6 +172,7 @@ func SaveState(bundleDir string, s *State) error {
 	if s.Gates == nil {
 		s.Gates = map[string]string{}
 	}
+	s.Schema = SchemaVersion
 	return WriteJSONAtomic(StatePath(bundleDir), s)
 }
 
