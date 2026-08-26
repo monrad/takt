@@ -40,6 +40,12 @@ const (
 	planGate = "plan"
 )
 
+// verdictRework is gate.VerdictRework spelled here rather than imported:
+// decide performs no I/O and must not depend on internal/gate, so the one
+// verdict whose meaning this package has to branch on travels as the same
+// string literal the ask context already carries.
+const verdictRework = "rework"
+
 // ids normalises a nil id list to an empty one. A gate's context is
 // persisted as the pending gate's payload and re-rendered from it verbatim
 // (spec §4.3), so `null` where the user expects a list is durable noise —

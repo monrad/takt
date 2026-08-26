@@ -97,12 +97,19 @@ func questionOwner(q *op.Op, ctx map[string]any) {
 
 // questionGateReview fills the "gate_review" gate (spec/plan review asked for
 // rework). The revise option's text depends on what revising will actually
-// do: on the spec gate, a review that found nothing blocking is "usable after
-// the listed edits" and the edit itself closes the gate (fixed-point design
-// §4), so promising a re-review there would tell the user the opposite of
-// what happens.
+// do: on the spec gate, a rework verdict that found nothing blocking is
+// "usable after the listed edits" and the edit itself closes the gate
+// (fixed-point design §4), so promising a re-review there would tell the user
+// the opposite of what happens.
+//
+// The verdict is half of that condition, not just the severity: acceptRevision
+// writes the closing event only for a non-blocking rework, so the other three
+// rows of the design's §3 table — blocking rework, reject, and error (whose
+// result carries no findings at all, hence no blocking ones) — all keep the
+// re-arm-and-re-review loop and have to keep being told so.
 func questionGateReview(q *op.Op, ctx map[string]any) {
 	g, _ := ctx["gate"].(string)
+	verdict, _ := ctx["verdict"].(string)
 	blocking, _ := ctx["blocking"].(bool)
 	q.Narration = g + " review asked for rework"
 	q.Question = fmt.Sprintf(
@@ -116,7 +123,7 @@ func questionGateReview(q *op.Op, ctx map[string]any) {
 			"Edit the %s with the findings in reviews/%s.md; the gate re-arms on the new hash.", g, g,
 		),
 	}
-	if g == specGate && !blocking {
+	if g == specGate && verdict == verdictRework && !blocking {
 		revise.Label = "Revise (Recommended)"
 		revise.Description = "Edit spec.md with the findings in reviews/spec.md; " +
 			"the gate closes on the edit — no second review."

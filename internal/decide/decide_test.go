@@ -660,26 +660,32 @@ func TestAgentInvalidQuestionOffersSkipOnlyForTheAuditor(t *testing.T) {
 
 // TestGateReviewTellsTheUserWhatReviseWillActuallyDo: the revise option's
 // text has to match what revising does, not what it did before the
-// fixed-point design. Only the spec gate with nothing blocking gets the new
-// wording — every other combination keeps promising the re-review it still
-// performs.
+// fixed-point design. Only a non-blocking *rework* on the spec gate gets the
+// new wording — every other row of the design's §3 table keeps promising the
+// re-review it still performs, because acceptRevision writes the closing
+// event for none of them. reject and error are the two the severity alone
+// cannot tell apart: an error result carries no findings, so it reads as
+// "nothing blocking" while still taking the old loop.
 func TestGateReviewTellsTheUserWhatReviseWillActuallyDo(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name     string
 		gate     string
+		verdict  string
 		blocking bool
 		want     string
 	}{
-		{"spec, nothing blocking", "spec", false, "closes on the edit"},
-		{"spec, blocking", "spec", true, "re-arms"},
-		{"plan is unchanged", "plan", false, "re-arms"},
+		{"spec rework, nothing blocking", "spec", "rework", false, "closes on the edit"},
+		{"spec rework, blocking", "spec", "rework", true, "re-arms"},
+		{"spec reject, nothing blocking", "spec", "reject", false, "re-arms"},
+		{"spec error carries no findings", "spec", "error", false, "re-arms"},
+		{"plan is unchanged", "plan", "rework", false, "re-arms"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			q := decide.Question("gate_review", map[string]any{
-				"slug": "demo", "gate": c.gate, "verdict": "rework",
+				"slug": "demo", "gate": c.gate, "verdict": c.verdict,
 				"summary": "see reviews/" + c.gate + ".md", "blocking": c.blocking,
 			})
 			var revise string
