@@ -1,2 +1,3 @@
 {"ts":"2026-08-26T15:07:35.495144381Z","type":"init","data":{"base":"main","base_sha":"aae4f5072013feb14f4fab9cd656bde02685fd71","branch":"takt/parsereport-in-internal-cli-cmd-record-go-reads","branch_adopted":false,"slug":"parsereport-in-internal-cli-cmd-record-go-reads"}}
 {"ts":"2026-08-26T15:11:59.110047638Z","type":"spec_written","data":{"hash":"sha256:412e7bf41611b1c89e36889b3d0baa8b57abc04edba888f6b1b2b6167de6c526"}}
+{"ts":"2026-08-26T15:12:32.86260408Z","type":"goals_frozen","data":{"count":6,"hash":"sha256:d9b6f5399130ef57a21616812cb4c3b8566dd785ab641a5daded55d8daf74d07"}}

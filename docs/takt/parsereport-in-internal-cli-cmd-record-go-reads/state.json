@@ -21,7 +21,7 @@
     "max_parallel": 8,
     "max_rework": 1
   },
-  "goals_hash": null,
+  "goals_hash": "sha256:d9b6f5399130ef57a21616812cb4c3b8566dd785ab641a5daded55d8daf74d07",
   "gates": {
     "plan": "pending",
     "spec": "pending"
