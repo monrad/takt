@@ -56,4 +56,11 @@ func TestSessionSidecarThatCannotBeParsedIsAnError(t *testing.T) {
 	if _, err := bundle.ReadSession(bdir); err == nil {
 		t.Fatal("an empty holder id is not a lock")
 	}
+	// And what ReadSession refuses to read, WriteSession refuses to write:
+	// a holder with no id would be a lock only `takt unlock` could clear.
+	for _, s := range []*bundle.Session{nil, {Host: "h", Heartbeat: time.Now()}} {
+		if err := bundle.WriteSession(bdir, s); err == nil {
+			t.Fatalf("writing an empty holder must fail: %+v", s)
+		}
+	}
 }

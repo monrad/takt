@@ -122,6 +122,12 @@ func TestSchemaOneStateLoadsAndIsSavedAsSchemaTwoWithoutTheSession(t *testing.T)
 	}
 	legacy := strings.Replace(string(b), `"schema":1,`,
 		`"schema":1,"session":{"id":"old","host":"h","heartbeat":"2026-08-24T18:02:11Z"},`, 1)
+	// The splice is the fixture: a Replace that matched nothing would leave
+	// a state with no session key at all and the test would pass without
+	// ever exercising the migration.
+	if !strings.Contains(legacy, `"session"`) {
+		t.Fatalf("the schema-1 fixture must carry a session key:\n%s", legacy)
+	}
 	if err = os.WriteFile(StatePath(bdir), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
