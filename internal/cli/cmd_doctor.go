@@ -79,8 +79,21 @@ func countErrors(findings []doctor.Finding) int {
 	return errs
 }
 
+// countFindings tallies rows that need attention (WARN or ERROR). PASS is a
+// check result, not a finding; counting it made a clean doctor run look dirty.
+func countFindings(findings []doctor.Finding) int {
+	n := 0
+	for _, f := range findings {
+		if f.Level == "WARN" || f.Level == "ERROR" {
+			n++
+		}
+	}
+	return n
+}
+
 // renderDoctor prints the text form: one line per finding, an indented
-// fix: line when present, and a one-line summary.
+// fix: line when present, and a one-line summary. The summary counts only
+// WARN/ERROR as findings; an all-PASS run reports checks and "all PASS".
 func renderDoctor(w io.Writer, findings []doctor.Finding, errs int) {
 	for _, f := range findings {
 		fmt.Fprintf(w, "%-5s %s: %s\n", f.Level, f.Check+" "+f.Slug, f.Message)
@@ -88,5 +101,9 @@ func renderDoctor(w io.Writer, findings []doctor.Finding, errs int) {
 			fmt.Fprintf(w, "      fix: %s\n", f.Fix)
 		}
 	}
-	fmt.Fprintf(w, "takt doctor: %d finding(s), %d error(s)\n", len(findings), errs)
+	if n := countFindings(findings); n == 0 {
+		fmt.Fprintf(w, "takt doctor: %d check(s), all PASS\n", len(findings))
+	} else {
+		fmt.Fprintf(w, "takt doctor: %d finding(s), %d error(s)\n", n, errs)
+	}
 }
