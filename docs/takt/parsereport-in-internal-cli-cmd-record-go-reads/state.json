@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "parsereport-in-internal-cli-cmd-record-go-reads",
   "topic": "parseReport in internal/cli/cmd_record.go reads the implementer's trailer with strings.HasPrefix on \"STATUS:\", \"SUMMARY:\" and \"BLOCKERS:\", so a final message whose trailer is markdown-decorated — \"**STATUS:** done\", \"- STATUS: done\", \"STATUS: **done**\", \"`STATUS:` done\" — records nothing and takt rejects the digest with \"digest status must be done, failed or blocked\". Make the trailer parsing tolerant of leading list markers and of bold, italic or backtick decoration around the key and around the value, while exact-prefix lines keep working; add table-driven tests for every decorated shape and for a body line that merely mentions STATUS: mid-sentence (must not match); and mention the tolerance in the implementer agent's report contract in agents/implementer.md.",
-  "phase": "finish",
+  "phase": "archived",
   "created_at": "2026-08-26T15:07:35.482675146Z",
   "branch": "takt/parsereport-in-internal-cli-cmd-record-go-reads",
   "branch_adopted": false,
@@ -114,6 +114,6 @@
     "choice": "pr",
     "at": "2026-08-26T18:06:10.987924014Z",
     "pr_url": "https://github.com/monrad/takt/pull/22",
-    "applied": false
+    "applied": true
   }
 }
