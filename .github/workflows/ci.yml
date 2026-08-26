@@ -2,12 +2,11 @@ name: ci
 
 on:
   # Branch pushes are covered by their pull request; keying push on main only
-  # keeps a PR from running the same job twice under two refs. Tags are added
-  # so a release candidate gets the full gate (lint + race) before
-  # release.yml's job builds and publishes it.
+  # keeps a PR from running the same job twice under two refs. Tags are not
+  # listed: release.yml runs these same gates itself, as a job its publish
+  # step declares `needs:` on, so a tag is gated there rather than here.
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 permissions:

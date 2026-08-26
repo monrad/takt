@@ -4,19 +4,23 @@ on:
   push:
     tags: ["v*"]
 
+# Least privilege by default: only the job that publishes gets write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: goreleaser
+  # A tag must clear the same gate a pull request does before anything is
+  # published. `release` declares `needs: [check]`, so a red job here stops
+  # the release rather than merely going red beside it.
+  check:
+    name: vet, lint, test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          # goreleaser builds the changelog from history.
-          fetch-depth: 0
 
+      # First, and before setup-go: it needs nothing but jq and the checkout,
+      # so a mistyped tag fails in seconds instead of after a lint and a race
+      # run. `release` inherits it through `needs`.
       - name: Both plugin manifests must agree with the tag
         run: |
           set -euo pipefail
@@ -48,6 +52,37 @@ jobs:
             exit 1
           fi
           echo "plugin.json and marketplace.json both say $tag — matches tag ${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-go@v7
+        with:
+          # go.mod is the single source of the Go version (1.26).
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # .golangci.yml is the maratori golden config for this exact
+          # version — keep the two in step.
+          version: v2.13.1
+
+      - name: go test
+        run: go test ./... -race -count=1
+
+  release:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    needs: [check]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # goreleaser builds the changelog from history.
+          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
