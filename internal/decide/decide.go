@@ -144,7 +144,7 @@ func Decide(st *bundle.State, f Facts) (Decision, error) {
 	case bundle.PhaseFinish:
 		return decideFinish(st, f), nil
 	case bundle.PhaseArchived:
-		return stop("run archived", "archived"), nil
+		return stop("run archived", reasonArchived), nil
 	}
 	return Decision{}, fmt.Errorf("unknown phase %q", st.Phase)
 }
@@ -189,15 +189,15 @@ const (
 func decideBrainstorm(st *bundle.State, f Facts) Decision {
 	in := map[string]any{ctxSlug: st.Slug, "topic": st.Topic}
 	if !f.HasSpec {
-		return run("brainstorm", "brainstorm the spec", in)
+		return run(stepBrainstorm, "brainstorm the spec", in)
 	}
 	if st.Config.Goals && (!f.HasGoals || !f.GoalsFrozen) {
-		return run("goals", "distil and freeze the goals", in)
+		return run(stepGoals, "distil and freeze the goals", in)
 	}
 	if st.Config.Review.Spec && !f.SpecGate.Satisfied {
 		if needsRework(f.SpecGate) {
 			return ask(
-				"gate_review",
+				gateReview,
 				map[string]any{
 					ctxSlug:   st.Slug,
 					"gate":    "spec",
@@ -219,7 +219,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 	if !f.HasIndex || !f.IndexValid {
 		if f.PlanAttempts >= maxPlannerAttempts {
 			return ask(
-				"plan_invalid",
+				gatePlanInvalid,
 				map[string]any{ctxSlug: st.Slug, "attempts": f.PlanAttempts, "problems": f.IndexProblems},
 			)
 		}
@@ -228,7 +228,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 	if st.Config.Review.Plan && !f.PlanGate.Satisfied {
 		if needsRework(f.PlanGate) {
 			return ask(
-				"gate_review",
+				gateReview,
 				map[string]any{
 					ctxSlug:   st.Slug,
 					"gate":    "plan",
@@ -247,7 +247,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 				Agent:  &op.Agent{Agent: "alignment-auditor", Mode: "clauses", Label: "decompose the request"},
 			}
 		case !f.Alignment.ClausesConfirmed:
-			return ask("alignment_confirm", map[string]any{ctxSlug: st.Slug, ctxCount: f.Alignment.ClauseCount})
+			return ask(gateAlignmentConfirm, map[string]any{ctxSlug: st.Slug, ctxCount: f.Alignment.ClauseCount})
 		case !f.Alignment.VerdictsPresent:
 			return Decision{
 				Action: ActDispatch,
@@ -292,7 +292,7 @@ func decideExecute(st *bundle.State, f Facts) (Decision, error) {
 		// blocked ids in with the failed ones told the user a task had tried
 		// and failed when it had reported that it could not start.
 		return ask(
-			"wave_failures",
+			gateWaveFailures,
 			map[string]any{
 				ctxSlug:      st.Slug,
 				ctxWave:      lowestWave(st, append(slices.Clone(failed), blocked...)),
@@ -333,7 +333,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 					len(aw.Tasks)-len(unrecorded),
 					len(aw.Tasks),
 				),
-				"wave_in_flight",
+				reasonWaveInFlight,
 			)
 		}
 		return Decision{Action: ActRecover, Wave: aw.N, Tasks: unrecorded, Attempt: aw.Attempt + 1}
@@ -351,7 +351,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 	}
 	if len(c.ReviewErrors) > 0 {
 		return ask(
-			"review_error",
+			gateReviewError,
 			map[string]any{
 				ctxSlug: st.Slug,
 				ctxWave: aw.N,
@@ -380,7 +380,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 	// part of what the user is deciding about and the question has to name
 	// them (they are re-dispatched by whichever choice reopens the wave).
 	return ask(
-		"wave_failures",
+		gateWaveFailures,
 		map[string]any{
 			ctxSlug:      st.Slug,
 			ctxWave:      aw.N,

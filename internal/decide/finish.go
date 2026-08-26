@@ -58,16 +58,16 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 				Agent:  &op.Agent{Agent: "goal-assessor", Label: "assess the goals at HEAD"},
 			}
 		}
-		return ask("goals_unmet", map[string]any{ctxSlug: st.Slug, "unmet": fin.Goals.Unmet})
+		return ask(gateGoalsUnmet, map[string]any{ctxSlug: st.Slug, "unmet": fin.Goals.Unmet})
 	}
 	if !fin.HasRetro {
-		return run("retro", "write the retrospective", map[string]any{ctxSlug: st.Slug})
+		return run(stepRetro, "write the retrospective", map[string]any{ctxSlug: st.Slug})
 	}
 	if fin.Disposition == "" {
-		return ask("branch_finish", branchFinishContext(st, fin))
+		return ask(gateBranchFinish, branchFinishContext(st, fin))
 	}
 	if fin.Disposition == "pr" && !fin.PRPushed {
-		return run("push_pr", "push the branch and open the pull request",
+		return run(stepPushPR, "push the branch and open the pull request",
 			map[string]any{ctxSlug: st.Slug, "branch": st.Branch, "base": st.Base})
 	}
 	return Decision{Action: ActArchive}
@@ -86,9 +86,9 @@ func decideVerify(st *bundle.State, v VerifyFacts) Decision {
 	case !v.Present, v.Passed:
 		return exec("verifying at HEAD", "takt verify --slug "+st.Slug, verifyTimeoutS)
 	case v.NoCommands:
-		return ask("no_verification", map[string]any{ctxSlug: st.Slug})
+		return ask(gateNoVerification, map[string]any{ctxSlug: st.Slug})
 	default:
-		return ask("verification_failed", map[string]any{ctxSlug: st.Slug, ctxFailed: v.Failed})
+		return ask(gateVerificationFailed, map[string]any{ctxSlug: st.Slug, ctxFailed: v.Failed})
 	}
 }
 

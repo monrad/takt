@@ -15,6 +15,10 @@ const (
 	Stop     Kind = "stop"     // end the turn
 )
 
+// Kinds lists every op kind `takt next` can print, in protocol order
+// (spec §5.2); the prompt's table must name each one.
+func Kinds() []Kind { return []Kind{Dispatch, Ask, Run, Exec, Stop} }
+
 // Agent is one subagent to spawn.
 type Agent struct {
 	Task  int    `json:"task,omitempty"`

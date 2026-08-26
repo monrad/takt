@@ -16,6 +16,22 @@ const (
 	labelStop   = "Stop"
 )
 
+// Gate ids Question switches on (spec §5.2). Vocab returns these same
+// constants, so the ten ids in the switch below and the ten ids the prompt
+// parity test reads can never drift apart without a compile error.
+const (
+	gateOwner              = "owner"
+	gateReview             = "gate_review"
+	gateAlignmentConfirm   = "alignment_confirm"
+	gatePlanInvalid        = "plan_invalid"
+	gateWaveFailures       = "wave_failures"
+	gateReviewError        = "review_error"
+	gateVerificationFailed = "verification_failed"
+	gateNoVerification     = "no_verification"
+	gateGoalsUnmet         = "goals_unmet"
+	gateBranchFinish       = "branch_finish"
+)
+
 // Question builds the ask op for a gate id (spec §5.2). ctx carries the
 // values the text needs (slug, gate, task ids…) and is echoed as Context so
 // a re-rendered gate is identical to the first rendering.
@@ -24,25 +40,25 @@ func Question(gate string, ctx map[string]any) op.Op {
 	q := op.Op{Op: op.Ask, Gate: gate, Context: ctx,
 		Answer: fmt.Sprintf("takt answer --gate %s --choice <choice> --slug %s", gate, slug)}
 	switch gate {
-	case "owner":
+	case gateOwner:
 		questionOwner(&q, ctx)
-	case "gate_review":
+	case gateReview:
 		questionGateReview(&q, ctx)
-	case "alignment_confirm":
+	case gateAlignmentConfirm:
 		questionAlignmentConfirm(&q, ctx)
-	case "plan_invalid":
+	case gatePlanInvalid:
 		questionPlanInvalid(&q, ctx)
-	case "wave_failures":
+	case gateWaveFailures:
 		questionWaveFailures(&q, ctx)
-	case "review_error":
+	case gateReviewError:
 		questionReviewError(&q, ctx)
-	case "verification_failed":
+	case gateVerificationFailed:
 		questionVerificationFailed(&q, ctx)
-	case "no_verification":
+	case gateNoVerification:
 		questionNoVerification(&q, ctx)
-	case "goals_unmet":
+	case gateGoalsUnmet:
 		questionGoalsUnmet(&q, ctx)
-	case "branch_finish":
+	case gateBranchFinish:
 		questionBranchFinish(&q, ctx)
 	default:
 		questionDefault(&q, gate)
