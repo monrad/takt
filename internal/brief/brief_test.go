@@ -343,7 +343,7 @@ func assertRejectionSection(t *testing.T, name, with, without string, problems [
 			t.Errorf("%s: problem %q is not inside the quoted rejection:\n%s", name, p, with)
 		}
 	}
-	if !strings.Contains(tail, "Reply again in exactly the format described above.") {
+	if !strings.Contains(tail, "Reply again in exactly the format this brief describes.") {
 		t.Errorf("%s: the instruction to retry must sit outside the quote:\n%s", name, with)
 	}
 }
