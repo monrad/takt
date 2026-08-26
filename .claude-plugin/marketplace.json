@@ -1,0 +1,45 @@
+{
+  "name": "monrad-takt",
+  "owner": {
+    "name": "Mikkel Mondrup Kristensen",
+    "email": "mikkel@tdx.dk"
+  },
+  "description": "Marketplace catalog for the takt Claude Code plugin.",
+  "version": "0.1.0",
+  "allowCrossMarketplaceDependenciesOn": [
+    "claude-plugins-official"
+  ],
+  "plugins": [
+    {
+      "name": "takt",
+      "source": "./",
+      "description": "Resumable brainstorm → plan → execute for one repository, driven by the takt binary.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Mikkel Mondrup Kristensen",
+        "email": "mikkel@tdx.dk"
+      },
+      "homepage": "https://github.com/monrad/takt",
+      "repository": "https://github.com/monrad/takt",
+      "license": "MIT",
+      "keywords": [
+        "claude-code",
+        "claude-code-plugin",
+        "workflow",
+        "brainstorm",
+        "planning",
+        "superpowers",
+        "automation",
+        "agent",
+        "git",
+        "cli"
+      ],
+      "dependencies": [
+        {
+          "name": "superpowers",
+          "marketplace": "claude-plugins-official"
+        }
+      ]
+    }
+  ]
+}

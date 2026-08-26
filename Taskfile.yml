@@ -1,0 +1,31 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the takt binary.
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run the test suite.
+    cmds:
+      - go test ./... -race -count=1
+
+  lint:
+    desc: Run golangci-lint.
+    cmds:
+      - golangci-lint run ./...
+
+  check:
+    desc: build + test + lint.
+    cmds:
+      - task: build
+      - task: test
+      - task: lint
+
+  version:set:
+    desc: Rewrite the plugin manifests' version fields — VERSION=x.y.z.
+    requires:
+      vars: [VERSION]
+    cmds:
+      - go run ./internal/tools/setversion "{{.VERSION}}"
