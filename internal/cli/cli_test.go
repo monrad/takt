@@ -31,8 +31,8 @@ func TestVersionPrintsJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("stdout is not JSON: %q", out)
 	}
-	if got["version"] != version.Version {
-		t.Fatalf("version = %q, want %q", got["version"], version.Version)
+	if got["version"] != version.Current() {
+		t.Fatalf("version = %q, want %q", got["version"], version.Current())
 	}
 }
 

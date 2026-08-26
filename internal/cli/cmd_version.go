@@ -18,15 +18,15 @@ func cmdVersion(env Env) int {
 	if err := fs.Parse(env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
-	if *expect != "" && *expect != version.Version {
+	if *expect != "" && *expect != version.Current() {
 		return fail(env.Stderr, 1,
-			"takt version "+version.Version+" does not match expected "+*expect,
+			"takt version "+version.Current()+" does not match expected "+*expect,
 			"install the takt binary matching the plugin version")
 	}
 	if *expectManifest != "" {
 		return versionExpectManifest(env, *expectManifest)
 	}
-	if err := writeJSON(env.Stdout, map[string]string{keyVersion: version.Version}); err != nil {
+	if err := writeJSON(env.Stdout, map[string]string{keyVersion: version.Current()}); err != nil {
 		return 1
 	}
 	return 0
@@ -53,13 +53,13 @@ func versionExpectManifest(env Env, path string) int {
 		return fail(env.Stderr, 1, "cannot parse plugin manifest "+path+": "+err.Error(),
 			"check CLAUDE_PLUGIN_ROOT and the plugin installation")
 	}
-	ok, dev := ManifestMatches(version.Version, m.Version)
+	ok, dev := ManifestMatches(version.Current(), m.Version)
 	if !ok {
 		return fail(env.Stderr, 1,
-			"takt version "+version.Version+" does not match plugin version "+m.Version,
+			"takt version "+version.Current()+" does not match plugin version "+m.Version,
 			"install takt "+m.Version+" (nix/brew/go install) or update the plugin")
 	}
-	out := map[string]any{keyVersion: version.Version, "manifest": m.Version}
+	out := map[string]any{keyVersion: version.Current(), "manifest": m.Version}
 	if dev {
 		out["dev"] = true
 	}

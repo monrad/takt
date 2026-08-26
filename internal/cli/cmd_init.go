@@ -247,7 +247,7 @@ func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, 
 	host, _ := os.Hostname()
 	id, generated := sessionID(env.Getenv)
 	return &bundle.State{
-		Schema: bundle.SchemaVersion, TaktVersion: version.Version,
+		Schema: bundle.SchemaVersion, TaktVersion: version.Current(),
 		Slug: opts.slug, Topic: opts.topic, Phase: bundle.PhaseBrainstorm, CreatedAt: now,
 		Branch: bi.branch, BranchAdopted: bi.adopted, Base: bi.def, BaseSHA: baseSHA,
 		Config: bundle.RunConfig{
