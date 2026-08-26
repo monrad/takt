@@ -37,3 +37,10 @@
 {"ts":"2026-08-26T17:33:38.695289609Z","type":"alignment_verdicts","data":{"count":5}}
 {"ts":"2026-08-26T17:33:38.703408228Z","type":"plan_loaded","data":{"tasks":4,"waves":2}}
 {"ts":"2026-08-26T17:33:38.703436608Z","type":"phase","data":{"from":"plan","to":"execute"}}
+{"ts":"2026-08-26T17:33:38.718684151Z","type":"wave_dispatched","data":{"attempt":1,"slice":1,"tasks":[1,3,4],"wave":0}}
+{"ts":"2026-08-26T17:38:38.406830643Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":3}}
+{"ts":"2026-08-26T17:39:15.862452908Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":4}}
+{"ts":"2026-08-26T17:42:35.97970026Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":1}}
+{"ts":"2026-08-26T17:44:09.099509864Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[4],"sha":"","wave":0}}
+{"ts":"2026-08-26T17:44:13.516013089Z","type":"wave_dispatched","data":{"attempt":2,"slice":1,"tasks":[4],"wave":0}}
+{"ts":"2026-08-26T17:47:39.655651897Z","type":"task_recorded","data":{"attempt":2,"status":"done","task":4}}

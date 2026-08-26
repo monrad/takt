@@ -326,24 +326,167 @@ type digestInput struct {
 	blockers string
 }
 
+// The three keys an implementer's trailer carries, without their colons.
+const (
+	trailerStatus   = "STATUS"
+	trailerSummary  = "SUMMARY"
+	trailerBlockers = "BLOCKERS"
+)
+
+// trailerDecoration holds the emphasis characters a decoration run is made of.
+// A run is a maximal sequence of them and may mix them, so "*`" is one run of
+// length two; runs are never required to match each other.
+const trailerDecoration = "*_`"
+
+// trailerSpace is the inline whitespace a leading marker must be followed by,
+// and the whitespace a decoration run may be followed by.
+const trailerSpace = " \t"
+
+// maxHeadingMarker is the longest run of '#' that still counts as a heading;
+// seven or more is not a marker.
+const maxHeadingMarker = 6
+
 // parseReport extracts the trailing STATUS / SUMMARY / BLOCKERS lines of an
 // agent's final message and returns them in that order; the last occurrence
 // of each wins, so an agent that quoted the template earlier in its message
 // does not fool the parser.
+//
+// The match is tolerant of the way models decorate their output: leading list,
+// quote and heading markers ("- ", "> ", "1. ", "## ") and bold, italic or
+// backtick runs around the key, around the value or around the whole line come
+// off before the key is matched, so "**STATUS:** done" and "> 1. **STATUS:
+// done**" record what "STATUS: done" records. This is a tolerance layer, not a
+// markdown validator: decoration is removed where it is found and never
+// validated, so an unclosed run ("**STATUS: done") and a mismatched pair
+// ("*STATUS:** done") are trailer lines too. What rejects a line is
+// structural — the key must be uppercase, must carry its colon, and must start
+// the line once markers and decoration are gone — and that is what keeps a
+// mid-sentence mention of STATUS: out of the digest. One shape is deliberately
+// left alone: a closing run on a line that opened nothing ("STATUS: done**")
+// keeps its stars, because stripping it would also have to strip the star from
+// "SUMMARY: changed wildcard *", which is what an undecorated line has always
+// recorded (spec §5.1).
 func parseReport(text string) (string, string, string) {
 	var status, summary, blockers string
 	for raw := range strings.SplitSeq(text, "\n") {
-		ln := strings.TrimSpace(raw)
-		switch {
-		case strings.HasPrefix(ln, "STATUS:"):
-			status = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(ln, "STATUS:")))
-		case strings.HasPrefix(ln, "SUMMARY:"):
-			summary = strings.TrimSpace(strings.TrimPrefix(ln, "SUMMARY:"))
-		case strings.HasPrefix(ln, "BLOCKERS:"):
-			blockers = strings.TrimSpace(strings.TrimPrefix(ln, "BLOCKERS:"))
+		key, value, ok := matchTrailerLine(raw)
+		if !ok {
+			continue
+		}
+		switch key {
+		case trailerStatus:
+			status = strings.ToLower(value)
+		case trailerSummary:
+			summary = value
+		case trailerBlockers:
+			blockers = value
 		}
 	}
 	return status, summary, blockers
+}
+
+// matchTrailerLine decides whether one line of an agent's message is a trailer
+// line. It strips the leading markers and the decoration run before the key
+// (steps 1 and 2 of the grammar), matches the exact uppercase key anchored at
+// what remains (step 3) and cleans the value (step 4), returning the key
+// without its colon, the value, and whether the line matched at all.
+func matchTrailerLine(raw string) (string, string, bool) {
+	ln := stripTrailerMarkers(strings.TrimSpace(raw))
+	ln, opener := cutDecorationRun(ln)
+	for _, key := range []string{trailerStatus, trailerSummary, trailerBlockers} {
+		if rest, ok := strings.CutPrefix(ln, key+":"); ok {
+			return key, cleanTrailerValue(rest, opener), true
+		}
+	}
+	return "", "", false
+}
+
+// stripTrailerMarkers removes the leading markers from ln: one marker plus the
+// whitespace it must be followed by, repeatedly, so stacked markers such as
+// "> 1. " all come off (step 1). The mandatory whitespace is what
+// disambiguates '*': "* STATUS: done" is a bullet, "**STATUS:** done" is
+// emphasis, and only the first form is consumed here.
+func stripTrailerMarkers(ln string) string {
+	for {
+		n := trailerMarkerLen(ln)
+		if n == 0 {
+			return ln
+		}
+		rest := strings.TrimLeft(ln[n:], trailerSpace)
+		if len(rest) == len(ln)-n {
+			return ln
+		}
+		ln = rest
+	}
+}
+
+// trailerMarkerLen reports the length of the marker at the front of ln, or 0
+// if there is none. An unordered marker is a single character, never a run, so
+// "--" and ">>" are not markers and "**" is never consumed as one; '#' is the
+// exception, because "##" is a real heading, up to six.
+func trailerMarkerLen(ln string) int {
+	if ln == "" {
+		return 0
+	}
+	switch ln[0] {
+	case '-', '*', '+', '>':
+		return 1
+	case '#':
+		n := len(ln) - len(strings.TrimLeft(ln, "#"))
+		if n > maxHeadingMarker {
+			return 0
+		}
+		return n
+	default:
+		return orderedMarkerLen(ln)
+	}
+}
+
+// orderedMarkerLen reports the length of the ordered-list marker at the front
+// of ln — one or more ASCII digits, leading zeros permitted and no sign, then
+// a single '.' or ')' — or 0 if there is none.
+func orderedMarkerLen(ln string) int {
+	n := 0
+	for n < len(ln) && ln[n] >= '0' && ln[n] <= '9' {
+		n++
+	}
+	if n == 0 || n == len(ln) {
+		return 0
+	}
+	if ln[n] != '.' && ln[n] != ')' {
+		return 0
+	}
+	return n + 1
+}
+
+// cutDecorationRun removes the maximal decoration run at the front of ln and
+// reports whether there was one — the line's opener.
+func cutDecorationRun(ln string) (string, bool) {
+	rest := strings.TrimLeft(ln, trailerDecoration)
+	return rest, len(rest) != len(ln)
+}
+
+// cleanTrailerValue turns what follows the key's colon into the recorded value
+// (step 4); opener says whether the line already gave up a decoration run
+// before the key. Leading runs come off repeatedly — in "`STATUS:` `done`" the
+// first closes the key and the second opens the value — and each one counts as
+// an opener. One trailing run comes off only if the line produced an opener
+// somewhere, which is what leaves a line that carried no decoration at all
+// byte-identical to what it has always recorded.
+func cleanTrailerValue(rest string, opener bool) string {
+	value := strings.TrimSpace(rest)
+	for {
+		cut, found := cutDecorationRun(value)
+		if !found {
+			break
+		}
+		value = strings.TrimLeft(cut, trailerSpace)
+		opener = true
+	}
+	if opener {
+		value = strings.TrimRight(value, trailerDecoration)
+	}
+	return strings.TrimSpace(value)
 }
 
 // recordTask writes one implementer's digest (spec §7.4 step 3). A stale

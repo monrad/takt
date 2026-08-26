@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 2,
+  "status": "done",
+  "summary": "The §5.1 `takt record --task N` row now describes the tolerant trailer parse, naming decorated trailers, bold/italic/backtick decoration, the uppercase-and-anchored key rule, and the opener-gated trailing strip, while keeping its stale-attempt sentence and single-row shape.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-26T17:47:39.654120174Z"
+}

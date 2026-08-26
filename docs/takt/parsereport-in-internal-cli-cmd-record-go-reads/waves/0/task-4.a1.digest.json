@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Amended the §5.1 `takt record --task N` row in docs/superpowers/specs/2026-08-24-takt-design.md to describe the tolerant STATUS/SUMMARY/BLOCKERS trailer parse (markers, decoration, uppercase-anchored keys, opener-gated trailing strip), keeping the existing stale-attempt sentence, as a single row.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-26T17:39:15.861412931Z"
+}

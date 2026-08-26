@@ -30,13 +30,22 @@
     {
       "id": 1,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/cmd_record.go",
         "internal/cli/cmd_record_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "parseReport now strips leading markers and decoration runs before matching the exact uppercase keys, with a tolerant grammar in unexported helpers and a new internal test file that proves the whole cross-product, the marker boundaries, the opener rule and the must-not-match set.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-26T17:42:35.978434237Z"
+      }
     },
     {
       "id": 2,
@@ -51,26 +60,54 @@
     {
       "id": 3,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "agents/implementer.md",
         "hosts/copilot/agents/takt-implementer.agent.md"
       ],
       "class": "docs",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Extended the report-contract sentence in agents/implementer.md's Rules paragraph to state the trailer tolerance (plain/decorated/marker wording), and regenerated hosts/copilot/agents/takt-implementer.agent.md via `go run ./internal/tools/hostgen`, which passes `--check`.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-26T17:38:38.405337819Z"
+      }
     },
     {
       "id": 4,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "docs/superpowers/specs/2026-08-24-takt-design.md"
       ],
       "class": "docs",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 4,
+        "attempt": 2,
+        "status": "done",
+        "summary": "The §5.1 `takt record --task N` row now describes the tolerant trailer parse, naming decorated trailers, bold/italic/backtick decoration, the uppercase-and-anchored key rule, and the opener-gated trailing strip, while keeping its stale-attempt sentence and single-row shape.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-26T17:47:39.654120174Z"
+      }
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 0,
+    "slice": 1,
+    "attempt": 2,
+    "started_at": "2026-08-26T17:44:13.496979593Z",
+    "session_id": "f86e54d4-434a-4339-aacb-39eb1ede0776",
+    "tasks": [
+      4
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
