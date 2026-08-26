@@ -115,9 +115,13 @@ homebrew_casks:
       owner: monrad
       name: homebrew-tap
       branch: main
-      # `index .Env` for the same reason skip_upload below uses it: an unset
-      # variable is "" rather than a template error.
-      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
+      # goreleaser >= 2.18 accepts only the plain `{{ .Env.VAR }}` form here
+      # (no `index`, no interpolation) so a token is never assembled from
+      # text. An unset variable is a template error, which is why the
+      # release workflow always sets it (empty when the secret is missing);
+      # a local snapshot never evaluates it (publishing is skipped first).
+      # skip_upload below still decides whether the cask is pushed.
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Casks
     homepage: https://github.com/monrad/takt
     description: Resumable brainstorm-plan-execute workflow with a deterministic Go core
