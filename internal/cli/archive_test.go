@@ -377,6 +377,21 @@ func TestBranchFinishDiscardCopiesTheBundle(t *testing.T) {
 	}
 }
 
+// refusesDisposition checks that a branch_finish choice this run does not
+// offer is still refused when it is asked for by hand, with a reason
+// containing want.
+func refusesDisposition(t *testing.T, d *driver, choice, want string) {
+	t.Helper()
+	args := []string{"answer", "--gate", "branch_finish", "--choice", choice, "--slug", "demo"}
+	if choice == "discard" {
+		args = append(args, "--confirm", "demo")
+	}
+	code, _, errb := d.cmd(args...)
+	if code == 0 || !strings.Contains(errb, want) {
+		t.Fatalf("%s must be refused with a reason naming %q: %d %s", choice, want, code, errb)
+	}
+}
+
 // TestBranchFinishAdoptedOffersPrAndKeepOnly covers the adopted branch: takt
 // created neither the branch nor its history, so it never merges, deletes or
 // discards it — only pr and keep are on the table, and the archive leaves the
@@ -405,6 +420,12 @@ func TestBranchFinishAdoptedOffersPrAndKeepOnly(t *testing.T) {
 	opts := optionsByChoice(o)
 	if len(opts) != 2 || opts["pr"] == nil || opts["keep"] == nil {
 		t.Fatalf("an adopted branch offers exactly pr and keep: %v", o["options"])
+	}
+	// The two it does not offer are still refused if asked for by hand, and
+	// each names the one reason an adopted run has — which is written once,
+	// not once per option (review M9).
+	for _, choice := range []string{"merge", "discard"} {
+		refusesDisposition(t, d, choice, "adopted branch feature")
 	}
 	if code, _, errb = d.cmd("answer", "--gate", "branch_finish", "--choice", "pr", "--slug", "demo"); code != 0 {
 		t.Fatal(errb)

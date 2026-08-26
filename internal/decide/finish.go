@@ -30,9 +30,8 @@ type FinishFacts struct {
 	Disposition    string // "" until branch_finish is answered
 	PRPushed       bool
 	MergeAllowed   bool
-	MergeBlocked   string // reason when !MergeAllowed
+	MergeBlocked   string // reason when !MergeAllowed, and the reason discard is blocked too
 	DiscardAllowed bool
-	DiscardBlocked string
 }
 
 const verifyTimeoutS = 900
@@ -96,6 +95,6 @@ func branchFinishContext(st *bundle.State, fin FinishFacts) map[string]any {
 	return map[string]any{
 		ctxSlug: st.Slug, "branch": st.Branch, "base": st.Base, "adopted": st.BranchAdopted,
 		"merge_allowed": fin.MergeAllowed, "merge_blocked": fin.MergeBlocked,
-		"discard_allowed": fin.DiscardAllowed, "discard_blocked": fin.DiscardBlocked,
+		"discard_allowed": fin.DiscardAllowed,
 	}
 }

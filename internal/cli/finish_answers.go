@@ -173,7 +173,9 @@ func answerBranchFinish(ctx context.Context, tgt *runTarget, choice, reason, con
 			return false, err
 		}
 		if !df.DiscardAllowed {
-			return false, errorf("discard is not available: %s", df.DiscardBlocked)
+			// Only an adopted branch blocks discard, and that reason is
+			// written once, on MergeBlocked (see gatherDispositionFacts).
+			return false, errorf("discard is not available: %s", df.MergeBlocked)
 		}
 		if confirm != tgt.slug {
 			return false, errorf("discard requires --confirm %s", tgt.slug)

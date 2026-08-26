@@ -100,19 +100,23 @@ func gatherFinishFacts(ctx context.Context, ws *workspace, bdir string, st *bund
 		return fin, err
 	}
 	fin.MergeAllowed, fin.MergeBlocked = df.MergeAllowed, df.MergeBlocked
-	fin.DiscardAllowed, fin.DiscardBlocked = df.DiscardAllowed, df.DiscardBlocked
+	fin.DiscardAllowed = df.DiscardAllowed
 	return fin, nil
 }
 
 // dispositionFacts is what branch_finish may offer (spec §7.5 step 4).
-// Every unavailable option carries its reason: the question renders the
-// blocked string verbatim under the greyed-out option, so an empty one is a
-// disabled choice with no explanation.
+// An unavailable option needs its reason — the question renders the blocked
+// string verbatim under the greyed-out option, so an empty one is a disabled
+// choice with no explanation — but there is one reason field, not one per
+// option. Merge is the only choice a run can lose on its own (a primary
+// worktree that has moved or gone dirty), and the single thing that blocks
+// discard, an adopted branch, blocks merge with the very same sentence. A
+// second copy of it could never be rendered anyway: an adopted run is
+// offered pr and keep alone (review M9).
 type dispositionFacts struct {
 	MergeAllowed   bool
 	MergeBlocked   string
 	DiscardAllowed bool
-	DiscardBlocked string
 	Primary        gitx.Worktree
 }
 
@@ -123,8 +127,9 @@ type dispositionFacts struct {
 func gatherDispositionFacts(ctx context.Context, ws *workspace, st *bundle.State) (dispositionFacts, error) {
 	var f dispositionFacts
 	if st.BranchAdopted {
+		// takt created neither the branch nor its history, so neither
+		// destructive choice is takt's to take, and both report this.
 		f.MergeBlocked = "the run adopted branch " + st.Branch + "; integrate it yourself"
-		f.DiscardBlocked = f.MergeBlocked
 		return f, nil
 	}
 	f.DiscardAllowed = true
