@@ -54,8 +54,9 @@ rule, `STATUS:done`, every must-not-match row asserting empty fields, the blunt
 the undecorated regression, and the marker boundaries that separate the grammar from a
 plausible misreading of it: `--` and `>>` are not markers (so those lines do not match
 at all), a tab satisfies the marker whitespace, an ordered marker is ASCII digits with
-no sign, and `**` reaches the key through the decoration path rather than the marker
-one. Scoped as one task because the tests are the only thing
+no sign, and `** STATUS: done` does not match at all — `**` is not a marker, and
+stripping it as decoration leaves the key behind a space, unanchored. The adjacent
+`**STATUS: done` is the decoration-path case. Scoped as one task because the tests are the only thing
 that can make the verify fail-before/pass-after, and the two files are one change.
 It carries the repo gates (`go test -race ./...`, `golangci-lint run ./...`) and G6 —
 though task 2 touches Go code afterwards and repeats them, so the final assembled state
