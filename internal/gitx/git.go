@@ -324,9 +324,9 @@ func (r *Repo) CommonDir(ctx context.Context) (string, error) {
 // literal path, so escaping it is the caller's business. A path holding a
 // glob metacharacter (`*`, `?`, `[`) would match more than itself, and one
 // opening with `#` or `!` would be read as a comment or a negation. takt's
-// only caller ([excludeLogsDir] in internal/cli) builds the pattern from a
-// bundle slug, which [bundle.ValidSlug] holds to [a-z0-9-], so the only way
-// to reach any of them is a `--dir` naming such a directory.
+// only caller — excludeLogsDir in internal/cli — builds the pattern from a
+// bundle slug, which bundle.ValidSlug holds to a-z, 0-9 and `-`, so the only
+// way to reach any of them is a `--dir` naming such a directory.
 func (r *Repo) EnsureExclude(ctx context.Context, lines ...string) error {
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {

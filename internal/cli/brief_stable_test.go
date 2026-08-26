@@ -11,7 +11,7 @@ import (
 // TestReuseBriefTokenFallsBackWhenTheRenderRefusesTheOldToken pins the one
 // fallback that is not a missing file: the brief on disk carries a token,
 // but the content has since grown that very token — a rejected agent reply
-// quoted back on a retry is the way it happens — so [brief.Quote] refuses to
+// quoted back on a retry is the way it happens — so brief.Quote refuses to
 // delimit with it and the re-render fails. Reusing it anyway would hand the
 // agent a brief whose END marker sits in the middle of the data, so the
 // helper reports no reuse and writeStableBrief writes its fresh-token render
