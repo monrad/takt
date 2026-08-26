@@ -28,14 +28,15 @@
     {
       "id": 2,
       "title": "Prove --status/--summary/--blockers beat the parsed trailer",
-      "description": "Add TestRecordFlagsBeatParsedTrailer to internal/cli/execute_test.go, using the file's existing fixtures (executeRun, runIn): write a report file whose trailer reads 'STATUS: failed\\nSUMMARY: parsed summary\\nBLOCKERS: parsed blocker\\n', then run record --task 1 --attempt 1 --from <file> --status done --summary s --blockers none --slug demo, and assert the recorded digest carries status done, summary s and blockers none \u2014 read waves/0/task-1.a1.digest.json under the bundle dir (the digestPath layout, cf. sliceRecord's use of the wave dir) or the task's LastDigest via bundle.LoadState. This pins the cmp.Or override half of the record contract, which no test exercises today (the record helper always trusts --from). Do not modify the existing record/recordReport helpers or any existing test.",
+      "description": "Add TestRecordFlagsBeatParsedTrailer to internal/cli/execute_test.go, using the file's existing fixtures (executeRun, runIn): write a report file whose trailer reads 'STATUS: failed\\nSUMMARY: parsed summary\\nBLOCKERS: parsed blocker\\n', then run record --task 1 --attempt 1 --from <file> --status done --summary s --blockers none --slug demo, and assert the recorded digest carries status done, summary s and blockers none \u2014 read waves/0/task-1.a1.digest.json under the bundle dir (the digestPath layout, cf. sliceRecord's use of the wave dir) or the task's LastDigest via bundle.LoadState. This pins the cmp.Or override half of the record contract, which no test exercises today (the record helper always trusts --from). Do not modify the existing record/recordReport helpers or any existing test. Setup order matters: executeRun leaves ActiveWave unset, so record would fail with \"task 1 is not in the active wave\" \u2014 dispatch wave 0 first with the shared next helper (next(t, root, nil), internal/cli/cmd_next_test.go:65), as TestWaveLaunchCloseAndCommit does, so ActiveWave covers task 1 attempt 1 before the record call. This task is the last one to touch Go code, so it carries the terminal repo gates (go test -race ./..., golangci-lint run ./...) over the assembled change: task 1's copies of them run before this file is edited and cannot cover it.",
       "files": [
         "internal/cli/execute_test.go"
       ],
       "verify": [
         "grep -q 'TestRecordFlagsBeatParsedTrailer' internal/cli/execute_test.go",
         "go test -race -run TestRecordFlagsBeatParsedTrailer ./internal/cli/",
-        "go test -race ./internal/cli/..."
+        "go test -race ./...",
+        "golangci-lint run ./..."
       ],
       "depends_on": [
         1

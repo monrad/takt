@@ -53,8 +53,9 @@ rule, `STATUS:done`, every must-not-match row asserting empty fields, the blunt
 `**SUMMARY: fixed *parseReport***` case, the whole-message last-occurrence case, and
 the undecorated regression. Scoped as one task because the tests are the only thing
 that can make the verify fail-before/pass-after, and the two files are one change.
-This task alone touches Go code, so it carries the repo gates (`go test -race ./...`,
-`golangci-lint run ./...`) and G6.
+It carries the repo gates (`go test -race ./...`, `golangci-lint run ./...`) and G6 —
+though task 2 touches Go code afterwards and repeats them, so the final assembled state
+is gated too.
 
 ## Task 2 — Flag overrides beat the parsed trailer (test)
 
@@ -68,6 +69,16 @@ the flags ahead of parsed values. Class `test` is right by definition — it tes
 existing `cmp.Or` override path, which this run does not change. It depends on task 1
 not because files overlap but because its verify compiles and runs the package task 1
 is rewriting; sequencing avoids a flaky shared-worktree wave.
+
+Two things the task must get right. `executeRun` builds its fixture with tasks and a
+phase but no `ActiveWave`, so a bare `record` is rejected with "task 1 is not in the
+active wave" — wave 0 has to be dispatched first through the shared `next` helper
+(`internal/cli/cmd_next_test.go:65`), the way `TestWaveLaunchCloseAndCommit` does. And
+because this is the *last* task to touch Go code, it — not task 1 — is where the
+repository gates belong: task 1's `go test -race ./...` and `golangci-lint run ./...`
+run before `execute_test.go` is edited and therefore cannot cover the assembled change.
+Task 1 keeps its copies (it must be green on its own), and task 2 repeats them as the
+terminal check.
 
 ## Task 3 — State the tolerance in the implementer contract; regenerate the Copilot agent (docs)
 
