@@ -2,10 +2,12 @@ package decide
 
 import "github.com/monrad/takt/internal/op"
 
-// Run-step and stop-reason names used at the run(...)/stop(...) call sites
-// in decide.go/finish.go and returned by Vocab below — the same identifiers
-// at both ends is the compile-time tie: renaming or dropping one without
-// touching the other fails the build, not just a silently stale prompt.
+// Stop-reason names used at the stop(...) call sites in decide.go and
+// returned by Vocab below — the same identifiers at both ends is the
+// compile-time tie: renaming or dropping one without touching the other
+// fails the build, not just a silently stale prompt. The run steps that used
+// to share this block moved to [op.Steps] once `takt done --step` and next's
+// run-op builder came to spell them too.
 const (
 	reasonWaveInFlight = "wave_in_flight"
 	reasonArchived     = "archived"

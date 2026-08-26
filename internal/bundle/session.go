@@ -52,10 +52,12 @@ func ReadSession(bundleDir string) (*Session, error) {
 }
 
 // WriteSession records the holder atomically. [WriteJSONAtomic] creates
-// logs/ when init has not (an external bundle dir gets no .gitignore, and
-// needs none). A holder with no id is refused rather than written: it is
-// the one shape [ReadSession] rejects, so writing it would leave a lock
-// nothing but `takt unlock` could clear.
+// logs/ when it is not there: every writer of the sidecar puts the ignore
+// rule in first, but a bundle whose untracked area was never created — one
+// restored from a clone, or from a checkout that predates it — reaches this
+// with no directory to write into. A holder with no id is refused rather
+// than written: it is the one shape [ReadSession] rejects, so writing it
+// would leave a lock nothing but `takt unlock` could clear.
 func WriteSession(bundleDir string, s *Session) error {
 	if s == nil || s.ID == "" {
 		return errors.New("session: empty holder id")
