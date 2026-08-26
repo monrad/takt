@@ -243,14 +243,35 @@ func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 }
 
 // revised reports whether the newest gate_revision_accepted event for gate
-// was taken at a hash the artifacts have since moved away from.
+// is still pending — not answered by a later review — and was taken at a
+// hash the artifacts have since moved away from.
+//
+// A gate_reviewed event for the same gate clears the pending revision,
+// because a later review answers it: the reviewer has now judged the text
+// the revision produced. Without that, the first non-blocking revise a run
+// took would satisfy the gate forever — every later verdict, a reject or a
+// blocking rework included, could be dismissed by answering revise and
+// editing anything, and the scoped confirming pass a blocking finding is
+// supposed to buy would never run.
+//
+// Neither designed flow changes. The ordinary one records gate_reviewed
+// before gate_revision_accepted, so the review clears nothing and the
+// revision is still pending at the next hash; a blocking rework writes no
+// revision event at all, so there is nothing to clear.
 func revised(events []bundle.Event, gate, cur string) bool {
 	at, found := "", false
 	for _, e := range events {
 		g, gok := eventString(e, "gate")
-		h, hok := eventString(e, "hash")
-		if e.Type == EvRevisionAccepted && gok && g == gate && hok {
-			at, found = h, true
+		if !gok || g != gate {
+			continue
+		}
+		switch e.Type {
+		case EvRevisionAccepted:
+			if h, hok := eventString(e, "hash"); hok {
+				at, found = h, true
+			}
+		case EvReviewed:
+			at, found = "", false
 		}
 	}
 	return found && at != cur

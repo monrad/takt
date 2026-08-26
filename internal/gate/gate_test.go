@@ -263,6 +263,55 @@ func TestNewestRevisionEventWins(t *testing.T) {
 	}
 }
 
+func reviewedAt(g, hash string) bundle.Event {
+	return bundle.Event{
+		Type: gate.EvReviewed,
+		Data: map[string]any{"gate": g, "hash": hash},
+	}
+}
+
+// TestALaterReviewClearsAPendingRevision: a gate_revision_accepted event is
+// answered by the next review of the same gate and must not outlive it.
+// Before this, the first non-blocking revise a run took satisfied the spec
+// gate forever — the probe that found it ran a deliberate `takt review spec
+// --force` after revising, got a blocking rework back, answered revise again
+// and edited anything at all, and the stale first event closed the gate
+// instead of letting the scoped confirming pass run.
+func TestALaterReviewClearsAPendingRevision(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec v1\n")
+	// The ordinary flow: reviewed at H1, revise answered at H1, spec edited.
+	ordinary := []bundle.Event{reviewedAt(gate.Spec, h1), revisionAt(h1)}
+	h2 := specAt(t, dir, "# spec v2\n")
+	s, err := gate.Compute(dir, gate.Spec, ordinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Satisfied || s.Verdict != gate.VerdictRevised {
+		t.Fatalf("a revision recorded after its own review must still close on the edit: %+v", s)
+	}
+	// Now a second review intervenes at H2 and the user edits again.
+	answered := append(append([]bundle.Event(nil), ordinary...), reviewedAt(gate.Spec, h2))
+	specAt(t, dir, "# spec v3\n")
+	s, err = gate.Compute(dir, gate.Spec, answered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Satisfied {
+		t.Fatalf("a revision a later review answered must not satisfy the gate again: %+v", s)
+	}
+	// A review of the *other* gate answers nothing here.
+	other := append(append([]bundle.Event(nil), ordinary...), reviewedAt(gate.Plan, h2))
+	s, err = gate.Compute(dir, gate.Spec, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Satisfied || s.Verdict != gate.VerdictRevised {
+		t.Fatalf("only a review of this gate answers its revision: %+v", s)
+	}
+}
+
 func TestRevisionEventForOneGateDoesNotSatisfyTheOther(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
