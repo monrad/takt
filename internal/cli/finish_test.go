@@ -668,3 +668,62 @@ func TestAllAchievedGoalsRecordWithoutItsStateWriteIsHealed(t *testing.T) {
 		t.Fatal("the repair must be on the event log")
 	}
 }
+
+// TestFinishCommandsRefuseOutsideTheFinishPhase covers review M2. The finish
+// verbs are run by a session, not by takt, so a stale op or a hand-typed
+// command can reach one while the run is still building — and all three
+// refuse in the shape `takt verify` already used, so the session learns it
+// once.
+func TestFinishCommandsRefuseOutsideTheFinishPhase(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRunWith(t, "--no-goals")
+	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"}}
+	reached := false
+	for range 40 {
+		o := d.nextOp()
+		st, err := bundle.LoadState(bdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Phase == bundle.PhaseExecute {
+			reached = true
+			break
+		}
+		if reason, stopped := d.step(o); stopped {
+			t.Fatalf("the run stopped (%s) before execute: %v", reason, d.ops)
+		}
+	}
+	if !reached {
+		t.Fatalf("never reached execute: %v", d.ops)
+	}
+	msg := d.message("```json\n[{\"id\":\"G1\",\"verdict\":\"achieved\",\"evidence\":\"x\"}]\n```\n")
+	testutil.WriteFile(t, root, "docs/takt/demo/retro.md", "# Retro\n\ntoo early\n")
+	for _, c := range []struct {
+		what string
+		args []string
+	}{
+		{"verify", []string{"verify", "--slug", "demo"}},
+		{"record --agent goal-assessor", []string{"record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo"}},
+		{"done --step retro", []string{"done", "--step", "retro", "--slug", "demo"}},
+	} {
+		code, _, errb := d.cmd(c.args...)
+		if code != 1 {
+			t.Fatalf("%s must be refused in execute: exit %d", c.what, code)
+		}
+		if !strings.Contains(errb, c.what+" runs in the finish phase (now execute)") ||
+			!strings.Contains(errb, "takt next") {
+			t.Fatalf("%s: %s", c.what, errb)
+		}
+	}
+	// Nothing of the refused work may have happened.
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.VerifiedSHA != nil || st.GoalsCheckedSHA != nil {
+		t.Fatalf("%+v", st)
+	}
+	if countEvents(t, bdir, "retro") != 0 || countEvents(t, bdir, "verify") != 0 {
+		t.Fatal("a refused command must leave no receipt")
+	}
+}

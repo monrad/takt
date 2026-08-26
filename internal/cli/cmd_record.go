@@ -90,6 +90,9 @@ func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
 // goals.md and either checks the goals at HEAD or leaves the unmet list
 // for the goals_unmet gate.
 func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int {
+	if code := finishPhaseOnly(env, tgt.st, "record --agent goal-assessor"); code != 0 {
+		return code
+	}
 	vs, problems, code := readVerdicts(env, tgt.bdir, from)
 	if code != 0 {
 		return code

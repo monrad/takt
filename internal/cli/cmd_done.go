@@ -87,7 +87,7 @@ func doneStepWork(env Env, tgt *runTarget, step, prURL string) int {
 	case stepGoals:
 		return doneGoals(env, tgt.bdir, tgt.st)
 	case stepRetro:
-		return doneRetro(env, tgt.bdir)
+		return doneRetro(env, tgt)
 	case stepPushPR:
 		return donePushPR(env, tgt, prURL)
 	}
@@ -186,12 +186,18 @@ func doneGoals(env Env, bdir string, st *bundle.State) int {
 }
 
 // doneRetro records the retrospective the session wrote (spec §7.5 step 3).
-func doneRetro(env Env, bdir string) int {
-	if !fileNonEmpty(filepath.Join(bdir, "retro.md")) {
-		return fail(env.Stderr, exitError, "retro.md is missing or empty",
-			"write the retrospective to "+filepath.Join(bdir, "retro.md")+" first")
+// The phase is checked before the file, so a session that runs this early is
+// told what is actually wrong rather than being sent to write a
+// retrospective row 22 has not asked for yet (review M2).
+func doneRetro(env Env, tgt *runTarget) int {
+	if code := finishPhaseOnly(env, tgt.st, "done --step "+stepRetro); code != 0 {
+		return code
 	}
-	_ = bundle.AppendEvent(bdir, stepRetro, map[string]any{keyHash: artifactHash(bdir, "retro.md")})
+	if !fileNonEmpty(filepath.Join(tgt.bdir, "retro.md")) {
+		return fail(env.Stderr, exitError, "retro.md is missing or empty",
+			"write the retrospective to "+filepath.Join(tgt.bdir, "retro.md")+" first")
+	}
+	_ = bundle.AppendEvent(tgt.bdir, stepRetro, map[string]any{keyHash: artifactHash(tgt.bdir, "retro.md")})
 	return 0
 }
 

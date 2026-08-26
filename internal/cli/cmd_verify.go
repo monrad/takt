@@ -31,15 +31,30 @@ func cmdVerify(env Env) int {
 	if code != 0 {
 		return code
 	}
-	if tgt.st.Phase != bundle.PhaseFinish {
-		return fail(env.Stderr, exitError,
-			"verify runs in the finish phase (now "+tgt.st.Phase+")", "run `takt next`")
+	if code = finishPhaseOnly(env, tgt.st, "verify"); code != 0 {
+		return code
 	}
 	rec, err := verifyAtHead(ctx, tgt)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	return printJSON(env, verifyJSON(*rec))
+}
+
+// finishPhaseOnly refuses a finish-phase command outside that phase. The
+// finish verbs are driven by a session, not by takt, so a stale op or a
+// hand-typed command can reach one early — and half-doing the work is worse
+// than saying no: `verify` would record a verification of a HEAD the run has
+// not finished at, `record --agent goal-assessor` would check goals against
+// a tree still being built, and `done --step retro` would take a receipt row
+// 22 has not asked for. All three refuse in the one shape, so a session
+// learns it once (review M2, spec §5.1).
+func finishPhaseOnly(env Env, st *bundle.State, what string) int {
+	if st.Phase == bundle.PhaseFinish {
+		return 0
+	}
+	return fail(env.Stderr, exitError,
+		what+" runs in the finish phase (now "+st.Phase+")", "run `takt next`")
 }
 
 // verifyAtHead assembles the command union, runs it from the repo root and
