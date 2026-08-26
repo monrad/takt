@@ -92,36 +92,34 @@ func cmdNext(env Env) int {
 	return r.loop(ctx)
 }
 
-// acquireLock refreshes or takes the advisory lock; a live other session
-// yields the owner ask (not persisted — it is transient). A holder that
-// recorded generated=true is not a live session: nothing persisted its id,
-// so it can never present it again and must not hold the run for a whole
-// lock_ttl. That is read off the holder's own record, never guessed from
-// the shape of its id (spec §4.6, review finding 1).
+// acquireLock refreshes or takes the advisory lock recorded in the bundle's
+// untracked logs/session.json; a live other session yields the owner ask
+// (transient, not persisted). A holder that recorded generated=true is not a
+// live session — nothing persisted its id, so it can never present it again
+// — and is taken over silently; that is read off the holder's own record,
+// never guessed from the shape of its id (spec §4.6, review finding 1).
+// Every other outcome rewrites the sidecar with a fresh heartbeat: it is
+// untracked, so the write neither dirties the worktree nor rides into a
+// commit, and there is no lease to nurse.
 func (r *nextRun) acquireLock() (int, bool) {
 	host, _ := os.Hostname()
 	who := bundle.Identity{ID: r.session, Host: host, Generated: r.genID}
-	prev := r.st.Session
-	orphaned := prev != nil && prev.ID != r.session && prev.Generated
-	outcome := bundle.Acquire(r.st, who, r.now, time.Duration(r.ws.Cfg.LockTTL), r.force || orphaned)
+	held, err := bundle.ReadSession(r.bdir)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(),
+			"the lock file cannot be read; run `takt unlock --slug "+r.slug+"` to discard it"), true
+	}
+	orphaned := held != nil && held.ID != r.session && held.Generated
+	outcome, next := bundle.Acquire(held, who, r.now, time.Duration(r.ws.Cfg.LockTTL), r.force || orphaned)
 	if outcome == bundle.LockBlocked {
 		q := decide.Question("owner", map[string]any{
-			keySlug: r.slug, "holder": r.st.Session.ID, "host": r.st.Session.Host,
-			"heartbeat": r.st.Session.Heartbeat.Format(time.RFC3339),
+			keySlug: r.slug, "holder": held.ID, "host": held.Host,
+			"heartbeat": held.Heartbeat.Format(time.RFC3339),
 		})
 		return printOp(r.env, q), true
 	}
-	// LockKept means the refreshed heartbeat is not worth a write of its
-	// own: this session already holds the lock and the recorded heartbeat is
-	// still current. Saving anyway would rewrite state.json — a tracked file
-	// — on every `takt next`, so a call that only reads the run (a repeated
-	// op, a `stop`) would leave the worktree dirty with nothing to commit.
-	// The refreshed heartbeat is still in r.st, so any later write in this
-	// call — a launch, a transition, a gate — carries it.
-	if outcome != bundle.LockKept {
-		if err := bundle.SaveState(r.bdir, r.st); err != nil {
-			return fail(r.env.Stderr, exitError, err.Error(), ""), true
-		}
+	if err = bundle.WriteSession(r.bdir, next); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
 	// Every takeover is recorded: an expired heartbeat, an explicit --force,
 	// and the silent takeover of a holder that recorded generated=true and
@@ -132,11 +130,11 @@ func (r *nextRun) acquireLock() (int, bool) {
 	switch {
 	case outcome == bundle.LockStolen, outcome == bundle.LockForced && r.force:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
-			"session": r.session, "outcome": string(outcome),
+			keySession: r.session, "outcome": string(outcome),
 		})
 	case outcome == bundle.LockForced && orphaned:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
-			"session": r.session, "outcome": string(outcome), keyReason: "orphaned",
+			keySession: r.session, "outcome": string(outcome), keyReason: "orphaned",
 		})
 	}
 	return 0, false

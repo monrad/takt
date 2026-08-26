@@ -592,8 +592,11 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Phase != bundle.PhaseArchived || st.ActiveWave != nil || st.Session != nil {
-		t.Fatalf("phase=%s active=%+v session=%+v", st.Phase, st.ActiveWave, st.Session)
+	if st.Phase != bundle.PhaseArchived || st.ActiveWave != nil {
+		t.Fatalf("phase=%s active=%+v", st.Phase, st.ActiveWave)
+	}
+	if sess, serr := bundle.ReadSession(bdir); serr != nil || sess != nil {
+		t.Fatalf("an archived run holds no session: %+v %v", sess, serr)
 	}
 	if st.VerifiedSHA == nil || st.GoalsCheckedSHA == nil {
 		t.Fatalf("the run must be verified and its goals checked: %v %v", st.VerifiedSHA, st.GoalsCheckedSHA)

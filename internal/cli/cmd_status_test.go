@@ -207,3 +207,31 @@ func TestStatusShowsFinishBlock(t *testing.T) {
 		t.Fatalf("execute phase must have no finish key: %v", got2)
 	}
 }
+
+// TestStatusShowsTheSessionHolder covers the status surface of the sidecar
+// (spec §11): who holds the run and how long ago they last called, read from
+// logs/session.json rather than from state.json, and `none` once the lock is
+// released.
+func TestStatusShowsTheSessionHolder(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	next(t, root, map[string]string{"TAKT_SESSION": "S"})
+	c, r, e := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if c != 0 {
+		t.Fatal(e)
+	}
+	sess, _ := r["session"].(map[string]any)
+	if sess["id"] != "S" || sess["host"] == "" || sess["heartbeat"] == nil || sess["age"] == nil {
+		t.Fatalf("session block: %v", r["session"])
+	}
+	if out := statusText(t, root); !strings.Contains(out, "session: S@") {
+		t.Fatalf("text status must name the holder:\n%s", out)
+	}
+	runIn(t, root, nil, "unlock", "--slug", "demo")
+	if _, r, _ = runIn(t, root, nil, "status", "--json", "--slug", "demo"); r["session"] != nil {
+		t.Fatalf("a free run has session null: %v", r["session"])
+	}
+	if out := statusText(t, root); !strings.Contains(out, "session: none") {
+		t.Fatalf("text status after unlock:\n%s", out)
+	}
+}

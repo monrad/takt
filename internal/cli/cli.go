@@ -51,6 +51,7 @@ const (
 	keyHash          = "hash"
 	keyCount         = "count"
 	keyGoals         = "goals"
+	keySession       = "session"
 	keyProblems      = "problems"
 	keyMode          = "mode"
 	keyValid         = "valid"

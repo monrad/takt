@@ -22,12 +22,15 @@ func cmdUnlock(env Env) int {
 	if code != 0 {
 		return code
 	}
+	// A lock file that cannot be read is exactly what unlock exists to
+	// discard, so the read error is ignored rather than fatal — the holder
+	// is simply unknown, and reported as "" (spec §4.6).
+	held, _ := bundle.ReadSession(tgt.bdir)
 	holder := ""
-	if tgt.st.Session != nil {
-		holder = tgt.st.Session.ID
+	if held != nil {
+		holder = held.ID
 	}
-	bundle.Release(tgt.st)
-	if err := bundle.SaveState(tgt.bdir, tgt.st); err != nil {
+	if err := bundle.ClearSession(tgt.bdir); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	_ = bundle.AppendEvent(tgt.bdir, "lock_released", map[string]any{"holder": holder, "by": "unlock"})

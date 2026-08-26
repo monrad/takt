@@ -80,8 +80,11 @@ func TestBranchFinishInPlainCheckoutDisablesMergeAndHandsOff(t *testing.T) {
 		t.Fatalf("%v", o)
 	}
 	st, _ := bundle.LoadState(bdir)
-	if st.Phase != bundle.PhaseArchived || st.Session != nil || st.Disposition == nil || !st.Disposition.Applied {
+	if st.Phase != bundle.PhaseArchived || st.Disposition == nil || !st.Disposition.Applied {
 		t.Fatalf("%+v", st)
+	}
+	if sess, err := bundle.ReadSession(bdir); err != nil || sess != nil {
+		t.Fatalf("archiving releases the run: %+v %v", sess, err)
 	}
 	if s := testutil.Git(t, d.root, "log", "-1", "--format=%s"); s != "takt(demo): archive" {
 		t.Fatalf("archive commit: %s", s)
@@ -115,6 +118,16 @@ func linkedWorktreeRun(t *testing.T) (*driver, string, map[string]any) {
 func linkedWorktreeRunFrom(t *testing.T, root string) (*driver, string, map[string]any) {
 	t.Helper()
 	testutil.Git(t, root, "checkout", "main")
+	// The bundle's untracked area — the session sidecar init wrote, and
+	// every reviewer log a run puts there — is ignored by
+	// docs/takt/demo/logs/.gitignore, and that rule lives on the run branch:
+	// checking the primary back out on main takes the rule away and leaves
+	// the files behind as untracked garbage. The run is driven from the
+	// linked worktree from here on, so the primary's copy is stale by
+	// definition, and merge needs the primary clean (spec §4.6, §7.5).
+	if err := os.RemoveAll(filepath.Join(root, "docs", "takt", "demo", "logs")); err != nil {
+		t.Fatal(err)
+	}
 	linked := filepath.Join(t.TempDir(), "wt")
 	testutil.Git(t, root, "worktree", "add", linked, "takt/demo")
 	d := &driver{

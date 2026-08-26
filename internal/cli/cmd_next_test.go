@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
@@ -563,22 +564,22 @@ func TestDoneLeavesUnrelatedStagedFilesAlone(t *testing.T) {
 	}
 }
 
-// TestNextLeavesTheTreeCleanWhenItOnlyHeartbeats covers the integration bug
-// Task 9's end-to-end test found: the session heartbeat lives in state.json,
-// which is tracked and committed, so stamping it on every `takt next` left a
+// TestNextLeavesTheTreeCleanAndRefreshesTheSidecarOnEveryCall covers the
+// invariant the untracked sidecar buys. The heartbeat used to live in
+// state.json — a tracked file — so stamping it on every `takt next` left a
 // modified state.json behind after any call that decided nothing and
-// committed nothing. A run whose last op was a `stop` therefore ended with a
-// dirty worktree, and the plan's acceptance test — which replays every op —
-// saw it. A call that changes nothing must now write nothing; the lock is
-// still refreshed, but only once the holder's own heartbeat has aged past
-// half the ttl (bundle.Acquire, LockKept).
-func TestNextLeavesTheTreeCleanWhenItOnlyHeartbeats(t *testing.T) {
+// committed nothing, and a run whose last op was a `stop` ended with a dirty
+// worktree. The holder now lives in logs/session.json, which logs/.gitignore
+// keeps out of git, so every call rewrites it with a fresh heartbeat and
+// still leaves the tracked bundle byte-identical (spec §4.6).
+func TestNextLeavesTheTreeCleanAndRefreshesTheSidecarOnEveryCall(t *testing.T) {
 	t.Parallel()
 	root, bdir := setupRun(t)
 	env := map[string]string{"TAKT_SESSION": "S"}
 	// The first next takes the lock over from the generated holder init left
-	// behind — a real change — and `done` commits the bundle, so the run
-	// starts this test with a clean tree.
+	// behind — a real change, recorded as a lock_taken event in the tracked
+	// events.jsonl — and `done` commits the bundle, so what follows is
+	// measured from a clean tree.
 	if code, o, errb := next(t, root, env); code != 0 || o["op"] != "run" {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
@@ -586,32 +587,70 @@ func TestNextLeavesTheTreeCleanWhenItOnlyHeartbeats(t *testing.T) {
 	if code, _, errb := runIn(t, root, env, "done", "--step", "brainstorm", "--slug", "demo"); code != 0 {
 		t.Fatal(errb)
 	}
-	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
-		t.Fatalf("precondition: %q", status)
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("precondition: %q", out)
 	}
-
-	before, err := os.ReadFile(filepath.Join(bdir, "state.json"))
+	first, err := bundle.ReadSession(bdir)
+	if err != nil || first == nil || first.ID != "S" {
+		t.Fatalf("holder after next: %+v %v", first, err)
+	}
+	before, err := os.ReadFile(bundle.StatePath(bdir))
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	time.Sleep(20 * time.Millisecond)
 	for range 3 {
 		if code, o, errb := next(t, root, env); code != 0 || o["step"] != "goals" {
 			t.Fatalf("%d %v %s", code, o, errb)
 		}
 	}
-	after, err := os.ReadFile(filepath.Join(bdir, "state.json"))
+	second, err := bundle.ReadSession(bdir)
+	if err != nil || second == nil || !second.Heartbeat.After(first.Heartbeat) {
+		t.Fatalf("every next refreshes the heartbeat: %v then %+v (%v)", first.Heartbeat, second, err)
+	}
+	after, err := os.ReadFile(bundle.StatePath(bdir))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(after) != string(before) {
 		t.Fatalf("a repeated next rewrote state.json:\n%s\n%s", before, after)
 	}
-	if status := testutil.Git(t, root, "status", "--porcelain"); status != "" {
-		t.Fatalf("repeating next dirtied the tree: %q", status)
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("the sidecar is untracked; tree must stay clean:\n%s", out)
 	}
-	// The lock is still held: keeping the heartbeat must not release the run.
+	// `git check-ignore -q <path>` exits 0 only when the path is ignored and
+	// testutil.Git fails the test on a non-zero exit, so the call itself is
+	// the assertion.
+	testutil.Git(t, root, "check-ignore", "-q", "docs/takt/demo/logs/session.json")
+	// The lock is still held: refreshing the heartbeat must not release the run.
 	if _, o, _ := next(t, root, map[string]string{"TAKT_SESSION": "B"}); o["gate"] != "owner" {
-		t.Fatalf("the kept lock must still hold the run: %v", o)
+		t.Fatalf("the refreshed lock must still hold the run: %v", o)
+	}
+}
+
+// TestNextRefusesAnUnreadableLockAndUnlockClearsIt covers the one reading
+// takt must never guess at: a lock file that exists but cannot be parsed is
+// not "free" — guessing free is how two sessions end up driving one bundle
+// (spec §4.6). `takt unlock` is the way out, and it deletes the file whether
+// or not it could be read.
+func TestNextRefusesAnUnreadableLockAndUnlockClearsIt(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	if err := os.WriteFile(bundle.SessionPath(bdir), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, _, e := runIn(t, root, nil, "next", "--slug", "demo"); c == 0 || !strings.Contains(e, "takt unlock") {
+		t.Fatalf("next on a corrupt lock: %d %s", c, e)
+	}
+	if c, r, e := runIn(t, root, nil, "unlock", "--slug", "demo"); c != 0 || r["released"] != "" {
+		t.Fatalf("unlock: %d %v %s", c, r, e)
+	}
+	if _, err := os.Stat(bundle.SessionPath(bdir)); !os.IsNotExist(err) {
+		t.Fatal("unlock must delete the sidecar")
+	}
+	if c, o, _ := next(t, root, nil); c != 0 || o["op"] != "run" {
+		t.Fatalf("next after unlock: %d %v", c, o)
 	}
 }
 

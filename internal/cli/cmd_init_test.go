@@ -47,13 +47,19 @@ func TestInitOnDefaultBranchCreatesRunBranch(t *testing.T) {
 	if b := testutil.Git(t, root, "rev-parse", "--abbrev-ref", "HEAD"); b != "takt/add-a-greeting" {
 		t.Fatalf("branch = %s", b)
 	}
-	st, err := bundle.LoadState(filepath.Join(root, "docs", "takt", "add-a-greeting"))
+	bdir := filepath.Join(root, "docs", "takt", "add-a-greeting")
+	st, err := bundle.LoadState(bdir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Phase != bundle.PhaseBrainstorm || st.Topic != "Add a greeting" || st.Config.MaxParallel != 8 ||
-		st.Session == nil {
+	if st.Phase != bundle.PhaseBrainstorm || st.Topic != "Add a greeting" || st.Config.MaxParallel != 8 {
 		t.Fatalf("state = %+v", st)
+	}
+	// init takes the lock the way every other call does: in the untracked
+	// sidecar, never in the state.json it is about to commit (spec §4.6).
+	sess, serr := bundle.ReadSession(bdir)
+	if serr != nil || sess == nil || sess.ID == "" || sess.Host == "" {
+		t.Fatalf("init must record the holder in logs/session.json: %+v %v", sess, serr)
 	}
 	if got["committed"] != true {
 		t.Fatal("in-repo bundle must be committed")

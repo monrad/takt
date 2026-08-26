@@ -18,7 +18,7 @@ var StaleWave = Check{Name: staleWaveCheckName, Run: func(_ context.Context, in 
 	}
 	age := in.Now.Sub(aw.StartedAt)
 	f.Message = fmt.Sprintf("wave %d attempt %d in flight for %s", aw.N, aw.Attempt, age.Round(time.Second))
-	dead := in.State.Session == nil || in.Now.Sub(in.State.Session.Heartbeat) > in.LockTTL
+	dead := in.Session == nil || in.Now.Sub(in.Session.Heartbeat) > in.LockTTL
 	if age > in.WaveStaleAfter && dead {
 		f.Level = levelWarn
 		f.Message += " and its session is gone"

@@ -25,10 +25,15 @@ type Finding struct {
 // repo-wide check's single Input{RepoRoot, Now} (Slug ""); per-bundle
 // checks get it too, copied from Options, though none currently use it.
 type Input struct {
-	Dir            bundle.Dir
-	Slug           string
-	BundleDir      string
-	State          *bundle.State
+	Dir       bundle.Dir
+	Slug      string
+	BundleDir string
+	State     *bundle.State
+	// Session is the run's recorded holder, read from the untracked
+	// logs/session.json (spec §4.6); nil when the run is free — and also
+	// when the file could not be read, which runBundle reports as its own
+	// WARN rather than passing a half-known holder to a check.
+	Session        *bundle.Session
 	ValidateOpts   plan.ValidateOpts
 	Now            time.Time
 	WaveStaleAfter time.Duration
@@ -56,6 +61,11 @@ const (
 	levelWarn  = "WARN"
 	levelError = "ERROR"
 )
+
+// sessionCheckName names the finding an unreadable logs/session.json
+// produces. It is not a [Check]: the sidecar is read once while the bundle
+// is loaded, not once per check (spec §4.6, §11).
+const sessionCheckName = "session"
 
 // Default is the check set every `takt doctor` run applies unless a caller
 // narrows it (plan 1 shipped state-schema and plan-disjoint; plan 2 adds the
@@ -155,18 +165,33 @@ func runBundle(ctx context.Context, dir bundle.Dir, slug string, o Options, chec
 			Fix: "restore state.json from git history; takt never repairs state silently",
 		}}
 	}
+	// The holder is read here rather than by a check, because every check
+	// that judges liveness needs it and only this function has the bundle
+	// dir. An unreadable file is neither a holder nor "free": it gets its
+	// own WARN and the checks see nil, so nothing downstream has to invent a
+	// reading takt refuses to make (spec §4.6, §11). Like the state-schema
+	// ERROR above, it is reported even for an archived bundle the caller did
+	// not ask for with --all — a lock nobody can parse is fixable, and the
+	// fix is named.
+	sess, serr := bundle.ReadSession(bdir)
+	var out []Finding
+	if serr != nil {
+		out = append(out, Finding{
+			Level: levelWarn, Check: sessionCheckName, Slug: slug, Message: serr.Error(),
+			Fix: "run `takt unlock --slug " + slug + "` to discard the unreadable lock",
+		})
+	}
 	in := Input{
-		Dir: dir, Slug: slug, BundleDir: bdir, State: st, ValidateOpts: o.ValidateOpts(bdir),
+		Dir: dir, Slug: slug, BundleDir: bdir, State: st, Session: sess, ValidateOpts: o.ValidateOpts(bdir),
 		Now: o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL, RepoRoot: o.RepoRoot,
 		CurrentBranch: o.CurrentBranch, Resolve: o.Resolve, Dirty: o.Dirty,
 	}
 	if st.Phase == bundle.PhaseArchived && !o.All {
 		checks = archivedChecks(in, checks)
 		if len(checks) == 0 {
-			return nil
+			return out
 		}
 	}
-	var out []Finding
 	for _, c := range checks {
 		out = append(out, c.Run(ctx, in)...)
 	}

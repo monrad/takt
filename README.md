@@ -115,6 +115,10 @@ it for an archived run — the plugin asks which run before the first such call 
 `takt doctor` is the exception: it judges every bundle in the workspace at once and takes no `--slug` at
 all.
 
+The advisory session lock lives in `docs/takt/<slug>/logs/session.json` (untracked, refreshed on every
+`takt next`). Two live sessions on one run get the owner question; a stale or unreadable lock is cleared
+with `takt unlock`.
+
 The run bundle lives at `<dir>/<slug>/` in the repository, where `<dir>` defaults to `docs/takt` (see `dir`
 below) — a relative `dir` is committed with the code; an absolute or `~`-prefixed one keeps bundles outside
 git entirely.

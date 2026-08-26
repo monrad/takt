@@ -98,9 +98,9 @@ func cmdInit(env Env) int {
 		return code
 	}
 
-	st := newRunState(env, cfg, opts, bi, baseSHA)
+	st, sess := newRunState(env, cfg, opts, bi, baseSHA)
 
-	code = persistState(ctx, env, run, st, baseSHA)
+	code = persistState(ctx, env, run, st, sess, baseSHA)
 	if code != 0 {
 		return code
 	}
@@ -238,14 +238,20 @@ func resolveBase(ctx context.Context, env Env, run *initRun) (string, int) {
 	return mb, 0
 }
 
-// newRunState builds the frozen state.json for this run (spec §12); cfg is
-// already the --autonomy-applied, validated configuration (validateConfig
-// runs before any git mutation, review finding 1), and the --no-* flags
-// mask the config's review/goals/alignment toggles for this run only.
-func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, baseSHA string) *bundle.State {
+// newRunState builds the frozen state.json for this run (spec §12) and the
+// holder record init takes the lock with; cfg is already the
+// --autonomy-applied, validated configuration (validateConfig runs before
+// any git mutation, review finding 1), and the --no-* flags mask the
+// config's review/goals/alignment toggles for this run only. The holder is
+// returned rather than embedded because it does not live in state.json any
+// more: it goes to the untracked logs/session.json (spec §4.6).
+func newRunState(
+	env Env, cfg config.Config, opts *initOptions, bi *branchInit, baseSHA string,
+) (*bundle.State, *bundle.Session) {
 	now := time.Now().UTC()
 	host, _ := os.Hostname()
 	id, generated := sessionID(env.Getenv)
+	sess := &bundle.Session{ID: id, Host: host, Heartbeat: now, Generated: generated}
 	return &bundle.State{
 		Schema: bundle.SchemaVersion, TaktVersion: version.Current(),
 		Slug: opts.slug, Topic: opts.topic, Phase: bundle.PhaseBrainstorm, CreatedAt: now,
@@ -262,17 +268,18 @@ func newRunState(env Env, cfg config.Config, opts *initOptions, bi *branchInit, 
 			MaxParallel: cfg.MaxParallel,
 			MaxRework:   cfg.MaxRework,
 		},
-		Gates:   map[string]string{"spec": gatePending, "plan": gatePending},
-		Tasks:   []bundle.Task{},
-		Session: &bundle.Session{ID: id, Host: host, Heartbeat: now, Generated: generated},
-	}
+		Gates: map[string]string{"spec": gatePending, "plan": gatePending},
+		Tasks: []bundle.Task{},
+	}, sess
 }
 
 // persistState saves state.json and appends the init event (spec §4.4); a
 // failure here happens after CreateAndCheckout when a run branch was just
 // created, so it rolls back everything init has done so far (review
 // findings 1 and 3).
-func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, baseSHA string) int {
+func persistState(
+	ctx context.Context, env Env, run *initRun, st *bundle.State, sess *bundle.Session, baseSHA string,
+) int {
 	bi := run.bi
 	if err := bundle.SaveState(run.bdir, st); err != nil {
 		return failInit(ctx, env, run, err.Error())
@@ -283,6 +290,13 @@ func persistState(ctx context.Context, env Env, run *initRun, st *bundle.State, 
 		return failInit(ctx, env, run, err.Error())
 	}
 	if err := writeLogsIgnore(run.bdir); err != nil {
+		return failInit(ctx, env, run, err.Error())
+	}
+	// The holder goes in only once the ignore rule that keeps it out of git
+	// is on disk, so the sidecar can never be seen by the init commit that
+	// follows (spec §4.6). Its failure is an init failure like any other:
+	// the same rollback runs.
+	if err := bundle.WriteSession(run.bdir, sess); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
 	return 0
@@ -371,7 +385,8 @@ func rollbackInit(ctx context.Context, run *initRun) string {
 }
 
 // removeInitWrites deletes exactly what init put on disk: the whole bundle
-// directory when init created it, otherwise only the two files init writes,
+// directory when init created it, otherwise only the files init writes —
+// state.json, events.jsonl, the session sidecar and the logs ignore rule —
 // so a spec.md drafted by hand before running init survives the rollback.
 func removeInitWrites(run *initRun) {
 	if run.newDir {
@@ -380,6 +395,7 @@ func removeInitWrites(run *initRun) {
 	}
 	_ = os.Remove(bundle.StatePath(run.bdir))
 	_ = os.Remove(bundle.EventsPath(run.bdir))
+	_ = os.Remove(bundle.SessionPath(run.bdir))
 	_ = os.Remove(filepath.Join(run.bdir, "logs", ".gitignore"))
 	_ = os.Remove(filepath.Join(run.bdir, "logs")) // only if init left it empty
 }

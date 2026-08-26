@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/finish"
@@ -76,6 +77,7 @@ type statusInfo struct {
 	GatesLive     map[string]string
 	ActiveWave    *bundle.ActiveWave
 	PendingGate   *bundle.PendingGate
+	Session       *bundle.Session
 	Goals         []statusGoal
 	GoalsFrozen   bool
 	Alignment     *alignmentDigest
@@ -132,7 +134,7 @@ func statusDoc(bdir string, st *bundle.State) statusInfo {
 		Base: st.Base, BaseSHA: st.BaseSHA,
 		TasksTotal: len(st.Tasks), TasksByStatus: taskCounts(st.Tasks), Tasks: statusTasks(st.Tasks),
 		Gates: st.Gates, GatesLive: liveGates(bdir), ActiveWave: st.ActiveWave, PendingGate: st.PendingGate,
-		Goals: []statusGoal{}, Alignment: statusAlignment(bdir),
+		Goals: []statusGoal{}, Alignment: statusAlignment(bdir), Session: readStatusSession(bdir),
 	}
 	if st.Phase == bundle.PhaseFinish || st.Phase == bundle.PhaseArchived {
 		info.Finish = statusFinish(bdir, st)
@@ -282,6 +284,34 @@ func statusGoals(items []goals.Goal) []statusGoal {
 	return list
 }
 
+// readStatusSession reads the run's holder from the untracked
+// logs/session.json (spec §4.6). A lock that cannot be read reads as none:
+// `takt status` is read-only and must not fail on a lock it is in no
+// position to judge — `takt doctor` is what names an unreadable one, and
+// `takt unlock` is what clears it.
+func readStatusSession(bdir string) *bundle.Session {
+	sess, err := bundle.ReadSession(bdir)
+	if err != nil {
+		return nil
+	}
+	return sess
+}
+
+// statusSession renders the holder for the --json document: who holds the
+// run, from where, when they last called and how long ago that was; nil —
+// so the key is `null` — when nobody holds it (spec §11).
+func statusSession(s *bundle.Session) map[string]any {
+	if s == nil {
+		return nil
+	}
+	return map[string]any{
+		"id":        s.ID,
+		"host":      s.Host,
+		"heartbeat": s.Heartbeat.Format(time.RFC3339),
+		"age":       time.Since(s.Heartbeat).Round(time.Second).String(),
+	}
+}
+
 // statusJSON renders info as the --json document (keys fixed by spec §11).
 func statusJSON(info statusInfo) map[string]any {
 	goalsOut := make([]map[string]any, 0, len(info.Goals))
@@ -299,6 +329,7 @@ func statusJSON(info statusInfo) map[string]any {
 		keyGoals:       goalsOut,
 		"goals_frozen": info.GoalsFrozen,
 		"alignment":    info.Alignment,
+		keySession:     statusSession(info.Session),
 	}
 	if info.Finish != nil {
 		doc["finish"] = info.Finish
@@ -310,6 +341,12 @@ func statusJSON(info statusInfo) map[string]any {
 func renderStatus(info statusInfo) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  phase=%s  branch=%s (base %s)\n", info.Slug, info.Phase, info.Branch, info.Base)
+	if info.Session == nil {
+		b.WriteString("session: none\n")
+	} else {
+		fmt.Fprintf(&b, "session: %s@%s, heartbeat %s ago\n",
+			info.Session.ID, info.Session.Host, time.Since(info.Session.Heartbeat).Round(time.Second))
+	}
 	c := info.TasksByStatus
 	fmt.Fprintf(&b, "tasks: %d total — pending %d, done %d, failed %d, blocked %d, waived %d\n",
 		info.TasksTotal, c[bundle.StatusPending], c[bundle.StatusDone], c[bundle.StatusFailed],

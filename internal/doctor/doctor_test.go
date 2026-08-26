@@ -176,21 +176,60 @@ func TestStaleWaveWarnsOnlyWhenSessionIsDead(t *testing.T) {
 	st := healthy("w")
 	old := time.Now().Add(-2 * time.Hour)
 	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: old, SessionID: "S", Tasks: []int{1}}
-	st.Session = &bundle.Session{ID: "S", Heartbeat: old}
 	bundle.SaveState(d.Bundle("w"), st)
 	o := doctor.Options{
 		Now: time.Now(), WaveStaleAfter: 30 * time.Minute, LockTTL: 10 * time.Minute,
 		ValidateOpts: noOpts, Resolve: func(string) bool { return true },
 	}
+	// No sidecar at all: nobody is driving the run, so a long wave is as
+	// dead as one whose holder stopped answering.
 	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
+	if l := levels(fs, "stale-wave"); len(l) != 1 || l[0] != "WARN" {
+		t.Fatalf("no holder at all is a dead session: %+v", fs)
+	}
+	if err := bundle.WriteSession(d.Bundle("w"), &bundle.Session{ID: "S", Host: "h", Heartbeat: old}); err != nil {
+		t.Fatal(err)
+	}
+	fs = doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
 	if l := levels(fs, "stale-wave"); len(l) != 1 || l[0] != "WARN" {
 		t.Fatalf("%+v", fs)
 	}
-	st.Session.Heartbeat = time.Now()
-	bundle.SaveState(d.Bundle("w"), st)
+	if err := bundle.WriteSession(
+		d.Bundle("w"), &bundle.Session{ID: "S", Host: "h", Heartbeat: time.Now()},
+	); err != nil {
+		t.Fatal(err)
+	}
 	fs = doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
 	if l := levels(fs, "stale-wave"); l[0] != "PASS" {
 		t.Fatal("a live session's long wave is not stale")
+	}
+}
+
+// TestDoctorWarnsOnAnUnreadableSessionSidecar covers the reading doctor must
+// not make quietly: a logs/session.json that exists but cannot be parsed is
+// neither "free" nor a holder, so doctor names it and points at the one
+// command that clears it (spec §11).
+func TestDoctorWarnsOnAnUnreadableSessionSidecar(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	if err := bundle.SaveState(d.Bundle("bad"), healthy("bad")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(d.Bundle("bad"), "logs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundle.SessionPath(d.Bundle("bad")), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	findings := doctor.Run(context.Background(), d, false, doctor.Default, noOpts)
+	var seen bool
+	for _, f := range findings {
+		if f.Check == "session" && f.Level == "WARN" && strings.Contains(f.Fix, "takt unlock") {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf("expected a session WARN, got %+v", findings)
 	}
 }
 
@@ -336,8 +375,10 @@ func TestRunWrapperUsesRealDurations(t *testing.T) {
 	st.ActiveWave = &bundle.ActiveWave{
 		N: 0, Slice: 1, Attempt: 1, StartedAt: now.Add(-5 * time.Minute), SessionID: "S", Tasks: []int{1},
 	}
-	st.Session = &bundle.Session{ID: "S", Heartbeat: now}
 	if err := bundle.SaveState(d.Bundle("live"), st); err != nil {
+		t.Fatal(err)
+	}
+	if err := bundle.WriteSession(d.Bundle("live"), &bundle.Session{ID: "S", Host: "h", Heartbeat: now}); err != nil {
 		t.Fatal(err)
 	}
 	fs := doctor.Run(context.Background(), d, false, []doctor.Check{doctor.StaleWave}, noOpts)

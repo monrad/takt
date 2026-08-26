@@ -56,7 +56,6 @@ const (
 // contradict at any moment.
 func (r *nextRun) archive(ctx context.Context) int {
 	r.st.Phase = bundle.PhaseArchived
-	r.st.Session = nil
 	if r.st.Disposition != nil {
 		r.st.Disposition.Applied = true
 	}
@@ -128,6 +127,16 @@ func recommitArchive(ctx context.Context, env Env, tgt *runTarget) int {
 // the archived run share it, so an effect that could not be applied the first
 // time is simply applied the next.
 func applyAndStop(ctx context.Context, env Env, tgt *runTarget) int {
+	// An archived run holds nothing: the lock is released here rather than
+	// in archive() so that every later `takt next` on the archived run —
+	// which re-derives the disposition's git effects and lands right here —
+	// leaves no sidecar behind either (spec §4.6). ClearSession is
+	// idempotent, so the repeat is free; a failure is loud, because a
+	// finished run still claiming a holder is exactly the state the owner
+	// gate would refuse a fresh session over.
+	if err := bundle.ClearSession(tgt.bdir); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
 	cleanup, details, err := applyDisposition(ctx, tgt.ws, tgt.st, tgt.bdir)
 	if err != nil {
 		// The run is archived either way. cleanup names what the session can

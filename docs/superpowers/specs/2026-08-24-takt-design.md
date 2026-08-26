@@ -54,7 +54,7 @@ chosen here with the stated rationale and open to revision.
 | D11 | Name / namespace | `takt`, `github.com/monrad/takt` | Personal namespace; free on PATH and on GitHub | user |
 | D12 | State format | Pretty-printed JSON with stable key order | Zero dependencies, clean git diffs; masterplan's YAML already embedded JSON | assumed |
 | D13 | Commit model | Bundle and code commit together, one commit per wave and per phase transition | No split commit — that existed for multi-host sharing | assumed |
-| D14 | Concurrency guard | Advisory session lock in `state.json` with a heartbeat; `--force` to take over | herdr runs several agents at once; NFS `link()` locks are unnecessary on one host | assumed |
+| D14 | Concurrency guard | Advisory session lock in the bundle's untracked `logs/session.json` with a heartbeat; `--force` to take over | herdr runs several agents at once; NFS `link()` locks are unnecessary on one host | assumed |
 | D15 | Wave numbers | Computed by Go from `depends_on` and file overlap, not assigned by the planner | One fewer thing for a model to get wrong; overlap without an ordering is a validation error | assumed |
 | D16 | Task digest | Go computes `files_changed` and runs verify itself; the agent contributes only status, summary, blockers | Robust against malformed agent output; verification is never self-reported | assumed |
 | D17 | Long-running takt work | Runs as `exec` ops the session launches in the background (`takt close-wave`, `takt review …`, `takt verify`); `takt next` always returns in < 1 s | Claude Code's Bash tool caps a foreground call at 10 min | assumed |
@@ -189,7 +189,7 @@ copy taken just before a `discard` disposition deletes the branch that held the 
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "takt_version": "0.1.0",
   "slug": "cedar-policy-2154",
   "topic": "full https://github.com/bit-mover/BitMover/issues/2154 — Cedar generator can emit …",
@@ -214,8 +214,7 @@ copy taken just before a `discard` disposition deletes the branch that held the 
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
-  "disposition": null,
-  "session": { "id": "…", "host": "…", "heartbeat": "2026-08-24T18:02:11Z" }
+  "disposition": null
 }
 ```
 
@@ -275,19 +274,19 @@ the write that would otherwise have recorded it (§5.4).
 
 ### 4.6 Session lock
 
-`state.session = {id, host, heartbeat}`. `id` is `CLAUDE_CODE_SESSION_ID` when set, else a random id
-persisted in `TAKT_SESSION` for the process tree. Every `takt next` refreshes the heartbeat in memory and
-persists it when the recorded one has aged past `lock_ttl / 2` (the lease-renewal window) or when anything
-else about the holder changed; any call that writes `state.json` for its own reasons — a phase transition, a
-wave launch or recovery, opening a gate, a lock takeover — carries the fresh heartbeat with it. A `next` that
-decides nothing writes nothing, so it leaves the bundle byte-identical; the cost is that a holder that has
-gone quiet is seen as live for between `lock_ttl / 2` and `lock_ttl` after its last call. A wave dispatch
-always persists, so the window in which a takeover would reset an in-flight wave (row 14) is unaffected.
-When neither variable is set takt invents an id per process; such a holder is treated as orphaned and taken
-over on the next call, which does rewrite `state.json`. If another
-id holds the lock with a heartbeat younger than `lock_ttl` (default 10 m), `next` returns
-`ask: owner` (take over with `--force` / abort / read-only). Advisory: it prevents two live sessions from
-driving one bundle by accident; it does not try to be NFS-safe.
+The holder of a run is recorded in `<bundle>/logs/session.json` — `{id, host, heartbeat, generated?}` — the
+bundle's untracked area (`logs/.gitignore` ignores everything but itself), never in `state.json`. `id` is
+`CLAUDE_CODE_SESSION_ID` when set, else `TAKT_SESSION`; when neither is set takt invents an id per process and
+records `generated: true`, and such a holder is taken over on the next call by anyone, silently. Every
+`takt next` rewrites the file with a fresh heartbeat; because it is untracked, that rewrite never dirties the
+worktree, never rides into a commit and never reaches a clone — a `next` that decides nothing still leaves the
+tracked bundle byte-identical. If another id holds the lock with a heartbeat younger than `lock_ttl` (default
+10 m), `next` returns `ask: owner` (take over with `--force` / abort / read-only); an older heartbeat is taken
+over with a `lock_taken` event. `takt unlock` deletes the file; archiving does too. A file that exists but
+cannot be parsed fails `next` with a hint to `unlock` — guessing "free" is how two sessions end up driving one
+bundle. Advisory: it prevents two live sessions from colliding by accident; it does not try to be NFS-safe.
+`state.json` is `schema: 2` from this change; a `schema: 1` file (which carried `session`) loads, and the next
+write drops the key and stamps 2.
 
 ### 4.7 Git
 
@@ -320,7 +319,7 @@ only bundle is archived reports "no active run" to a bare command rather than an
 | command | effect |
 |---|---|
 | `takt init <topic…> [--slug s] [--autonomy auto\|step] [--no-review-…] [--no-goals] [--no-alignment]` | Creates the bundle in phase `brainstorm`, applies the branch rule, commits the bundle (if in-repo). Refuses if the slug exists. |
-| `takt next [--force] [--recover]` | Heartbeat (persisted only when the lease needs renewing — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the bundle byte-identical on disk. Always returns in < 1 s. |
+| `takt next [--force] [--recover]` | Heartbeat (rewritten in the untracked `logs/session.json` on every call — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the tracked bundle byte-identical on disk. Always returns in < 1 s. |
 | `takt record --task N --attempt A (--status done\|failed\|blocked --summary "…" [--blockers "…"] \| --from <file>)` | Records an implementer result. `--from` parses the trailing `STATUS:` / `SUMMARY:` / `BLOCKERS:` lines of the agent's final message. A stale attempt is logged and ignored (exit 0, `"ignored": true`). |
 | `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor's or the auditor's JSON. What the agent got wrong is returned, not failed on — `{"valid": false, "problems": [...]}` at exit 0, logged as `plan_invalid` / `goals_invalid` / `alignment_invalid`, with nothing recorded, so `next` finds the dispatch still pending and hands the brief out again. |
 | `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>] [--confirm <slug>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). `--confirm <slug>` is required for `branch_finish`'s `discard` — typing the slug back. `--reason` is
@@ -335,7 +334,7 @@ its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt doctor [--dir …]` | §11. No writes. |
 | `takt plan validate [path]` | Standalone validation of a plan index. |
 | `takt goals amend` | Re-freezes `goals.md` after an edit, records the event, re-arms the spec gate. |
-| `takt unlock [--slug s]` | Clears a stale session lock. |
+| `takt unlock [--slug s]` | Clears a stale session lock (deletes `logs/session.json`, readable or not). |
 | `takt version [--expect v] [--expect-manifest path]` | Prints the version; exit 1 on mismatch. `--expect-manifest` is what the prompt's handshake runs (§6); a `0.0.0-dev` build passes with `"dev": true`. |
 
 ### 5.2 Op kinds
@@ -953,20 +952,25 @@ having something outstanding under it in git gets `state-schema` run against it 
 bundle's own `archive` commit never landed and no command but `doctor` would otherwise notice (§7.5 step
 5). It prints `PASS | WARN | ERROR <check>: <message>` lines and exits 1 on any ERROR. `index-lock` is
 repo-wide: `.git/index.lock` governs the whole repository, not one bundle, so it runs once per invocation
-rather than once per bundle.
+rather than once per bundle. `session` is not a check either: the holder is read once while the bundle is
+loaded, because every check that judges liveness needs it — so an unreadable `logs/session.json` is
+reported even for an archived bundle, like the `state-schema` ERROR of a state that will not parse.
 
 | check | condition |
 |---|---|
 | `state-schema` | `state.json` parses and validates; `phase` is a known value; tasks reference existing waves; WARNs when `active_wave.slice` is 0 — the bundle predates per-slice close records; the next `close-wave` records it as slice 1; ERRORs "archived run has an uncommitted bundle" when an archived run's `archive` commit never landed — `takt next --slug <slug>` takes it again |
-| `stale-wave` | `active_wave` older than `wave_stale_after` with a dead session (heartbeat > `lock_ttl`) |
+| `stale-wave` | `active_wave` older than `wave_stale_after` with a dead session (no `logs/session.json`, or its heartbeat > `lock_ttl`) |
 | `index-staleness` | `plan.index.json.spec_hash` ≠ `sha256(spec.md)`, or a gate receipt hash ≠ current hash while `state.gates` says `ok`; skipped for an archived run — its artifacts are frozen history, so a later edit on the same branch must not re-arm its gates |
 | `branch` | `state.branch` and `base_sha` resolve; the cwd worktree is on `state.branch` (WARN if not) |
 | `plan-disjoint` | re-validates the index (same-wave overlap, path rules) |
 | `index-lock` | `.git/index.lock` older than 2 minutes — a killed git command left it; WARN; fix: remove it once no git command is running |
+| `session` | `logs/session.json` exists but cannot be parsed; WARN; fix: `takt unlock --slug <s>` |
 
-`takt status` prints: slug, phase, branch/base, task counts per status, the current wave and attempt,
-open gate, gate states, goals (with verdicts once checked), and the alignment digest. `--json` returns
-the same as a document; `--history` appends the event log.
+`takt status` prints: slug, phase, branch/base, the session holder as `session: <id>@<host>, heartbeat
+<age> ago` or `session: none` (`session` in `--json`: `{id, host, heartbeat, age}` or `null`; a lock it
+cannot read reads as none — `status` is read-only and never fails on one), task counts per status, the
+current wave and attempt, open gate, gate states, goals (with verdicts once checked), and the alignment
+digest. `--json` returns the same as a document; `--history` appends the event log.
 
 From the finish phase on, it also prints the run's finish block — under `finish` in `--json`:
 `verified_sha`, `verify_passed`, `goals_checked_sha`, `goals` (the verdict per goal id, read from
