@@ -1,6 +1,7 @@
 package brief_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -308,8 +309,15 @@ func mustRender(t *testing.T, name string, data any) string {
 }
 
 // assertRejectionSection checks one template's two renderings: with holds
-// the rejection section, ahead of the first quoted artifact and naming every
-// problem; without holds no such section at all.
+// the rejection section, ahead of every other quoted artifact and naming
+// every problem inside the delimiter pair; without holds no such section at
+// all.
+//
+// The problems are the one input takt writes itself, but not the one it
+// authors: they carry the agent's own rejected words (a `verdict for unknown
+// goal %q`) and a parser's error text. Handing them back unquoted is the
+// injection the token exists to close, so the assertion is about where they
+// sit, not just that they are named.
 func assertRejectionSection(t *testing.T, name, with, without string, problems []string) {
 	t.Helper()
 	const heading = "## Your previous reply was rejected"
@@ -319,13 +327,23 @@ func assertRejectionSection(t *testing.T, name, with, without string, problems [
 	if strings.Contains(with, "{{") {
 		t.Errorf("%s: unrendered template action:\n%s", name, with)
 	}
-	head, _, _ := strings.Cut(with, "BEGIN "+quoteToken)
+	head, rest, ok := strings.Cut(with, "BEGIN "+quoteToken+" rejection\n")
+	if !ok {
+		t.Fatalf("%s: the problems must be quoted with the delimiter token:\n%s", name, with)
+	}
 	if !strings.Contains(head, heading) {
 		t.Errorf("%s: the rejection must be named before the quoted artifacts:\n%s", name, with)
 	}
+	if strings.Contains(head, "BEGIN "+quoteToken) {
+		t.Errorf("%s: the rejection is the first quoted block, not a later one:\n%s", name, with)
+	}
+	quoted, tail, _ := strings.Cut(rest, "\nEND "+quoteToken)
 	for _, p := range problems {
-		if !strings.Contains(with, "- "+p) {
-			t.Errorf("%s: missing problem %q:\n%s", name, p, with)
+		if !slices.Contains(strings.Split(quoted, "\n"), p) {
+			t.Errorf("%s: problem %q is not inside the quoted rejection:\n%s", name, p, with)
 		}
+	}
+	if !strings.Contains(tail, "Reply again in exactly the format described above.") {
+		t.Errorf("%s: the instruction to retry must sit outside the quote:\n%s", name, with)
 	}
 }
