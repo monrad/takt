@@ -95,32 +95,73 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 }
 
 // answerGateReview applies a spec/plan review gate's choice: revise leaves
-// the gate to re-arm on the edited artifact's new hash, accept records an
-// evidenced override at the current hash (spec §9).
+// the session to edit — recording an accepted revision first when the spec
+// review found nothing blocking, so the edit closes the gate rather than
+// re-arming it — and accept records an evidenced override at the current
+// hash (spec §9, fixed-point design §4).
 func answerGateReview(bdir string, st *bundle.State, choice, reason string) (bool, error) {
+	which := pendingGateName(st)
+	switch choice {
+	case "revise":
+		return false, acceptRevision(bdir, which)
+	case "accept":
+		return false, overrideGate(bdir, which, reason)
+	case "stop":
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for gate_review", choice)
+}
+
+// pendingGateName reads the gate id ("spec" or "plan") out of the pending
+// gate's stored context; every review gate carries it under "gate".
+func pendingGateName(st *bundle.State) string {
 	var payload struct {
 		Context map[string]any `json:"context"`
 	}
 	_ = json.Unmarshal(st.PendingGate.Payload, &payload)
 	which, _ := payload.Context["gate"].(string)
-	switch choice {
-	case "revise":
-		return false, nil // the session edits; the hash re-arms the gate
-	case "accept":
-		if strings.TrimSpace(reason) == "" {
-			return false, errorf("accepting a %s review verdict needs --reason", which)
-		}
-		hash, _, err := gate.Hash(which, bdir)
-		if err != nil {
-			return false, err
-		}
-		return false, bundle.AppendEvent(bdir, "gate_overridden", map[string]any{
-			keyGate: which, keyHash: hash, keyReason: reason,
-		})
-	case "stop":
-		return true, nil
+	return which
+}
+
+// acceptRevision records that the user was shown a spec review asking for
+// rework over nothing blocking, and chose to revise. gate.Compute turns that
+// into a satisfied gate as soon as spec.md moves (fixed-point design §4).
+//
+// It writes nothing for the plan gate, for a blocking rework, or for
+// reject/error: those keep the re-arm-and-re-review loop. It also writes
+// nothing when the receipt does not answer at the current hash, since then
+// the user is not looking at the verdict the receipt records.
+func acceptRevision(bdir, which string) error {
+	if which != gate.Spec {
+		return nil
 	}
-	return false, errorf("unknown choice %q for gate_review", choice)
+	hash, _, err := gate.Hash(which, bdir)
+	if err != nil {
+		return err
+	}
+	r, err := gate.ReadReceipt(bdir, which)
+	if err != nil || r == nil || r.Hash != hash ||
+		r.Verdict != gate.VerdictRework || r.Severities["blocking"] > 0 {
+		return err
+	}
+	return bundle.AppendEvent(bdir, gate.EvRevisionAccepted, map[string]any{
+		keyGate: which, keyHash: hash,
+	})
+}
+
+// overrideGate records an evidenced override at the gate's current hash
+// (spec §9).
+func overrideGate(bdir, which, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		return errorf("accepting a %s review verdict needs --reason", which)
+	}
+	hash, _, err := gate.Hash(which, bdir)
+	if err != nil {
+		return err
+	}
+	return bundle.AppendEvent(bdir, "gate_overridden", map[string]any{
+		keyGate: which, keyHash: hash, keyReason: reason,
+	})
 }
 
 // answerAlignment confirms, corrects or skips the auditor's clause list.
