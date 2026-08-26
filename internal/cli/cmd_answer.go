@@ -177,13 +177,22 @@ func acceptRevision(bdir, which string) error {
 }
 
 // overrideGate records an evidenced override at the gate's current hash
-// (spec §9).
+// (spec §9). The user declined to act on the verdict's findings, so — like
+// an approving pass — they must not vanish with the override; carryFindings
+// records them before the event is appended.
 func overrideGate(bdir, which, reason string) error {
 	if strings.TrimSpace(reason) == "" {
 		return errorf("accepting a %s review verdict needs --reason", which)
 	}
 	hash, _, err := gate.Hash(which, bdir)
 	if err != nil {
+		return err
+	}
+	res, err := readReviewResult(bdir, which)
+	if err != nil {
+		return err
+	}
+	if err = carryFindings(bdir, which, res.Findings, gate.SourceOverride); err != nil {
 		return err
 	}
 	return bundle.AppendEvent(bdir, "gate_overridden", map[string]any{

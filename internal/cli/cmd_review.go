@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -154,6 +156,13 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	if err = gate.WriteReceipt(tgt.bdir, rc); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
+	// An approving pass closes the gate without asking anyone for anything,
+	// so its findings would otherwise die in reviews/<gate>.md (#29).
+	if res.Verdict == gate.VerdictApprove {
+		if err = carryFindings(tgt.bdir, g, res.Findings, gate.SourceApprove); err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
+	}
 	_ = bundle.AppendEvent(tgt.bdir, "gate_reviewed", map[string]any{
 		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, keyProvider: res.Provider, keyFindings: len(res.Findings),
 	})
@@ -250,4 +259,39 @@ func writeResultJSON(path string, res backend.ReviewResult) error {
 		return err
 	}
 	return bundle.WriteJSONAtomic(path, res)
+}
+
+// readReviewResult reads reviews/<gate>.json, the structured result
+// runReview stored beside the human rendering. An absent file means no
+// findings: a run whose reviews predate the file carries nothing forward
+// rather than failing.
+func readReviewResult(bdir, g string) (backend.ReviewResult, error) {
+	b, err := os.ReadFile(filepath.Join(bdir, "reviews", g+".json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return backend.ReviewResult{}, nil
+	}
+	if err != nil {
+		return backend.ReviewResult{}, err
+	}
+	var r backend.ReviewResult
+	if uerr := json.Unmarshal(b, &r); uerr != nil {
+		return backend.ReviewResult{}, fmt.Errorf("reviews/%s.json: %w", g, uerr)
+	}
+	return r, nil
+}
+
+// carryFindings records findings nobody was asked to act on as follow-ups
+// (fixed-point design §6). An approving pass's minors and the findings a
+// user overrode both reach the retro this way instead of being frozen in
+// reviews/<gate>.md. Findings that were the instruction for a revise are not
+// carried — the session was asked to act on those.
+func carryFindings(bdir, g string, fs []backend.Finding, source string) error {
+	items := make([]gate.FollowUp, 0, len(fs))
+	for _, f := range fs {
+		items = append(items, gate.FollowUp{
+			Gate: g, Severity: f.Severity, File: f.File, Line: f.Line,
+			Title: f.Title, Detail: f.Detail, Source: source, TS: timeNow(),
+		})
+	}
+	return gate.AppendFollowUps(bdir, items...)
 }
