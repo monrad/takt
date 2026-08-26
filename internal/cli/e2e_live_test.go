@@ -24,6 +24,14 @@ import (
 // unset) must never reach it (Task 7 brief).
 const e2eEnvVar = "TAKT_E2E"
 
+// e2eLogDirEnvVar names a directory the live agents' prompts and output are
+// kept in. Unset, they go to a t.TempDir the test framework deletes on the
+// way out — fine while the run passes, useless the moment it does not — so
+// a run whose evidence has to outlive it names one:
+//
+//	TAKT_E2E=1 TAKT_E2E_LOGDIR=/tmp/takt-e2e go test ./internal/cli/ -run TestLiveEndToEnd -v
+const e2eLogDirEnvVar = "TAKT_E2E_LOGDIR"
+
 // implementerTimeout bounds one live implementer.
 const implementerTimeout = 10 * time.Minute
 
@@ -36,6 +44,14 @@ const implementerKillDelay = 5 * time.Second
 // the dispatch op names, the model the hook runs, and the model the digest
 // records — one fact, asserted in all three places.
 const liveModel = "haiku"
+
+// doneReport is the STATUS line a clean implementer run ends with; anything
+// else makes the whole final message worth printing.
+const doneReport = "STATUS: done"
+
+// outputTailBudget bounds how much of a failed agent's output lands in an
+// error message; the whole of it is logged separately.
+const outputTailBudget = 800
 
 // goTestTimeout bounds the final `go test ./...` in the finished repository.
 const goTestTimeout = 5 * time.Minute
@@ -153,6 +169,34 @@ const livePlanIndex = `{"schema":1,"spec_hash":"%s","tasks":[
 // liveProviders are the reviewer names that mean a real backend ran.
 var liveProviders = []string{"copilot", "claude"}
 
+// liveSession is what the walk carries besides the driver: the model each
+// live implementer was dispatched on, its final message verbatim, and how
+// many wave retries have been spent. The messages are kept so that any gate
+// the run should not have reached can print what the agents actually said —
+// the one thing a failure here always turns on.
+type liveSession struct {
+	models   []string
+	messages []string
+	retries  int
+}
+
+// transcript is every live implementer's final message, verbatim, for a
+// failure message.
+func (ls *liveSession) transcript() string {
+	if len(ls.messages) == 0 {
+		return "(no implementer has reported yet)"
+	}
+	var b strings.Builder
+	for i, m := range ls.messages {
+		model := "?"
+		if i < len(ls.models) {
+			model = ls.models[i]
+		}
+		fmt.Fprintf(&b, "=== implementer %d on %s said ===\n%s\n", i+1, model, m)
+	}
+	return b.String()
+}
+
 // TestLiveEndToEnd drives one whole run through cli.Main against real
 // agents: the implementers are Claude Code on haiku, editing a throwaway Go
 // module for real, and the spec, plan and per-task reviews go to whichever
@@ -165,6 +209,18 @@ var liveProviders = []string{"copilot", "claude"}
 // Every `next` is also run twice with a fresh named session in between
 // (driver.takeover), so the run proves spec §14's kill/resume at every op
 // boundary against a real run rather than a fixture.
+//
+// Run it with:
+//
+//	TAKT_E2E=1 go test ./internal/cli/ -run TestLiveEndToEnd -v -count=1 -timeout 45m
+//
+// Set TAKT_E2E_LOGDIR to a directory of your own to keep each agent's
+// prompt, stdout and stderr after the test ends; without it they go to a
+// t.TempDir that the framework deletes on the way out. Either way every
+// non-happy path — a failed `claude` run, an implementer that did not report
+// done, a `record` takt refused, a wave gate — prints the agent's whole
+// final message on the test log, so `go test -v` output alone is enough to
+// tell what happened.
 func TestLiveEndToEnd(t *testing.T) {
 	skipUnlessE2E(t)
 	if _, err := exec.LookPath("claude"); err != nil {
@@ -176,28 +232,38 @@ func TestLiveEndToEnd(t *testing.T) {
 	// credentialed CLIs that find their login under HOME, so it goes back
 	// for this test; git stays hermetic on GIT_CONFIG_GLOBAL and
 	// GIT_CONFIG_NOSYSTEM, which are untouched.
+	//
+	// t.Setenv writes the process environment, not this test's own, so for
+	// as long as this test runs every other test in the binary sees the real
+	// HOME too. That is acceptable because nothing else here reads it: the
+	// hermetic tests reach git through testutil.Git and runIn, which pin
+	// HOME themselves on every call. It is also why this test takes the
+	// whole binary rather than running in parallel — t.Setenv forbids
+	// t.Parallel — and why it is invoked with -run TestLiveEndToEnd.
 	t.Setenv("HOME", testutil.RealHome())
 
 	root, bdir := liveRepo(t)
-	logDir := t.TempDir()
+	logDir := liveLogDir(t)
 	t.Logf("live run: repo %s, agent logs %s", root, logDir)
 
-	var models []string // the model each live implementer was dispatched on
+	ls := &liveSession{}
 	d := &driver{
 		t: t, root: root, bdir: bdir,
 		env:      map[string]string{"TAKT_SESSION": "live-0"},
 		takeover: true,
 		implement: func(brief, repo, model string) (string, error) {
-			models = append(models, model)
-			return runImplementer(t, logDir, len(models), brief, repo, model)
+			ls.models = append(ls.models, model)
+			msg, err := runImplementer(t, logDir, len(ls.models), brief, repo, model)
+			ls.messages = append(ls.messages, msg)
+			return msg, err
 		},
 	}
 
 	start := time.Now()
-	reason := playLive(t, d)
+	reason := playLive(t, d, ls)
 	elapsed := time.Since(start)
 	t.Logf("ops: %s", strings.Join(d.ops, " "))
-	t.Logf("wall time: %s, live implementer runs: %v", elapsed.Round(time.Second), models)
+	t.Logf("wall time: %s, live implementer runs: %v", elapsed.Round(time.Second), ls.models)
 	if reason != stopArchived {
 		t.Fatalf("the live run must end archived, stopped %q", reason)
 	}
@@ -227,8 +293,8 @@ func TestLiveEndToEnd(t *testing.T) {
 			t.Errorf("task %d recorded model %q, want %q", tk.ID, m, liveModel)
 		}
 	}
-	if want := []string{liveModel, liveModel}; !slices.Equal(models, want) {
-		t.Errorf("the live implementers ran on %v, want %v", models, want)
+	if want := []string{liveModel, liveModel}; !slices.Equal(ls.models, want) {
+		t.Errorf("the live implementers ran on %v, want %v", ls.models, want)
 	}
 
 	t.Logf("git log:\n%s", testutil.Git(t, root, "log", "--oneline"))
@@ -271,9 +337,8 @@ func liveRepo(t *testing.T) (string, string) {
 // answers each gate the way the brief says to, and hands everything else —
 // the wave dispatches, the exec steps, the retro, the goal assessment — to
 // the driver's own scripted handling. It returns the stop reason.
-func playLive(t *testing.T, d *driver) string {
+func playLive(t *testing.T, d *driver, ls *liveSession) string {
 	t.Helper()
-	retries := 0
 	for range e2eMaxSteps {
 		o := d.nextOp()
 		switch {
@@ -289,7 +354,7 @@ func playLive(t *testing.T, d *driver) string {
 		case o["op"] == "dispatch" && agentsOf(t, o)[0]["agent"] == "planner":
 			livePlanner(t, d)
 		case o["op"] == "ask":
-			liveAnswer(t, d, o, &retries)
+			liveAnswer(t, d, o, ls)
 		default:
 			if reason, stopped := d.step(o); stopped {
 				return reason
@@ -325,7 +390,7 @@ func livePlanner(t *testing.T, d *driver) {
 // once, and the branch is kept rather than pushed. Anything else is a real
 // integration failure between takt and a live agent, and fails the test with
 // what the gate knows.
-func liveAnswer(t *testing.T, d *driver, o map[string]any, retries *int) {
+func liveAnswer(t *testing.T, d *driver, o map[string]any, ls *liveSession) {
 	t.Helper()
 	switch o["gate"] {
 	case "alignment_confirm":
@@ -338,11 +403,12 @@ func liveAnswer(t *testing.T, d *driver, o map[string]any, retries *int) {
 			t.Fatalf("answer gate_review=accept: %s", errb)
 		}
 	case "wave_failures":
-		*retries++
-		if *retries > 1 {
-			t.Fatalf("wave %v failed twice: %v\n%s", o["context"], o["question"], waveEvidence(t, d.bdir))
+		ls.retries++
+		if ls.retries > 1 {
+			t.Fatalf("wave %v failed twice: %v\n%s\n%s",
+				o["context"], o["question"], ls.transcript(), waveEvidence(t, d.bdir))
 		}
-		t.Logf("retrying a failed wave once: %v", o["question"])
+		t.Logf("retrying a failed wave once: %v\n%s", o["question"], ls.transcript())
 		d.answer(o) // the recommended option: retry
 	case "branch_finish":
 		if code, _, errb := d.cmd("answer", "--gate", "branch_finish",
@@ -350,7 +416,8 @@ func liveAnswer(t *testing.T, d *driver, o map[string]any, retries *int) {
 			t.Fatalf("answer branch_finish=keep: %s", errb)
 		}
 	default:
-		t.Fatalf("unexpected gate %v: %v\n%s", o["gate"], o, waveEvidence(t, d.bdir))
+		t.Fatalf("unexpected gate %v: %v\n%s\n%s",
+			o["gate"], o, ls.transcript(), waveEvidence(t, d.bdir))
 	}
 }
 
@@ -383,7 +450,11 @@ func waveEvidence(t *testing.T, bdir string) string {
 // driving. The brief takt rendered is the whole
 // prompt and already ends with the STATUS / SUMMARY / BLOCKERS trailer
 // `takt record` parses, so stdout goes back as the agent's final message
-// with nothing added. Prompt, stdout and stderr are kept for the report.
+// with nothing added — but only when the run exited 0. Prompt, stdout and
+// stderr are written to logDir (see liveLogDir: a directory named by
+// e2eLogDirEnvVar outlives the test, a t.TempDir does not) and the whole
+// message is on the test log at every non-happy path, so a failure is
+// diagnosable from `go test -v` output alone.
 func runImplementer(t *testing.T, logDir string, n int, brief, repo, model string) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), implementerTimeout)
@@ -405,16 +476,62 @@ func runImplementer(t *testing.T, logDir string, n int, brief, repo, model strin
 	for ext, body := range map[string]string{"prompt": brief, "stdout": out.String(), "stderr": errb.String()} {
 		writeAt(t, filepath.Join(logDir, fmt.Sprintf("implementer-%d.%s", n, ext)), body)
 	}
-	t.Logf("implementer %d on %s: %s, %d bytes of stdout, %s",
-		n, model, elapsed.Round(time.Second), out.Len(), reportLine(out.String()))
+	t.Logf("implementer %d on %s: %s, exit %v, %d bytes of stdout, %s",
+		n, model, elapsed.Round(time.Second), err, out.Len(), reportLine(out.String()))
 
-	if out.Len() == 0 && err != nil {
-		return "", fmt.Errorf("claude -p: %w (stderr: %s)", err, strings.TrimSpace(errb.String()))
+	// Any non-zero exit — a deadline the context killed, a crash, a refusal —
+	// means what came back is not an agent's final message but whatever it
+	// had written when it died. Recording that would put the failure off
+	// until parseReport found no STATUS line and blame the wrong thing, so
+	// it is reported here, with the reason and the output that came with it.
+	if err != nil {
+		// Whether the deadline is what killed it is the first thing a reader
+		// needs, and cmd.Run's error alone does not say: a context kill and
+		// a plain non-zero exit both arrive as an *exec.ExitError.
+		why := "no deadline fired"
+		if cerr := ctx.Err(); cerr != nil {
+			why = cerr.Error()
+		}
+		return "", fmt.Errorf("claude -p on %s: %w (%s; stderr: %s; stdout: %s)",
+			model, err, why, strings.TrimSpace(errb.String()), tailOfOutput(out.String()))
 	}
 	if out.Len() == 0 {
-		return "", errors.New("claude -p wrote nothing; stderr: " + strings.TrimSpace(errb.String()))
+		return "", errors.New("claude -p exited 0 and wrote nothing; stderr: " + strings.TrimSpace(errb.String()))
+	}
+	// A clean run reports done. Anything else — failed, blocked, or no
+	// trailer at all — is what the rest of the run will be about, so the
+	// whole message goes on the log now rather than being summarised into a
+	// line nobody can act on.
+	if reportLine(out.String()) != doneReport {
+		t.Logf("implementer %d did not report done; its final message verbatim:\n%s", n, out.String())
 	}
 	return out.String(), nil
+}
+
+// liveLogDir is where the live agents' prompts and output are kept: the
+// directory e2eLogDirEnvVar names, created if it is not there, else a
+// t.TempDir — which the framework removes when the test ends, so a run that
+// has to leave evidence behind names one.
+func liveLogDir(t *testing.T) string {
+	t.Helper()
+	dir := os.Getenv(e2eLogDirEnvVar)
+	if dir == "" {
+		return t.TempDir()
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("%s=%s: %v", e2eLogDirEnvVar, dir, err)
+	}
+	return dir
+}
+
+// tailOfOutput bounds an agent's output for a failure message; the whole of
+// it is on the test log and in the log directory either way.
+func tailOfOutput(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= outputTailBudget {
+		return s
+	}
+	return "…" + s[len(s)-outputTailBudget:]
 }
 
 // reportLine is the last STATUS line of an agent's final message, for the
@@ -513,6 +630,7 @@ func assertGoTestPasses(t *testing.T, root string) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "test", "./...")
 	cmd.Dir = root
+	cmd.WaitDelay = implementerKillDelay
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go test ./... in the finished repo: %v\n%s", err, out)

@@ -377,28 +377,30 @@ func (d *driver) playAuditor(ag map[string]any) {
 // agent's own edits are the ones under test.
 func (d *driver) playImplementer(o, ag map[string]any) {
 	d.t.Helper()
-	var msg string
+	final := "STATUS: done\nSUMMARY: implemented\nBLOCKERS: none\n"
 	if d.implement == nil {
 		for _, f := range declaredFiles(d.t, ag["brief"].(string)) {
 			testutil.WriteFile(d.t, d.root, f, "package x // written by the scripted implementer\n")
 		}
-		msg = d.message("STATUS: done\nSUMMARY: implemented\nBLOCKERS: none\n")
 	} else {
 		b, err := os.ReadFile(ag["brief"].(string))
 		if err != nil {
 			d.t.Fatal(err)
 		}
-		final, err := d.implement(string(b), d.root, opText(ag["model"]))
-		if err != nil {
+		if final, err = d.implement(string(b), d.root, opText(ag["model"])); err != nil {
 			d.t.Fatalf("implementer for task %v: %v", ag["task"], err)
 		}
-		msg = d.message(final)
 	}
+	msg := d.message(final)
 	task := strconv.Itoa(int(ag["task"].(float64)))
 	attempt := strconv.Itoa(int(o["attempt"].(float64)))
 	code, out, errb := d.cmd("record", "--task", task, "--attempt", attempt, "--from", msg, "--slug", "demo")
 	if code != 0 || out["ignored"] == true {
-		d.t.Fatalf("record task %s attempt %s: %d %v %s", task, attempt, code, out, errb)
+		// The message is quoted, not just pointed at: it is what takt just
+		// refused, and under a live hook the file it came from is in a
+		// temporary directory the reader may no longer have.
+		d.t.Fatalf("record task %s attempt %s: %d %v %s\nthe agent's final message was:\n%s",
+			task, attempt, code, out, errb, final)
 	}
 }
 
