@@ -183,6 +183,120 @@ func TestWriteReceiptLeavesNoTempOnSuccess(t *testing.T) {
 	}
 }
 
+// specAt writes a spec.md with the given body and returns the gate's hash.
+func specAt(t *testing.T, dir, body string) string {
+	t.Helper()
+	write(t, dir, "spec.md", body)
+	h, _, err := gate.Hash(gate.Spec, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func revisionAt(hash string) bundle.Event {
+	return bundle.Event{
+		Type: gate.EvRevisionAccepted,
+		Data: map[string]any{"gate": gate.Spec, "hash": hash},
+	}
+}
+
+func TestRevisionAcceptedSatisfiesOnlyAfterAnEdit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec v1\n")
+	rc := gate.Receipt{Gate: gate.Spec, Hash: h1, Verdict: gate.VerdictRework,
+		Severities: map[string]int{"minor": 2}, TS: time.Now()}
+	if err := gate.WriteReceipt(dir, rc); err != nil {
+		t.Fatal(err)
+	}
+	ev := []bundle.Event{revisionAt(h1)}
+
+	s, err := gate.Compute(dir, gate.Spec, ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Satisfied {
+		t.Fatal("answering revise and editing nothing must leave the gate open")
+	}
+
+	specAt(t, dir, "# spec v2\n")
+	s, err = gate.Compute(dir, gate.Spec, ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Satisfied || s.Verdict != gate.VerdictRevised {
+		t.Fatalf("an edit after revise must close the gate: %+v", s)
+	}
+}
+
+func TestReceiptAtTheCurrentHashOutranksARevisionEvent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec v1\n")
+	h2 := specAt(t, dir, "# spec v2\n")
+	// The user revised, then ran `takt review spec --force` and was rejected.
+	rc := gate.Receipt{Gate: gate.Spec, Hash: h2, Verdict: gate.VerdictReject, TS: time.Now()}
+	if err := gate.WriteReceipt(dir, rc); err != nil {
+		t.Fatal(err)
+	}
+	s, err := gate.Compute(dir, gate.Spec, []bundle.Event{revisionAt(h1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Satisfied || s.Verdict != gate.VerdictReject {
+		t.Fatalf("a fresh verdict must not be masked by a stale revision: %+v", s)
+	}
+}
+
+func TestNewestRevisionEventWins(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec v1\n")
+	h2 := specAt(t, dir, "# spec v2\n")
+	s, err := gate.Compute(dir, gate.Spec, []bundle.Event{revisionAt(h1), revisionAt(h2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Satisfied {
+		t.Fatal("the newest revision was taken at the current hash, so nothing has been edited since")
+	}
+}
+
+func TestRevisionEventForOneGateDoesNotSatisfyTheOther(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec v1\n")
+	write(t, dir, "plan.md", "# plan\n")
+	write(t, dir, "plan.index.json", index)
+	specAt(t, dir, "# spec v2\n")
+	s, err := gate.Compute(dir, gate.Plan, []bundle.Event{revisionAt(h1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Satisfied {
+		t.Fatal("a spec revision must never satisfy the plan gate")
+	}
+}
+
+func TestComputeReportsBlockingFromTheReceipt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec\n")
+	rc := gate.Receipt{Gate: gate.Spec, Hash: h1, Verdict: gate.VerdictRework,
+		Severities: map[string]int{"blocking": 1}, TS: time.Now()}
+	if err := gate.WriteReceipt(dir, rc); err != nil {
+		t.Fatal(err)
+	}
+	s, err := gate.Compute(dir, gate.Spec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Blocking {
+		t.Fatalf("a receipt tallying a blocking finding must report Blocking: %+v", s)
+	}
+}
+
 func TestReceiptCarriesSeverityCounts(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

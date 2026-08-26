@@ -29,6 +29,22 @@ const (
 	VerdictRework  = "rework"
 	VerdictReject  = "reject"
 	VerdictError   = "error"
+	// VerdictRevised is not a reviewer's word: it is the status Compute
+	// reports when a revise answer has been completed by an edit (fixed-point
+	// design §4). No receipt ever carries it.
+	VerdictRevised = "revised"
+)
+
+// Event types this package reads out of events.jsonl.
+const (
+	// EvRevisionAccepted records that the user answered `revise` on a spec
+	// review that found nothing blocking, at the hash they were shown.
+	EvRevisionAccepted = "gate_revision_accepted"
+	// EvRoundsReset restarts the review round count for one more pass.
+	EvRoundsReset = "gate_rounds_reset"
+	// EvReviewed is written once per review call; Rounds counts these.
+	EvReviewed   = "gate_reviewed"
+	evOverridden = "gate_overridden"
 )
 
 // Reviewer records who produced a receipt.
@@ -65,6 +81,11 @@ type Status struct {
 	Satisfied bool
 	Verdict   string
 	Hash      string
+	// Blocking is whether the receipt at the current hash tallied at least
+	// one blocking finding. It decides whether a revise answer closes the
+	// spec gate or re-arms it for a scoped confirming pass, and it decides
+	// which of the two revise option texts the user is shown.
+	Blocking bool
 }
 
 // Artifacts lists the files a gate hashes, in order.
@@ -155,8 +176,9 @@ func eventString(e bundle.Event, key string) (string, bool) {
 	return s, ok
 }
 
-// Compute derives the gate's status from the current hash, the receipt and
-// any gate_overridden event (spec §9).
+// Compute derives the gate's status from the current hash, the receipt, any
+// gate_overridden event, and — for a gate whose revise answer was recorded —
+// any gate_revision_accepted event (spec §9, fixed-point design §4).
 func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	cur, _, err := Hash(gate, bundleDir)
 	if err != nil {
@@ -166,24 +188,49 @@ func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	for _, e := range events {
 		g, gok := eventString(e, "gate")
 		hh, hok := eventString(e, "hash")
-		if e.Type == "gate_overridden" && gok && g == gate && hok && hh == cur {
+		if e.Type == evOverridden && gok && g == gate && hok && hh == cur {
 			return Status{Satisfied: true, Verdict: "overridden", Hash: cur}, nil
 		}
 	}
 	r, err := ReadReceipt(bundleDir, gate)
-	if err != nil || r == nil {
+	if err != nil {
 		return st, err
 	}
-	if r.Hash != cur {
-		return st, nil // stale receipt: the artifact was edited
+	if r != nil && r.Hash == cur {
+		st.Blocking = r.Severities["blocking"] > 0
+		switch {
+		case r.Skipped != nil:
+			st.Satisfied, st.Verdict = true, "skipped"
+		case r.Verdict == VerdictApprove:
+			st.Satisfied, st.Verdict = true, r.Verdict
+		default:
+			st.Verdict = r.Verdict
+		}
+		return st, nil
 	}
-	switch {
-	case r.Skipped != nil:
-		st.Satisfied, st.Verdict = true, "skipped"
-	case r.Verdict == VerdictApprove:
-		st.Satisfied, st.Verdict = true, r.Verdict
-	default:
-		st.Verdict = r.Verdict
+	// No receipt answers at the current hash. A revise answer recorded at an
+	// earlier hash satisfies the gate once the artifacts have actually moved:
+	// the session was told what to change and changed something. Binding to
+	// "not that hash" is what makes it self-enforcing — answering revise and
+	// editing nothing leaves the hash where it was and the gate open. The
+	// receipt branch above outranks this, so a deliberate `takt review
+	// --force` after revising still governs.
+	if revised(events, gate, cur) {
+		return Status{Satisfied: true, Verdict: VerdictRevised, Hash: cur}, nil
 	}
 	return st, nil
+}
+
+// revised reports whether the newest gate_revision_accepted event for gate
+// was taken at a hash the artifacts have since moved away from.
+func revised(events []bundle.Event, gate, cur string) bool {
+	at, found := "", false
+	for _, e := range events {
+		g, gok := eventString(e, "gate")
+		h, hok := eventString(e, "hash")
+		if e.Type == EvRevisionAccepted && gok && g == gate && hok {
+			at, found = h, true
+		}
+	}
+	return found && at != cur
 }
