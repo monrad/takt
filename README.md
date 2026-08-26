@@ -117,7 +117,8 @@ all.
 
 The advisory session lock lives in `docs/takt/<slug>/logs/session.json` (untracked, refreshed on every
 `takt next`). Two live sessions on one run get the owner question; a stale or unreadable lock is cleared
-with `takt unlock`.
+with `takt unlock`. `init` also lists that directory in the repository's `.git/info/exclude`, so it stays
+invisible after a branch switch.
 
 The run bundle lives at `<dir>/<slug>/` in the repository, where `<dir>` defaults to `docs/takt` (see `dir`
 below) — a relative `dir` is committed with the code; an absolute or `~`-prefixed one keeps bundles outside

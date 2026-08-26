@@ -120,7 +120,7 @@ func recommitArchive(ctx context.Context, env Env, tgt *runTarget) int {
 }
 
 // applyAndStop does the disposition's git work and prints the run's stop op.
-// It writes nothing: the archive commit is the run's last one, so the tree is
+// It writes nothing tracked: the archive commit is the run's last one, so the tree is
 // clean for every choice by the time this runs — which is what makes the
 // discard hand-off (`git checkout <base> && git branch -D <branch>`) a
 // command the session can actually run. Row 25 and every later `takt next` on

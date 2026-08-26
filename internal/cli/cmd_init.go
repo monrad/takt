@@ -292,10 +292,13 @@ func persistState(
 	if err := writeLogsIgnore(run.bdir); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
-	// The holder goes in only once the ignore rule that keeps it out of git
-	// is on disk, so the sidecar can never be seen by the init commit that
-	// follows (spec §4.6). Its failure is an init failure like any other:
-	// the same rollback runs.
+	if err := excludeLogsDir(ctx, run); err != nil {
+		return failInit(ctx, env, run, err.Error())
+	}
+	// The holder goes in only once both rules that keep it out of git are on
+	// disk, so the sidecar can never be seen by the init commit that follows
+	// (spec §4.6). Its failure is an init failure like any other: the same
+	// rollback runs.
 	if err := bundle.WriteSession(run.bdir, sess); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
@@ -322,6 +325,40 @@ func writeLogsIgnore(bdir string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(logsIgnore), 0o600)
+}
+
+// excludeLogsDir records the bundle's untracked logs directory in the
+// repository's own ignore list — `info/exclude` in the common git dir
+// ([gitx.Repo.EnsureExclude]).
+//
+// writeLogsIgnore alone is not enough. Its rule is a *tracked* file inside
+// the bundle, so it exists only on the run branch: check a worktree back out
+// on the base and the rule goes with it, leaving the untracked sidecar
+// showing as `?? docs/` — which in the primary worktree is enough to hide
+// the `merge` disposition at finish (§7.5). info/exclude is shared by every
+// worktree of the repository and is never cloned, so it covers exactly that
+// gap; the tracked rule stays, because it is what protects a clone.
+//
+// The two rules are [logsIgnore]'s own, spelled from outside the branch: the
+// directory's *contents*, and the ignore file itself back out again. A plain
+// `/<bundle>/logs/` would be simpler and wrong — it hides `logs/.gitignore`
+// too, and git cannot re-include a file whose parent directory is excluded,
+// so init's `git add` of the bundle would skip the tracked rule and no clone
+// would ever receive it.
+//
+// An external bundle dir is never committed and has no repo-relative path,
+// so there is nothing to exclude. Rolling this back is deliberately not
+// attempted: an ignore rule for a directory that is gone is harmless, and
+// editing a line back out of a file the user also owns is not.
+func excludeLogsDir(ctx context.Context, run *initRun) error {
+	if !run.ws.Dir.InRepo {
+		return nil
+	}
+	rel, err := run.ws.Dir.RelToRepo(run.bdir)
+	if err != nil {
+		return err
+	}
+	return run.ws.Repo.EnsureExclude(ctx, "/"+rel+"/logs/*", "!/"+rel+"/logs/.gitignore")
 }
 
 // commitInitBundle stages and commits only the bundle directory when it lives

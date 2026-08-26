@@ -67,6 +67,12 @@ func TestInitOnDefaultBranchCreatesRunBranch(t *testing.T) {
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(add-a-greeting): init" {
 		t.Fatalf("commit message = %q", msg)
 	}
+	// The init commit carries the rule that keeps the bundle's untracked
+	// area out of git, and never the lock that rule protects (spec §4.6).
+	files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD")
+	if !strings.Contains(files, "logs/.gitignore") || strings.Contains(files, "logs/session.json") {
+		t.Fatalf("init must commit the ignore rule and not the lock:\n%s", files)
+	}
 	if clean := testutil.Git(t, root, "status", "--porcelain"); clean != "" {
 		t.Fatalf("worktree not clean after init: %q", clean)
 	}

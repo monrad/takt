@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -282,4 +283,90 @@ func (r *Repo) IsAncestor(ctx context.Context, a, b string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// CommonDir returns the repository's *common* git directory — the one every
+// worktree of the repository shares, and where `info/exclude` lives. A
+// linked worktree has a git dir of its own, so `--git-dir` would answer with
+// a per-worktree path whose `info/` git never reads.
+//
+// git answers relative to the directory it ran in, and gitx runs every
+// command with -C <root>, so a relative answer is joined onto the root
+// rather than onto the caller's cwd (spec §4.5).
+func (r *Repo) CommonDir(ctx context.Context) (string, error) {
+	out, err := r.Run(ctx, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	if filepath.IsAbs(out) {
+		return out, nil
+	}
+	return filepath.Join(r.Root, out), nil
+}
+
+// EnsureExclude records ignore rules in the repository's `info/exclude`:
+// the ignore list that lives in the common git dir, is honoured by every
+// worktree whatever branch it has checked out, and is never cloned. That is
+// the only place an ignore rule for a *branch-specific* directory can
+// survive a branch switch — a tracked .gitignore inside that directory goes
+// away with the branch that carries it.
+//
+// It is the user's file too, so nothing already in it is disturbed: a rule
+// is appended only when it is not already there (whitespace-insensitively),
+// existing bytes are preserved, and an append always starts on a line of its
+// own. A missing info/ directory or exclude file is created. Rules are
+// appended in the order given, which is how a caller passing a pattern and
+// its negation gets gitignore's last-match-wins the right way round; a file
+// that already holds only the negation is the one state that cannot be
+// repaired by appending, and no caller writes one.
+func (r *Repo) EnsureExclude(ctx context.Context, lines ...string) error {
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			return errors.New("gitx: EnsureExclude needs a non-empty rule")
+		}
+	}
+	common, err := r.CommonDir(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(common, "info", "exclude")
+	old, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	var add strings.Builder
+	if len(old) > 0 && !strings.HasSuffix(string(old), "\n") {
+		add.WriteString("\n")
+	}
+	for _, line := range lines {
+		if !excludeHas(string(old)+add.String(), line) {
+			add.WriteString(line + "\n")
+		}
+	}
+	if add.Len() == 0 || strings.TrimSpace(add.String()) == "" {
+		return nil
+	}
+	if err = os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err = f.WriteString(add.String()); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// excludeHas reports whether content already carries rule as a line of its
+// own, ignoring surrounding whitespace.
+func excludeHas(content, rule string) bool {
+	for existing := range strings.SplitSeq(content, "\n") {
+		if strings.TrimSpace(existing) == rule {
+			return true
+		}
+	}
+	return false
 }

@@ -288,3 +288,104 @@ func TestCommitPathsAndHasStagedInAreScoped(t *testing.T) {
 		t.Fatalf("nothing left staged under the pathspec: %v %v", staged, err)
 	}
 }
+
+// excludeOf reads the repository's info/exclude and fails the test unless it
+// is exactly want. Kept as a helper so the tests below read as a sequence of
+// states rather than a pile of branches (gocognit).
+func excludeOf(t *testing.T, path, want string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != want {
+		t.Fatalf("info/exclude = %q, want %q", b, want)
+	}
+}
+
+// excludePath is the repository's info/exclude, with any file git's
+// templates shipped removed — so the create path is the one under test.
+func excludePath(t *testing.T, r *gitx.Repo, root string) string {
+	t.Helper()
+	common, err := r.CommonDir(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if common != filepath.Join(root, ".git") {
+		t.Fatalf("CommonDir = %q, want %q", common, filepath.Join(root, ".git"))
+	}
+	if err = os.RemoveAll(filepath.Join(common, "info")); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(common, "info", "exclude")
+}
+
+// TestEnsureExcludeCreatesTheFileAndAppendsOnce pins the ignore list takt
+// writes the bundle's untracked area into: it lives in the common git dir,
+// so every worktree honours it whatever branch is checked out, and it is the
+// user's file too — nothing already in it may be disturbed.
+func TestEnsureExcludeCreatesTheFileAndAppendsOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, err := gitx.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	excl := excludePath(t, r, root)
+	if err = r.EnsureExclude(ctx, "/docs/takt/demo/logs/*"); err != nil {
+		t.Fatal(err)
+	}
+	excludeOf(t, excl, "/docs/takt/demo/logs/*\n")
+
+	// The user's own content survives, and a rule already present is never
+	// appended a second time.
+	const mine = "# mine\nscratch/\n/docs/takt/demo/logs/*\n"
+	if err = os.WriteFile(excl, []byte(mine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err = r.EnsureExclude(ctx, "/docs/takt/demo/logs/*"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	excludeOf(t, excl, mine)
+	if err = r.EnsureExclude(ctx, "/docs/takt/other/logs/*"); err != nil {
+		t.Fatal(err)
+	}
+	excludeOf(t, excl, mine+"/docs/takt/other/logs/*\n")
+}
+
+// TestEnsureExcludeKeepsRuleOrderAndLineBoundaries covers the two things a
+// pattern-plus-negation caller depends on: the rules land in the order given
+// (gitignore is last-match-wins), and an append never glues itself onto a
+// last line the user left without a newline.
+func TestEnsureExcludeKeepsRuleOrderAndLineBoundaries(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, err := gitx.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	excl := excludePath(t, r, root)
+	pair := []string{"/docs/takt/p/logs/*", "!/docs/takt/p/logs/.gitignore"}
+	want := strings.Join(pair, "\n") + "\n"
+	for range 2 {
+		if err = r.EnsureExclude(ctx, pair...); err != nil {
+			t.Fatal(err)
+		}
+		excludeOf(t, excl, want)
+	}
+	if err = os.WriteFile(excl, []byte("noeol"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.EnsureExclude(ctx, "/x/"); err != nil {
+		t.Fatal(err)
+	}
+	excludeOf(t, excl, "noeol\n/x/\n")
+	// An empty rule is a bug in the caller, not a no-op.
+	if err = r.EnsureExclude(ctx, "  "); err == nil {
+		t.Fatal("an empty rule must be refused")
+	}
+}
