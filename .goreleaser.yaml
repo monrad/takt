@@ -1,8 +1,9 @@
 # goreleaser v2 — release build for takt.
 #
 # goreleaser is not a repo dependency: `task snapshot` uses it from PATH when
-# present, otherwise `nix shell nixpkgs#goreleaser -c goreleaser …`. The
-# pinned nixpkgs ships 2.17.1; `goreleaser check` must stay warning-free.
+# present, otherwise `nix develop -c goreleaser …`, which pins it through
+# flake.lock. flake.lock's nixpkgs ships 2.17.1; `goreleaser check` must stay
+# warning-free against it.
 #
 # The version string has one source — `.claude-plugin/plugin.json`. Here it
 # arrives as the git tag ({{.Version}}, tag minus the leading v); release.yml

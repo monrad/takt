@@ -26,14 +26,16 @@ tasks:
   snapshot:
     desc: Build an unpublished release snapshot with goreleaser into dist/.
     cmds:
-      # goreleaser is not a repo dependency and is not always installed:
-      # fall back to the pinned nixpkgs copy (the same one flake.nix's
-      # devShell provides) rather than fail.
+      # goreleaser is not a repo dependency and is not always installed. The
+      # fallback is `nix develop`, which builds the devShell from flake.lock,
+      # not `nix shell nixpkgs#goreleaser`, which resolves through the flake
+      # registry to whatever rolling nixpkgs the machine happens to track —
+      # a different goreleaser per machine and per day.
       - |
         if command -v goreleaser >/dev/null 2>&1; then
           goreleaser release --snapshot --clean --skip=publish
         else
-          nix shell nixpkgs#goreleaser -c goreleaser release --snapshot --clean --skip=publish
+          nix develop -c goreleaser release --snapshot --clean --skip=publish
         fi
 
   nix:build:
