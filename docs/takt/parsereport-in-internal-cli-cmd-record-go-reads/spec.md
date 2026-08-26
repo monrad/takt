@@ -65,10 +65,14 @@ a run of seven or more is not a marker.
 
 **Decoration run.** A maximal run of the characters `*`, `_` and `` ` ``. A run may
 mix them (`` *` `` is one run of length two). Runs are never required to match each
-other: the run before the key, the run opening the value and the run closing the value
-are three independent slots, and `**`…`*` is as acceptable as `**`…`**`. A run is
-*interior* to a value when it starts after the first byte and ends before the last —
-the one distinction step 4 draws.
+other: the run before the key, the run after its colon, the run opening the value and
+the run closing the value are four independent slots, and `**`…`*` is as acceptable as
+`**`…`**`.
+
+**Opener.** Any decoration run this line has already given up — before the key (step 2)
+or at the front of the value (step 4). Whether an opener was seen is the single fact
+step 4 uses to decide about a closing run, and it is what keeps an undecorated line
+byte-identical to what the old parser produced.
 
 ### Step 1 — strip leading markers
 
@@ -81,10 +85,10 @@ The required whitespace is what disambiguates `*`: `* STATUS: done` is a bullet,
 
 ### Step 2 — drop the decoration before the key
 
-Drop the leading decoration run from the front of what remains. It is consumed here and
+Drop the leading decoration run from the front of what remains, and remember whether
+there was one — that is the line's first chance to produce an *opener*. The run itself
 plays no further part: nothing requires it to be closed, and the value is cleaned by
-its own rules in step 4. Making the value's cleaning independent of the key's
-decoration is what keeps every slot in the grammar independent.
+its own rules in step 4.
 
 ### Step 3 — match the key
 
@@ -95,26 +99,33 @@ line that merely mentions `STATUS:` mid-sentence can never match.
 
 ### Step 4 — clean the value
 
-With `rest` = what follows the key:
+With `rest` = what follows the key — note that the whitespace after the colon is
+optional, so `STATUS:done` parses exactly as `STATUS: done` does, today and after this
+change:
 
 1. `strings.TrimSpace(rest)`.
 2. Repeatedly drop a leading decoration run and the whitespace after it, until the
-   value no longer starts with one. Repetition is required, not cosmetic: in
-   `` `STATUS:` `done` `` the first run is the *key's* closer and the second opens the
-   value, and a single strip would leave `` `done ``.
-3. Drop one trailing decoration run, if the value ends with one **and** the value has
-   no *interior* decoration run — a run that starts after the first byte and ends
-   before the last. Trim.
+   value no longer starts with one; each one dropped counts as an opener. Repetition is
+   required, not cosmetic: in `` `STATUS:` `done` `` the first run is the key's closer
+   and the second opens the value, and a single strip would leave `` `done ``.
+3. Drop one trailing decoration run **only if this line has produced an opener** — in
+   step 2 or in step 4.2. Trim.
 4. For `STATUS`, lowercase the result, as today.
 
-The interior guard in step 3 is the whole subtlety, and it is what distinguishes
-punctuation from content. `STATUS: done**` has no interior run, so the stray `**` is
-decoration and comes off. `SUMMARY: fixed *parseReport*` has one (the `*` before
-`parseReport`), so the trailing `*` is the closer of an emphasis the author meant, and
-the value survives verbatim.
+Step 3's opener requirement is the whole subtlety, and it is what keeps this change
+backward-compatible. A line that carried no decoration at all cannot lose anything:
+`SUMMARY: changed wildcard *` still records `changed wildcard *`, and
+`SUMMARY: fixed *parseReport*` keeps its emphasis, because neither line ever gave up an
+opener. A line that *did* open decoration is being read as decorated, so its closing run
+is punctuation and comes off.
 
-Every accepted shape below follows from these three steps alone; the decoration before
-the key never reaches the value.
+The rule is deliberately blunt in one place: in `**SUMMARY: fixed *parseReport***` the
+whole-line closer and the emphasis closer are one run of three stars, and the value
+becomes `fixed *parseReport`. No parser can separate them, and losing a closer inside a
+one-line human-readable summary costs nothing that matters.
+
+Every accepted shape below follows from these steps alone; the decoration before the
+key never reaches the value.
 
 ### Accepted shapes — the axes
 
@@ -125,8 +136,12 @@ when it is
 <marker>* <Dk-open>?<KEY>:<Dk-close>? <Do>?<value><Dc>?
 ```
 
-with every `<deco>` independent and optional — no `<deco>` has to be matched by
-another, and any slot may be empty. The axes the tests enumerate:
+with every space optional (`STATUS:done` is a trailer line), and
+
+every `<deco>` slot independent and optional — no slot has to be matched by another,
+and any of them may be empty. One restriction follows from step 4.3 rather than from
+the shape: a `<Dc>` is removed only on a line that also carried a `<Dk-open>`,
+`<Dk-close>` or `<Do>`. The axes the tests enumerate:
 
 | axis | representative classes | boundaries also tested |
 |---|---|---|
@@ -159,8 +174,10 @@ Worked examples:
 | `_SUMMARY:_ fixed the parser` | SUMMARY | `fixed the parser` |
 | `+ __BLOCKERS:__ none` | BLOCKERS | `none` |
 | `**STATUS: done` (never closed) | STATUS | `done` |
-| `STATUS: done**` (closing run only) | STATUS | `done` |
 | `*STATUS:** done` (mismatched pair) | STATUS | `done` |
+| `STATUS:done` (no space) | STATUS | `done` |
+| `SUMMARY: changed wildcard *` (no opener) | SUMMARY | `changed wildcard *` |
+| `SUMMARY: fixed *parseReport*` (no opener) | SUMMARY | `fixed *parseReport*` |
 
 ### Shapes that must not match
 
@@ -174,8 +191,15 @@ Worked examples:
 | `-STATUS: done` | a marker needs the whitespace after it |
 | `####### STATUS: done` | seven `#` is not a heading marker |
 
-Malformed decoration is **not** on this list, by the ruling above: the last three rows
-of the accepted table are its counter-examples.
+Malformed decoration is **not** on this list, by the ruling above: `**STATUS: done` and
+`*STATUS:** done` are its counter-examples — such a line is still a trailer line.
+
+One shape is deliberately left alone rather than rejected or repaired: `STATUS: done**`,
+a closing run on a line that never opened one, keeps its stars and therefore fails
+`recordTask`'s `done|failed|blocked` check. Stripping it would mean stripping the `*`
+from `SUMMARY: changed wildcard *` too, and silently changing what an undecorated line
+has always recorded is worse than declining to rescue a shape no model has been seen to
+emit. `--status` remains the escape hatch.
 
 ## Files
 
@@ -202,12 +226,16 @@ of the accepted table are its counter-examples.
 - **Boundary rows** from the second column of the axes table: `######` accepted and
   `#######` rejected, `0.` and `007.` and `2)` accepted, stacked `> - 1.` accepted, a
   mixed decoration run accepted.
-- **Interior-run rows:** a value with an interior decoration run keeps its trailing
-  run (`fixed *parseReport*`), and one without loses it (`done**`) — the two sides of
-  the step 3 guard.
+- **Opener rows:** both sides of the step 4.3 rule — `STATUS: **done**` and
+  `**STATUS: done**` lose their closers, while `SUMMARY: changed wildcard *`,
+  `SUMMARY: fixed *parseReport*` and `STATUS: done**` keep every byte they arrived
+  with. The last of these is the documented non-goal, asserted as `done**` so a future
+  change to it is a deliberate one.
+- **No-space row:** `STATUS:done` records `done`, as it did before this change.
 - **Must-not-match rows**, one per line of the must-not-match table, asserting the
   field stays empty.
-- **Emphasis preservation:** `SUMMARY: fixed *parseReport*` keeps its internal `*`.
+- **Whole-line-wrap blunt case:** `**SUMMARY: fixed *parseReport***` records
+  `fixed *parseReport`, pinning the one place the rule is knowingly lossy.
 - **Whole message:** the brief's template block quoted earlier in the body, the real
   (decorated) trailer last — last occurrence wins, and the earlier template lines do
   not leak into the digest.
@@ -243,7 +271,9 @@ The new file follows the internal-test convention already used by `slug_test.go`
 | What may an ordered marker look like? | One or more ASCII digits, leading zeros allowed, then `.` or `)`, then whitespace. | Removes the "zero, leading zeros, arbitrary digits" ambiguity the review named. | assumed (spec review, minor) |
 | Is the M/D/P/K matrix the language, or a sample of it? | A sample: representative classes plus the boundary cases that pin the grammar's edges. | The grammar is the authority; a finite matrix could never be the definition. | assumed (spec review pass 2, minor) |
 | Are the `--status` / `--summary` / `--blockers` overrides proven anywhere? | Not today — this change adds the case to `execute_test.go`. | G2 claims the overrides still win and nothing tested it; the claim needs evidence, not assertion. | assumed (spec review pass 2, minor) |
-| When are the decoration runs around a value stripped? | A leading run always; a trailing run only when the value has no interior run. | Asymmetric emphasis inside a summary is content, not decoration — an interior run is the evidence that the trailing one closes something the author wrote. | assumed (spec review pass 3, major) |
+| When are the decoration runs around a value stripped? | Leading runs always; a trailing run only on a line that already gave up an opener. | Makes the change a no-op for every line with no decoration at all — `SUMMARY: changed wildcard *` is byte-identical to before — which is what G2 promises. | assumed (spec review pass 4, major) |
+| What happens to a closing run with no opener anywhere (`STATUS: done**`)? | Left in place; the digest is rejected and `--status` is the escape hatch. | Rescuing it would cost the compatibility guarantee above. Documented as a non-goal with a test, not an oversight. | assumed (spec review pass 4, major) |
+| Is the whitespace after the colon required? | No. `STATUS:done` parses, as it does today. | The old parser trimmed the remainder; a regression row keeps it that way. | assumed (spec review pass 4, minor) |
 | Do the key's decoration and the value's interact? | No — the run before the key is consumed in step 2; the key's closing run and the value's opening run are both eaten by step 4's repeated leading strip. | Coupling them made `*STATUS:** done` yield `* done`; a single strip left `` `STATUS:` `done` `` as `` `done ``. | assumed (spec review pass 3, major) |
 | Does `*` need following whitespace to count as a list marker? | Yes. | Without it, `**STATUS:**` would lose one `*` to the marker stripper. | assumed |
 | Is `regexp` used? | No — plain `strings` steps. | The package is stdlib-only by constraint and the repo's parsing style is explicit string handling; the steps are simpler to read than one dense pattern. | assumed |
