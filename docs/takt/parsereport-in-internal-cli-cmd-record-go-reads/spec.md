@@ -32,23 +32,42 @@ helper that decides whether the line is a trailer line and, if so, for which key
 with what value. The helper is split into small steps so `cyclop`, `gocognit` and
 `funlen` stay quiet under the golden config.
 
+### Grammar
+
+Two terms are used below and are defined here exactly, so two implementations cannot
+disagree about what is accepted.
+
+**Marker.** One of:
+
+- a single `>`;
+- a single `-`, `*` or `+`;
+- a run of one to six `#`;
+- an *ordered marker*: one or more ASCII digits (`0`–`9`, leading zeros permitted,
+  no sign, no other characters) followed by a single `.` or `)`.
+
+Every marker must be followed by at least one space or tab. An unordered marker is
+**one** character, never a run: `--` and `>>` are not markers, and `**` is therefore
+never consumed as a marker. `#` is the one exception, because `##` is a real heading;
+a run longer than six is not a marker.
+
+**Decoration run.** A maximal run of the characters `*`, `_` and `` ` ``. A run may
+mix them (`` *` `` is one run of length two); the runs at the two ends of a value are
+**balanced** only when their text is byte-identical (`**`…`**` is balanced, `**`…`*`
+is not, `` *_ ``…`` _* `` is not).
+
 ### Step 1 — strip leading markers
 
-Repeatedly remove, from the front of the trimmed line:
-
-- a `>`, `-`, `*`, `+` or `#` run **followed by a space**, or
-- an ordered-list marker (`1.`, `2)`, …) **followed by a space**,
-
-trimming spaces between removals, until no marker is removed. Looping handles stacked
+From the front of the trimmed line, repeatedly remove one marker and the whitespace
+after it, until the front of the line is not a marker. Looping is what handles stacked
 markers such as `> 1. `.
 
-The required space is what disambiguates `*`: `* STATUS: done` is a bullet,
+The required whitespace is what disambiguates `*`: `* STATUS: done` is a bullet,
 `**STATUS:** done` is emphasis, and only the first form is consumed here.
 
 ### Step 2 — split the decoration run
 
-Take the leading run of `*`, `_` and `` ` `` characters off the front of what remains
-and keep it as `deco` (possibly empty).
+Take the leading decoration run off the front of what remains and keep it as `deco`
+(possibly empty).
 
 ### Step 3 — match the key
 
@@ -65,27 +84,44 @@ With `rest` = what follows the key:
 2. If `deco` is non-empty: drop `deco` from the **front** of the value if it is there
    (the `**STATUS:** done` shape), otherwise drop it from the **end** if it is there
    (the whole-line-wrapped `**STATUS: done**` shape). Trim again.
-3. Drop one **balanced** wrapper: if the value now starts and ends with the same
-   decoration run, remove both (the `STATUS: **done**` shape). Trim again.
+3. Drop one **balanced** wrapper as defined above (the `STATUS: **done**` shape).
+   Trim again.
 4. For `STATUS`, lowercase the result, as today.
 
 Step 3's balance requirement is deliberate: `SUMMARY: fixed *parseReport*` keeps its
 internal emphasis intact, because no `deco` preceded the key and the value's start and
 end runs do not match.
 
-### Shapes accepted
+### Accepted shapes — the matrix
+
+The accepted set is a cross-product, not a list of examples. A line is a trailer line
+exactly when it is
+
+```
+<marker>* <deco-open><KEY>:<deco-close> <deco-open><value><deco-close>
+```
+
+with each part optional per the grammar above. The three axes:
+
+| axis | values |
+|---|---|
+| marker prefix (M) | none · `-` · `*` · `+` · `>` · `#` · `##` · `1.` · `2)` · `007.` · stacked `> 1.` |
+| decoration placement (P) | none · around the key · around the value · around key **and** value · around the whole line |
+| decoration run (D) | `*` · `**` · `_` · `__` · `` ` `` |
+| key (K) | `STATUS` · `SUMMARY` · `BLOCKERS` |
+
+Worked examples, one per placement:
 
 | line | key | value |
 |---|---|---|
 | `STATUS: done` | STATUS | `done` |
 | `**STATUS:** done` | STATUS | `done` |
-| `- STATUS: done` | STATUS | `done` |
 | `STATUS: **done**` | STATUS | `done` |
-| `` `STATUS:` done `` | STATUS | `done` |
+| `` `STATUS:` `done` `` | STATUS | `done` |
 | `**STATUS: done**` | STATUS | `done` |
 | `> 1. **STATUS: done**` | STATUS | `done` |
 | `_SUMMARY:_ fixed the parser` | SUMMARY | `fixed the parser` |
-| `- **BLOCKERS:** none` | BLOCKERS | `none` |
+| `+ __BLOCKERS:__ none` | BLOCKERS | `none` |
 
 ### Shapes that must not match
 
@@ -95,6 +131,8 @@ end runs do not match.
 | `see STATUS: done in the brief` | same |
 | `status: done` | keys stay uppercase |
 | `STATUS done` | no colon |
+| `-STATUS: done` | a marker needs the space after it |
+| `####### STATUS: done` | seven `#` is not a heading marker |
 
 ## Files
 
@@ -108,14 +146,20 @@ end runs do not match.
 
 ## Tests
 
-A table-driven `TestParseReport…` set in `internal/cli/cmd_record_test.go`:
+`internal/cli/cmd_record_test.go` proves the matrix rather than a handful of examples:
 
-- one row per accepted shape above, per key, asserting the exact extracted value;
-- rows for the combinations (marker + key decoration + value decoration);
-- rows for every must-not-match line above, asserting the field stays empty;
-- a row asserting `SUMMARY: fixed *parseReport*` survives with its emphasis;
-- a whole-message case where the brief's template block is quoted earlier in the body
-  and the real (decorated) trailer appears last: last occurrence wins.
+- **Cross-product case.** Nested table-driven loops over the marker axis (M), the
+  decoration-run axis (D) and the placement axis (P), asserted for each key (K). Every
+  generated line must yield the expected key and the value `done` / `fixed the parser`
+  / `none` with all decoration removed. The subtest name carries M/D/P/K so a failure
+  names the exact combination.
+- **Must-not-match rows**, one per line of the table above, asserting the field stays
+  empty.
+- **Emphasis preservation:** `SUMMARY: fixed *parseReport*` keeps its internal `*`.
+- **Whole message:** the brief's template block quoted earlier in the body, the real
+  (decorated) trailer last — last occurrence wins, and the earlier template lines do
+  not leak into the digest.
+- **Regression:** the plain undecorated trailer parses exactly as before.
 
 The file follows the internal-test convention already used by `slug_test.go` and
 `brief_stable_test.go`; no `export_test.go` entry is added.
@@ -133,10 +177,13 @@ The file follows the internal-test convention already used by `slug_test.go` and
 |---|---|---|---|
 | How far does the tolerance go? | Leading `-`, `*`, `+`, `>`, `#` and ordered-list markers, and `*` / `_` / `` ` `` decoration around the key, around the value, or around the whole line. | Covers the shapes models actually emit without inviting false positives. | user-confirmed |
 | Are lowercase keys (`status:`) accepted? | No. | A prose line beginning "status: ..." would silently become the recorded digest. | user-confirmed |
-| Is a key matched anywhere on the line? | No — only at the start, after markers and decoration. | Keeps a mid-sentence mention from overwriting a real trailer. | user-confirmed |
+| Is a key matched anywhere on the line? | No — only at the start, after markers and decoration only. | Keeps a mid-sentence mention from overwriting a real trailer. | user-confirmed |
 | Which surfaces change besides the parser and tests? | `agents/implementer.md`, the regenerated Copilot agent, and spec §5.1. | The repo rule is that a behaviour change amends the spec in the same commit; the Copilot agent is generated and held in parity by `task hosts:check`. | user-confirmed |
 | Does the brief template (`internal/brief/templates/implementer.md`) also change? | No. | The agent file already carries the contract; changing the template would churn the brief goldens for no behavioural gain. | user-confirmed |
-| Does `*` need a following space to count as a list marker? | Yes. | Without it, `**STATUS:**` would lose one `*` to the marker stripper. | assumed |
+| Is an unordered marker a run or a single character? | A single character, except `#`, where one to six are a heading. | `**` must stay decoration, and `--`/`>>` are not markdown markers. | assumed (spec review, minor) |
+| What may an ordered marker look like? | One or more ASCII digits, leading zeros allowed, then `.` or `)`, then whitespace. | Removes the "zero, leading zeros, arbitrary digits" ambiguity the review named. | assumed (spec review, minor) |
+| When are the decoration runs around a value stripped? | Only when byte-identical at both ends, or when they close the run that preceded the key. | Asymmetric emphasis inside a summary is content, not decoration. | assumed |
+| Does `*` need following whitespace to count as a list marker? | Yes. | Without it, `**STATUS:**` would lose one `*` to the marker stripper. | assumed |
 | Do the `--status` / `--summary` / `--blockers` flags still override? | Yes, unchanged via `cmp.Or` in `recordTask`. | Out of scope; the flags are the escape hatch when parsing fails entirely. | assumed |
 | Is `regexp` used? | No — plain `strings` steps. | The package is stdlib-only by constraint and the repo's parsing style is explicit string handling; the steps are simpler to read than one dense pattern. | assumed |
 | Does anything about the digest schema or `recordTask`'s validation change? | No. | The failure was purely in extraction. | assumed |
