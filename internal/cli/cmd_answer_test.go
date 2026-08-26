@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
 )
 
@@ -85,7 +86,7 @@ func TestSpecReviewRoundCapAsksThenRetryReviewsAgain(t *testing.T) {
 
 func TestSpecReviewRoundCapAcceptOverridesAndMovesOn(t *testing.T) {
 	t.Parallel()
-	root, _ := specCapFixture(t)
+	root, bdir := specCapFixture(t)
 	if _, o, _ := next(t, root, nil); o["op"] != "ask" || o["gate"] != "gate_review_capped" {
 		t.Fatalf("%v", o)
 	}
@@ -108,6 +109,25 @@ func TestSpecReviewRoundCapAcceptOverridesAndMovesOn(t *testing.T) {
 		"demo",
 	); c != 0 {
 		t.Fatal(e)
+	}
+	// #29 fix round 1, finding 1b: the user declined to act on the capped
+	// review's finding by overriding it, so overrideGate must carry it into
+	// follow-ups.json — the same rule an approving pass follows. If the
+	// carryFindings call were ever deleted from overrideGate, this run
+	// would still move on to planning below; only this assertion would
+	// catch the loss.
+	got, err := gate.ReadFollowUps(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 1 {
+		t.Fatalf("the overridden finding must be carried, got %d follow-ups", len(got.Items))
+	}
+	if got.Items[0].Source != gate.SourceOverride || got.Items[0].Gate != gate.Spec {
+		t.Fatalf("provenance must survive: %+v", got.Items[0])
+	}
+	if got.Items[0].Severity != "blocking" || got.Items[0].Title != "gap" {
+		t.Fatalf("finding detail must survive: %+v", got.Items[0])
 	}
 	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" {
 		t.Fatalf("accept must override the gate and move the run on to planning: %v", o)

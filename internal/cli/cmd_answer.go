@@ -179,7 +179,15 @@ func acceptRevision(bdir, which string) error {
 // overrideGate records an evidenced override at the gate's current hash
 // (spec §9). The user declined to act on the verdict's findings, so — like
 // an approving pass — they must not vanish with the override; carryFindings
-// records them before the event is appended.
+// records them.
+//
+// The event is appended before the findings are carried, deliberately: if
+// the write dies between the two, a retry re-appends gate_overridden, and a
+// duplicate of that event is inert — gate.Compute stops at the first one
+// that matches the current hash. Carrying findings a second time is not
+// inert, since follow-ups.json has no de-duplication and a repeat would
+// show up as noise in the retro. Ordering it this way fails toward the
+// harmless duplicate.
 func overrideGate(bdir, which, reason string) error {
 	if strings.TrimSpace(reason) == "" {
 		return errorf("accepting a %s review verdict needs --reason", which)
@@ -188,16 +196,16 @@ func overrideGate(bdir, which, reason string) error {
 	if err != nil {
 		return err
 	}
+	if err = bundle.AppendEvent(bdir, "gate_overridden", map[string]any{
+		keyGate: which, keyHash: hash, keyReason: reason,
+	}); err != nil {
+		return err
+	}
 	res, err := readReviewResult(bdir, which)
 	if err != nil {
 		return err
 	}
-	if err = carryFindings(bdir, which, res.Findings, gate.SourceOverride); err != nil {
-		return err
-	}
-	return bundle.AppendEvent(bdir, "gate_overridden", map[string]any{
-		keyGate: which, keyHash: hash, keyReason: reason,
-	})
+	return carryFindings(bdir, which, res.Findings, gate.SourceOverride)
 }
 
 // answerAlignment confirms, corrects or skips the auditor's clause list.

@@ -12,6 +12,7 @@ import (
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/cli"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
 )
 
@@ -393,6 +394,76 @@ func TestReviewReworkOpensGateAndOverrideClearsIt(t *testing.T) {
 	_ = bundle.SaveState(bdir, st)
 	if _, o, _ = next(t, root, nil); o["op"] != "exec" {
 		t.Fatalf("edited spec must re-arm the gate: %v", o)
+	}
+}
+
+// TestApproveVerdictCarriesFindingsToFollowUps covers the first of the two
+// call sites the carry rule lives at (#29 fix round 1, finding 1): an
+// approving pass closes the gate without asking anyone to act on its
+// findings, so runReview must carry them into follow-ups.json itself. If
+// the carryFindings call were ever deleted from runReview's approve branch,
+// this test would still see the review succeed — nothing about the review
+// command's own output would change — but follow-ups.json would come back
+// empty, which is exactly what this asserts against.
+func TestApproveVerdictCarriesFindingsToFollowUps(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"approve","summary":"looks fine",` +
+		`"findings":[{"severity":"minor","file":"spec.md","line":7,"title":"wording","detail":"ambiguous"}]}`}
+	if c, r, e := runIn(t, root, env, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "approve" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	got, err := gate.ReadFollowUps(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 1 {
+		t.Fatalf("an approving pass's finding must be carried, got %d follow-ups", len(got.Items))
+	}
+	if got.Items[0].Source != gate.SourceApprove || got.Items[0].Gate != gate.Spec {
+		t.Fatalf("provenance must survive: %+v", got.Items[0])
+	}
+	if got.Items[0].Severity != "minor" || got.Items[0].Title != "wording" {
+		t.Fatalf("finding detail must survive: %+v", got.Items[0])
+	}
+}
+
+// TestReviseDoesNotCarryFindings covers the negative half of the carry
+// rule (#29 fix round 1, finding 1c): a rework verdict's findings are the
+// instruction for the revise, not something nobody acted on, so answering
+// gate_review with "revise" must leave follow-ups.json empty. This is the
+// branch most likely to regress by addition — if a carry call were ever
+// added to acceptRevision, this test would start failing where it
+// currently passes.
+func TestReviseDoesNotCarryFindings(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"too vague",` +
+		`"findings":[{"severity":"major","file":"spec.md","line":1,"title":"vague","detail":"say more"}]}`}
+	if c, r, e := runIn(t, root, env, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "rework" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	if _, o, _ := next(t, root, nil); o["op"] != "ask" || o["gate"] != "gate_review" {
+		t.Fatalf("%v", o)
+	}
+	if c, _, e := runIn(t, root, nil,
+		"answer", "--gate", "gate_review", "--choice", "revise", "--slug", "demo"); c != 0 {
+		t.Fatal(e)
+	}
+	got, err := gate.ReadFollowUps(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 0 {
+		t.Fatalf("a revise answers the findings, they must not also be carried: %+v", got.Items)
 	}
 }
 
