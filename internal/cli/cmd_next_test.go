@@ -1097,6 +1097,47 @@ func TestTheSessionSidecarStaysInvisibleAfterABranchSwitch(t *testing.T) {
 	testutil.Git(t, root, "check-ignore", "-q", "docs/takt/demo/logs/session.json")
 }
 
+// TestNextRecordsTheExcludeRuleForAPreBranchBundle covers every bundle
+// created before init learned to write the rule. The exclude is repository
+// state, not bundle state, so no `takt init` will ever run for those runs
+// again — and without it a resumed v0.1.0 bundle still shows `?? docs/` on
+// the base branch and still loses the `merge` disposition at finish. `next`
+// puts the rule in alongside the ignore file it already restores; appending
+// a rule that is already there is a no-op, so the ordinary call pays a read.
+func TestNextRecordsTheExcludeRuleForAPreBranchBundle(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	exclude := filepath.Join(root, ".git", "info", "exclude")
+	rules := []string{"/docs/takt/demo/logs/*", "!/docs/takt/demo/logs/.gitignore"}
+	before, err := os.ReadFile(exclude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range rules {
+		if !strings.Contains(string(before), rule+"\n") {
+			t.Fatalf("precondition: init writes %q:\n%s", rule, before)
+		}
+	}
+	// What a bundle from before the rule looks like: everything init wrote
+	// is on disk except the repository-level exclude.
+	if err = os.WriteFile(exclude, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root, map[string]string{"TAKT_SESSION": "S"}); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	after, err := os.ReadFile(exclude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range rules {
+		if !strings.Contains(string(after), rule+"\n") {
+			t.Fatalf("next must record %q for a bundle init never wrote it for:\n%s", rule, after)
+		}
+	}
+	testutil.Git(t, root, "check-ignore", "-q", "docs/takt/demo/logs/session.json")
+}
+
 // TestNextWithAGeneratedIdLeavesTheTrackedBundleUntouched covers the other
 // half of "a next that decides nothing leaves the tracked bundle
 // byte-identical" (spec §4.6). With neither CLAUDE_CODE_SESSION_ID nor

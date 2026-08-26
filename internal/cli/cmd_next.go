@@ -83,7 +83,7 @@ func cmdNext(env Env) int {
 		env: env, ws: tgt.ws, slug: tgt.slug, bdir: tgt.bdir, st: tgt.st, now: timeNow(),
 		session: id, genID: generated, force: *force, recover: *recoverFlag,
 	}
-	if lockCode, done := r.acquireLock(); done {
+	if lockCode, done := r.acquireLock(ctx); done {
 		return lockCode
 	}
 	if code = r.healFinish(ctx); code != 0 {
@@ -101,7 +101,7 @@ func cmdNext(env Env) int {
 // Every other outcome rewrites the sidecar with a fresh heartbeat: it is
 // untracked, so the write neither dirties the worktree nor rides into a
 // commit, and there is no lease to nurse.
-func (r *nextRun) acquireLock() (int, bool) {
+func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 	host, _ := os.Hostname()
 	who := bundle.Identity{ID: r.session, Host: host, Generated: r.genID}
 	held, err := bundle.ReadSession(r.bdir)
@@ -118,12 +118,20 @@ func (r *nextRun) acquireLock() (int, bool) {
 		})
 		return printOp(r.env, q), true
 	}
-	// The rule that keeps the bundle's untracked area out of git goes in
-	// first, every time: a bundle created before it existed has a logs/ with
-	// no .gitignore, and commitBundle stages the bundle directory wholesale,
-	// so the lock written below would ride into this run's next commit.
-	// Writing the same bytes over an existing rule changes nothing.
+	// Both rules that keep the bundle's untracked area out of git go in
+	// first, every time. A bundle created before they existed has a logs/
+	// with no .gitignore, and commitBundle stages the bundle directory
+	// wholesale, so the lock written below would ride into this run's next
+	// commit; and without the info/exclude pair the same lock shows as `??
+	// docs/` the moment this worktree is checked back out on the base, which
+	// is enough to hide the `merge` disposition at finish (§7.5). The
+	// exclude is repository state, so init — which runs once, and already
+	// ran — is the one place it could never be repaired from. Neither call
+	// writes anything when the rule is already there.
 	if err = writeLogsIgnore(r.bdir); err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), ""), true
+	}
+	if err = excludeLogsDir(ctx, r.ws, r.bdir); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
 	if err = bundle.WriteSession(r.bdir, next); err != nil {

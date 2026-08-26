@@ -292,7 +292,7 @@ func persistState(
 	if err := writeLogsIgnore(run.bdir); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
-	if err := excludeLogsDir(ctx, run); err != nil {
+	if err := excludeLogsDir(ctx, run.ws, run.bdir); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
 	// The holder goes in only once both rules that keep it out of git are on
@@ -319,12 +319,21 @@ const logsIgnore = "*\n!.gitignore\n"
 // here rather than waiting for the first review, so the ignore rule is in
 // place before anything can be written into it; the backend still creates it
 // on demand for bundles that predate this.
+//
+// Every `takt next` calls this to repair a bundle that lost the rule, so the
+// file is written only when it is missing or its bytes differ. Re-writing
+// identical content would churn an mtime — and a watcher, and a backup — on
+// every call of the busiest command takt has.
 func writeLogsIgnore(bdir string) error {
 	dir := filepath.Join(bdir, "logs")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(logsIgnore), 0o600)
+	p := filepath.Join(dir, ".gitignore")
+	if cur, err := os.ReadFile(p); err == nil && string(cur) == logsIgnore {
+		return nil
+	}
+	return os.WriteFile(p, []byte(logsIgnore), 0o600)
 }
 
 // excludeLogsDir records the bundle's untracked logs directory in the
@@ -350,15 +359,23 @@ func writeLogsIgnore(bdir string) error {
 // so there is nothing to exclude. Rolling this back is deliberately not
 // attempted: an ignore rule for a directory that is gone is harmless, and
 // editing a line back out of a file the user also owns is not.
-func excludeLogsDir(ctx context.Context, run *initRun) error {
-	if !run.ws.Dir.InRepo {
+//
+// It takes the workspace and the bundle dir rather than an *initRun because
+// `takt next` calls it too (acquireLock). The exclude lives in the
+// repository, not in the bundle, so init is the one place it can never be
+// repaired from: every bundle created before this rule existed would
+// otherwise go without it for the rest of its life. EnsureExclude appends
+// only what is missing, so the ordinary call reads the file and writes
+// nothing.
+func excludeLogsDir(ctx context.Context, ws *workspace, bdir string) error {
+	if !ws.Dir.InRepo {
 		return nil
 	}
-	rel, err := run.ws.Dir.RelToRepo(run.bdir)
+	rel, err := ws.Dir.RelToRepo(bdir)
 	if err != nil {
 		return err
 	}
-	return run.ws.Repo.EnsureExclude(ctx, "/"+rel+"/logs/*", "!/"+rel+"/logs/.gitignore")
+	return ws.Repo.EnsureExclude(ctx, "/"+rel+"/logs/*", "!/"+rel+"/logs/.gitignore")
 }
 
 // commitInitBundle stages and commits only the bundle directory when it lives
