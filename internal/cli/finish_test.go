@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -311,16 +312,43 @@ func TestGoalsUnmetGateWaiveAndFix(t *testing.T) {
 	}
 }
 
+// TestGoalAssessorRecordRejectsBadVerdicts covers the failure contract of
+// `record --agent goal-assessor` (review M1): an assessment takt cannot use
+// is reported the way the planner's index already is — {valid:false,
+// problems}, exit 0 — not as a command failure. Nothing is written, so the
+// dispatch is still pending and `takt next` hands the brief out again.
 func TestGoalAssessorRecordRejectsBadVerdicts(t *testing.T) {
 	t.Parallel()
-	d, _ := finishRun(t)
+	d, bdir := finishRun(t)
 	driveToFinish(t, d)
 	d.cmd("verify", "--slug", "demo")
 	d.nextOp()
-	msg := filepath.Join(t.TempDir(), "bad.txt")
-	os.WriteFile(msg, []byte("```json\n[{\"id\":\"G9\",\"verdict\":\"achieved\",\"evidence\":\"x\"}]\n```\n"), 0o600)
-	if code, _, _ := d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo"); code == 0 {
-		t.Fatal("unknown goal id must be rejected")
+	for name, body := range map[string]string{
+		"unknown goal id": "```json\n[{\"id\":\"G9\",\"verdict\":\"achieved\",\"evidence\":\"x\"}]\n```\n",
+		"no JSON block":   "I had a look and it all seems fine.\n",
+	} {
+		msg := filepath.Join(t.TempDir(), "bad.txt")
+		if err := os.WriteFile(msg, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, got, errb := d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo")
+		if code != 0 {
+			t.Fatalf("%s: a rejected assessment is a document, not a failure: %d %s", name, code, errb)
+		}
+		if got["valid"] != false {
+			t.Fatalf("%s: %v", name, got)
+		}
+		problems, ok := got["problems"].([]any)
+		if !ok || len(problems) == 0 {
+			t.Fatalf("%s: a rejection must say what is wrong: %v", name, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(bdir, "finish", "goals.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a rejected assessment must write nothing: %v", err)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil || st.GoalsCheckedSHA != nil {
+		t.Fatalf("%v %+v", err, st.GoalsCheckedSHA)
 	}
 	if o := d.nextOp(); o["op"] != "dispatch" {
 		t.Fatalf("a rejected record leaves the dispatch pending: %v", o)

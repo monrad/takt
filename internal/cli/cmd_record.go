@@ -90,9 +90,15 @@ func recordPlanner(ctx context.Context, env Env, tgt *runTarget) int {
 // goals.md and either checks the goals at HEAD or leaves the unmet list
 // for the goals_unmet gate.
 func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int {
-	vs, code := readVerdicts(env, tgt.bdir, from)
+	vs, problems, code := readVerdicts(env, tgt.bdir, from)
 	if code != 0 {
 		return code
+	}
+	if len(problems) > 0 {
+		// Nothing is written, so the dispatch is still pending: the next
+		// `takt next` hands the brief out again and the assessment is
+		// simply retaken (spec §5.3 row 21).
+		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
 	head, err := tgt.ws.Repo.HeadSHA(ctx)
 	if err != nil {
@@ -128,35 +134,41 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 }
 
 // readVerdicts pulls the JSON block out of the assessor's message and
-// validates it against the run's frozen goal ids.
-func readVerdicts(env Env, bdir, from string) ([]finish.GoalVerdict, int) {
+// validates it against the run's frozen goal ids. It returns the verdicts,
+// the problems that make the message unusable, and an exit code — and only
+// one of the three is ever non-zero.
+//
+// What the agent got wrong is a problem list, not a failure: spec §5.1 has
+// `record --agent` report validation errors instead of failing, which is the
+// contract the planner already answers on ({valid:false, problems}, exit 0)
+// and the one contract a prompt has to handle (review M1). takt's own
+// invariants are a different thing: an unreadable --from file is a
+// mis-wired session, and a goals.md this run cannot read or parse is a
+// broken bundle — neither is the assessor's doing, and both exit 1 as spec
+// §13 asks.
+func readVerdicts(env Env, bdir, from string) ([]finish.GoalVerdict, []string, int) {
 	raw, err := os.ReadFile(from)
 	if err != nil {
-		return nil, fail(env.Stderr, exitError, err.Error(), "")
-	}
-	js, err := backend.ExtractJSON(string(raw))
-	if err != nil {
-		return nil, fail(env.Stderr, exitError, "no JSON block in the assessor's message: "+err.Error(),
-			assessorHint)
+		return nil, nil, fail(env.Stderr, exitError, err.Error(), "")
 	}
 	gb, err := os.ReadFile(filepath.Join(bdir, "goals.md"))
 	if err != nil {
-		return nil, fail(env.Stderr, exitError, err.Error(), "")
+		return nil, nil, fail(env.Stderr, exitError, err.Error(), "")
 	}
 	g, err := goals.Parse(gb)
 	if err != nil {
-		return nil, fail(env.Stderr, exitError, err.Error(), "")
+		return nil, nil, fail(env.Stderr, exitError, err.Error(), "")
+	}
+	js, err := backend.ExtractJSON(string(raw))
+	if err != nil {
+		return nil, []string{"no JSON block in the assessor's message: " + err.Error()}, 0
 	}
 	vs, err := finish.ParseVerdicts(js, g.IDs())
 	if err != nil {
-		return nil, fail(env.Stderr, exitError, err.Error(), assessorHint)
+		return nil, []string{err.Error()}, 0
 	}
-	return vs, 0
+	return vs, nil, 0
 }
-
-// assessorHint is what a session does with a rejected assessment: the
-// dispatch is still pending, so `takt next` hands the brief out again.
-const assessorHint = "re-dispatch the goal assessor"
 
 // unmetList is the goals_unmet ask context shape: {id, verdict, evidence}.
 func unmetList(vs []finish.GoalVerdict) []map[string]any {

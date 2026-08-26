@@ -356,8 +356,18 @@ func (d *driver) playAssessor(ag map[string]any) {
 	}
 	msg := d.message("```json\n[" + strings.Join(verdicts, ",") + "]\n```\n")
 	code, out, errb := d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo")
-	if code != 0 || out["all_achieved"] != true {
+	if code != 0 {
 		d.t.Fatalf("record goal-assessor: %d %v %s", code, out, errb)
+	}
+	// An assessment takt cannot use comes back as {valid:false, problems}
+	// at exit 0, exactly as a rejected plan index does (review M1) — so the
+	// walk reads the document, not the exit code. The fixture's verdicts
+	// are well-formed, so a rejection here is the driver's own bug.
+	if out["valid"] == false {
+		d.t.Fatalf("the scripted assessment must validate: %v", out)
+	}
+	if out["all_achieved"] != true {
+		d.t.Fatalf("record goal-assessor: %v", out)
 	}
 }
 
