@@ -49,3 +49,7 @@
 {"ts":"2026-08-26T17:47:59.738978545Z","type":"wave_cleared","data":{"wave":0}}
 {"ts":"2026-08-26T17:47:59.745498941Z","type":"wave_dispatched","data":{"attempt":1,"slice":1,"tasks":[2],"wave":1}}
 {"ts":"2026-08-26T17:51:11.802520565Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":2}}
+{"ts":"2026-08-26T17:53:01.050615915Z","type":"wave_committed","data":{"attempt":1,"sha":"4d3bd9187b7b57b571ec1eb276e3471f8ee44238","slice":1,"tasks":[2],"wave":1}}
+{"ts":"2026-08-26T17:53:01.050654068Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[],"sha":"4d3bd9187b7b57b571ec1eb276e3471f8ee44238","wave":1}}
+{"ts":"2026-08-26T17:53:05.638861342Z","type":"wave_cleared","data":{"wave":1}}
+{"ts":"2026-08-26T17:53:05.64079555Z","type":"phase","data":{"from":"execute","to":"finish"}}
