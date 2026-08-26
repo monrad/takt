@@ -717,3 +717,47 @@ func TestBrainstormPassesBlockingToTheGateReviewQuestion(t *testing.T) {
 		t.Fatalf("the question must carry blocking: %+v", d.Op.Context)
 	}
 }
+
+func TestSpecReviewRoundsAreCapped(t *testing.T) {
+	t.Parallel()
+	base := func() (*bundle.State, decide.Facts) {
+		return state(bundle.PhaseBrainstorm),
+			decide.Facts{HasSpec: true, HasGoals: true, GoalsFrozen: true}
+	}
+	st, f := base()
+	f.SpecRounds = 2
+	d, err := decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActExec {
+		t.Fatalf("under the cap the run must still review: %+v", d)
+	}
+
+	st, f = base()
+	f.SpecRounds = 3
+	d, err = decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActAsk || d.Op.Gate != "gate_review_capped" {
+		t.Fatalf("at the cap the run must ask instead of reviewing a fourth time: %+v", d)
+	}
+	if d.Op.Context["attempts"] != 3 || d.Op.Context["gate"] != "spec" {
+		t.Fatalf("the question must name the gate and the round count: %+v", d.Op.Context)
+	}
+	var choices []string
+	for _, o := range d.Op.Options {
+		choices = append(choices, o.Choice)
+	}
+	if len(choices) != 3 {
+		t.Fatalf("choices = %v, want accept/retry/stop", choices)
+	}
+}
+
+func TestCappedGateIsInTheVocabulary(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(decide.Vocab().Gates, "gate_review_capped") {
+		t.Fatal("every gate Decide can emit must be in Vocab so the prompt parity tests see it")
+	}
+}

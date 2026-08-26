@@ -23,6 +23,7 @@ const (
 const (
 	gateOwner              = "owner"
 	gateReview             = "gate_review"
+	gateReviewCapped       = "gate_review_capped"
 	gateAlignmentConfirm   = "alignment_confirm"
 	gatePlanInvalid        = "plan_invalid"
 	gateAgentInvalid       = "agent_invalid"
@@ -46,6 +47,8 @@ func Question(gate string, ctx map[string]any) op.Op {
 		questionOwner(&q, ctx)
 	case gateReview:
 		questionGateReview(&q, ctx)
+	case gateReviewCapped:
+		questionGateReviewCapped(&q, ctx)
 	case gateAlignmentConfirm:
 		questionAlignmentConfirm(&q, ctx)
 	case gatePlanInvalid:
@@ -124,6 +127,33 @@ func questionGateReview(q *op.Op, ctx map[string]any) {
 			Choice:      "accept",
 			Label:       "Accept as is",
 			Description: "Record an override with a reason (`--reason`); the findings are carried to the retro.",
+		},
+		{Choice: choiceStop, Label: labelStop, Description: "Keep the gate open and end the turn."},
+	}
+}
+
+// questionGateReviewCapped fills the "gate_review_capped" gate: the spec
+// review has taken maxAgentAttempts passes without the gate closing
+// (fixed-point design §8). Gate review is the one loop that cannot
+// self-limit, so this is where it stops and asks.
+func questionGateReviewCapped(q *op.Op, ctx map[string]any) {
+	g, _ := ctx["gate"].(string)
+	q.Narration = fmt.Sprintf("the %s review has taken %v passes", g, ctx[ctxAttempts])
+	q.Question = fmt.Sprintf(
+		"The %s review has run %v times without closing the gate (findings in reviews/%s.md). "+
+			"How do you want to proceed?",
+		g, ctx[ctxAttempts], g,
+	)
+	q.Options = []op.Option{
+		{
+			Choice:      "accept",
+			Label:       "Accept as is (Recommended)",
+			Description: "Record an override with a reason (`--reason`); the findings are carried to the retro.",
+		},
+		{
+			Choice:      choiceRetry,
+			Label:       "One more pass",
+			Description: "Reset the round count and review once more.",
 		},
 		{Choice: choiceStop, Label: labelStop, Description: "Keep the gate open and end the turn."},
 	}

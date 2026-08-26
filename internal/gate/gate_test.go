@@ -324,3 +324,24 @@ func TestReceiptCarriesSeverityCounts(t *testing.T) {
 		t.Fatal("a receipt written before severities existed must read as zero blocking")
 	}
 }
+
+func TestRoundsCountsReviewsSinceTheNewestReset(t *testing.T) {
+	t.Parallel()
+	reviewed := func(g string) bundle.Event {
+		return bundle.Event{Type: gate.EvReviewed, Data: map[string]any{"gate": g}}
+	}
+	events := []bundle.Event{
+		reviewed(gate.Spec), reviewed(gate.Plan), reviewed(gate.Spec),
+		{Type: gate.EvRoundsReset, Data: map[string]any{"gate": gate.Spec}},
+		reviewed(gate.Spec), reviewed(gate.Plan),
+	}
+	if n := gate.Rounds(events, gate.Spec); n != 1 {
+		t.Fatalf("spec rounds = %d, want 1 (the reset restarts the count)", n)
+	}
+	if n := gate.Rounds(events, gate.Plan); n != 2 {
+		t.Fatalf("plan rounds = %d, want 2 (a spec reset must not touch the plan gate)", n)
+	}
+	if n := gate.Rounds(nil, gate.Spec); n != 0 {
+		t.Fatalf("no events = %d rounds, want 0", n)
+	}
+}

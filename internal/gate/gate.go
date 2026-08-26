@@ -137,6 +137,27 @@ func Hash(gate, bundleDir string) (string, []string, error) {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), present, nil
 }
 
+// Rounds counts the review passes taken at gate since the newest
+// gate_rounds_reset for it. A `takt review --force` re-run writes another
+// gate_reviewed event and so counts as another round, which is exactly what
+// the cap is there to bound.
+func Rounds(events []bundle.Event, gate string) int {
+	n := 0
+	for _, e := range events {
+		g, ok := eventString(e, "gate")
+		if !ok || g != gate {
+			continue
+		}
+		switch e.Type {
+		case EvReviewed:
+			n++
+		case EvRoundsReset:
+			n = 0
+		}
+	}
+	return n
+}
+
 func receiptPath(bundleDir, gate string) string {
 	return filepath.Join(bundleDir, "gates", gate+".json")
 }

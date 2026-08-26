@@ -121,6 +121,7 @@ func gatherGateFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 			return err
 		}
 		f.SpecGate = decide.GateStatus{Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking}
+		f.SpecRounds = gate.Rounds(events, gate.Spec)
 	}
 	if st.Config.Review.Plan && f.HasIndex && f.IndexValid && fileNonEmpty(filepath.Join(bdir, "plan.md")) {
 		s, err := gate.Compute(bdir, gate.Plan, events)

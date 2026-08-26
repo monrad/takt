@@ -21,6 +21,7 @@ import (
 // callers reference them (they still describe the JSON key in op.Op.Context).
 const (
 	ctxSlug      = "slug"
+	ctxGate      = "gate"
 	ctxWave      = "wave"
 	ctxCount     = "count"
 	ctxFailed    = "failed"
@@ -128,6 +129,11 @@ type Facts struct {
 	GoalsAttempts     int      // goals_invalid events since the last goals_attempts_reset
 	GoalsProblems     []string // problems of the newest of those events
 
+	// SpecRounds is how many spec reviews have run since the newest
+	// gate_rounds_reset. Gate review is the one loop that cannot self-limit,
+	// so it is the one that needs a cap most (fixed-point design §8).
+	SpecRounds int
+
 	SpecGate  GateStatus
 	PlanGate  GateStatus
 	Alignment AlignmentFacts
@@ -229,12 +235,17 @@ func decideBrainstorm(st *bundle.State, f Facts) Decision {
 				gateReview,
 				map[string]any{
 					ctxSlug:    st.Slug,
-					"gate":     specGate,
+					ctxGate:    specGate,
 					"verdict":  f.SpecGate.Verdict,
 					"summary":  "see reviews/spec.md",
 					"blocking": f.SpecGate.Blocking,
 				},
 			)
+		}
+		if f.SpecRounds >= maxAgentAttempts {
+			return ask(gateReviewCapped, map[string]any{
+				ctxSlug: st.Slug, ctxGate: specGate, ctxAttempts: f.SpecRounds,
+			})
 		}
 		return exec("review the spec", "takt review spec --slug "+st.Slug, reviewTimeoutS)
 	}
@@ -261,7 +272,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 				gateReview,
 				map[string]any{
 					ctxSlug:    st.Slug,
-					"gate":     planGate,
+					ctxGate:    planGate,
 					"verdict":  f.PlanGate.Verdict,
 					"summary":  "see reviews/plan.md",
 					"blocking": f.PlanGate.Blocking,

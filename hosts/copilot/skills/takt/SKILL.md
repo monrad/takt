@@ -37,7 +37,7 @@ A `dispatch` op with `confirm: true` (the run's autonomy is `step`) is preceded 
 
 ## Gates
 
-`ask` ops carry one of these `gate` ids; each has its own options and answer command in the op — you never invent choices: `owner`, `gate_review`, `alignment_confirm`, `plan_invalid`, `agent_invalid`, `wave_failures`, `review_error`, `verification_failed`, `no_verification`, `goals_unmet`, `branch_finish`.
+`ask` ops carry one of these `gate` ids; each has its own options and answer command in the op — you never invent choices: `owner`, `gate_review`, `gate_review_capped`, `alignment_confirm`, `plan_invalid`, `agent_invalid`, `wave_failures`, `review_error`, `verification_failed`, `no_verification`, `goals_unmet`, `branch_finish`. `gate_review_capped` is the spec review after three review rounds without the gate closing — options `accept` (override with `--reason`), `retry` (reset the round count for one more pass), `stop`.
 
 ## Invariants
 

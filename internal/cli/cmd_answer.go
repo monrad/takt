@@ -15,6 +15,13 @@ import (
 	"github.com/monrad/takt/internal/op"
 )
 
+// Choice values shared by more than one gate handler in this file — named
+// so goconst does not flag the repeated literals.
+const (
+	choiceRetry = "retry"
+	choiceStop  = "stop"
+)
+
 // cmdAnswer resolves a pending gate: it records the choice, applies it, and
 // clears the gate. Answering a gate that is no longer pending is a no-op
 // (spec §5.4).
@@ -71,10 +78,12 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 	switch g {
 	case "gate_review":
 		return answerGateReview(tgt.bdir, tgt.st, choice, reason)
+	case "gate_review_capped":
+		return answerGateReviewCapped(tgt.bdir, tgt.st, choice, reason)
 	case "alignment_confirm":
 		return answerAlignment(tgt.bdir, tgt.st, choice, file)
 	case "plan_invalid":
-		if choice == "retry" {
+		if choice == choiceRetry {
 			return false, bundle.AppendEvent(tgt.bdir, "plan_attempts_reset", nil)
 		}
 		return true, nil
@@ -106,10 +115,26 @@ func answerGateReview(bdir string, st *bundle.State, choice, reason string) (boo
 		return false, acceptRevision(bdir, which)
 	case "accept":
 		return false, overrideGate(bdir, which, reason)
-	case "stop":
+	case choiceStop:
 		return true, nil
 	}
 	return false, errorf("unknown choice %q for gate_review", choice)
+}
+
+// answerGateReviewCapped applies the round-cap gate's choice: accept records
+// an override at the current hash, retry restarts the round count for one
+// more pass, stop leaves the gate open (fixed-point design §8).
+func answerGateReviewCapped(bdir string, st *bundle.State, choice, reason string) (bool, error) {
+	which := pendingGateName(st)
+	switch choice {
+	case "accept":
+		return false, overrideGate(bdir, which, reason)
+	case choiceRetry:
+		return false, bundle.AppendEvent(bdir, gate.EvRoundsReset, map[string]any{keyGate: which})
+	case choiceStop:
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for gate_review_capped", choice)
 }
 
 // pendingGateName reads the gate id ("spec" or "plan") out of the pending
@@ -205,7 +230,7 @@ func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, err
 	_ = json.Unmarshal(st.PendingGate.Payload, &payload)
 	agent, _ := payload.Context["agent"].(string)
 	switch choice {
-	case "retry":
+	case choiceRetry:
 		reset := map[string]string{
 			op.AgentAlignmentAuditor: evAlignmentReset,
 			op.AgentGoalAssessor:     evGoalsReset,
@@ -219,7 +244,7 @@ func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, err
 			return false, errorf("skip answers only the alignment-auditor, not the %s", agent)
 		}
 		return false, skipAlignment(bdir, st)
-	case "stop":
+	case choiceStop:
 		return true, nil
 	}
 	return false, errorf("unknown choice %q for agent_invalid", choice)
