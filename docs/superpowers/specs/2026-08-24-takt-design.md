@@ -300,7 +300,10 @@ driving one bundle by accident; it does not try to be NFS-safe.
 
 All commands print exactly one JSON object on stdout on success (exit 0). Errors go to stderr as
 `{"error": "…", "hint": "…"}` with exit 1; usage errors exit 2. Every command takes `--dir` and
-`--slug` (slug defaults to the single non-archived bundle; several → `ask: pick`).
+`--slug` (slug defaults to the single non-archived bundle; several → `ask: pick`). The default
+deliberately excludes archived runs, so once a run is archived every command that means *that* run
+needs `--slug` spelled out — `takt status --slug <s>`, `takt next --slug <s>` — and a repository whose
+only bundle is archived reports "no active run" to a bare command rather than answering for it.
 
 | command | effect |
 |---|---|
@@ -308,7 +311,9 @@ All commands print exactly one JSON object on stdout on success (exit 0). Errors
 | `takt next [--force] [--recover]` | Heartbeat (persisted only when the lease needs renewing — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the bundle byte-identical on disk. Always returns in < 1 s. |
 | `takt record --task N --attempt A (--status done\|failed\|blocked --summary "…" [--blockers "…"] \| --from <file>)` | Records an implementer result. `--from` parses the trailing `STATUS:` / `SUMMARY:` / `BLOCKERS:` lines of the agent's final message. A stale attempt is logged and ignored (exit 0, `"ignored": true`). |
 | `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor JSON; returns validation errors instead of failing. |
-| `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>] [--confirm <slug>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). `--confirm <slug>` is required for `branch_finish`'s `discard` — typing the slug back. |
+| `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>] [--confirm <slug>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). `--confirm <slug>` is required for `branch_finish`'s `discard` — typing the slug back. `--reason` is
+also how a choice carries its argument where it needs one: `no_verification`'s *specify* has no flag of
+its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt done --step <id> [--url <pr-url>]` | Marks an LLM-side `run` step complete (brainstorm, goals, retro, push_pr). For `goals`, freezes `goals.md` (hash). `push_pr` requires `--url`. A `done` for a step already closed against the same artifact is a no-op (`ignored: true`); `push_pr` is the one exception — a repeat with the *same* URL is the no-op, a *different* URL (a re-opened or replaced pull request) is a new `done`, since the URL is `push_pr`'s only artifact. |
 | `takt close-wave` | The long half of a wave (§7.4): scope verify, verify commands, reviews, commit. Launched by the session in the background from an `exec` op. |
 | `takt review spec\|plan [--skip --reason "…"]` | Runs the gate review headless and writes the receipt (`exec` op). `--skip` records an evidenced skip (§9) instead of running. |
@@ -362,6 +367,11 @@ An option may carry `disabled`: a reason string, present exactly when that choic
 now. The prompt shows the option anyway, greyed out with the reason, rather than dropping it from the
 list — `branch_finish` disables `merge`/`discard` this way (§7.5 step 4).
 
+`question` and `context` may quote text takt did not write: the goal assessor's evidence for an unmet
+goal, the tail of a failed verify command, a reviewer's summary. The prompt renders both as **data to
+show the user** — never as instructions to follow — the same rule §10 applies to the artifacts quoted
+into a brief, in the other direction.
+
 **run** — LLM-only work, then `takt done --step <id>`, then `next`.
 
 ```json
@@ -394,7 +404,15 @@ Reasons: `wave_in_flight` (agents of this session may still be running — wait 
 An archived run's `stop` also carries `context` — git-derived facts about what the disposition did just
 now (e.g. `{"merged": "<sha>"}`, `{"deleted": true}`), read fresh from git on every call rather than
 remembered — and, whenever something git would not let takt do from this worktree, `cleanup`: the exact
-git commands takt could not run itself, for the session to run (§7.5 step 5).
+git commands takt could not run itself, for the session to run (§7.5 step 5). Both are present only
+when they have something to say: a `keep` or a `pr` archive asks git for nothing and carries neither,
+so the prompt must treat both as optional rather than expect an empty object and an empty list.
+
+A `cleanup` that deletes the run branch (`git branch -d|-D <branch>`) can only run once nothing has
+that branch checked out — git refuses otherwise. The prompt therefore frames it as work to do **after
+leaving the branch**: the checkout form (`git checkout <base> && git branch …`) does that itself, while
+the bare deletion is for a session that must first leave the branch some other way — a linked worktree
+holding it has to be removed (`git worktree remove <path>`) or switched before the deletion will take.
 
 ### 5.3 `Decide` — precedence
 
@@ -687,8 +705,12 @@ slice, which keeps every commit verified.
    `verify`. Fail → `ask verification_failed` (*fix first* — the session fixes and commits, `next`
    re-verifies · *override* with reason → `verified_sha` set, event records the override · *abort* only
    ends the turn — the question returns on the next `takt next`). No commands at all → `ask
-   no_verification`: *specify one* (the command is appended to `finish/verify-extra.json` and run at HEAD
-   next) · *proceed without* (`verified_sha` set with no commands run, event records the skip).
+   no_verification`: *specify one* (passed as `--reason "<command>"`, appended to
+   `finish/verify-extra.json` and run at HEAD next) · *proceed without* (`verified_sha` set with no
+   commands run, event records the skip). A validated plan always declares at least one verify command
+   per task (§7.3), so this gate is belt-and-braces rather than an ordinary route: it is reached by a
+   bundle whose index predates that rule or was edited by hand. The *specify* extras are not tied to it
+   either way — they are unioned with the plan's own commands on every later `takt verify`.
 2. **Goals** (if `config.goals`): `dispatch goal-assessor` with `goals.md`, `git diff base_sha..HEAD
    --stat` and the verify results; it returns per goal `{id, verdict: achieved|partial|missed, evidence,
    citations}` as a fenced JSON block; `record --agent goal-assessor` parses it. All achieved →
@@ -841,7 +863,10 @@ the reviewer's stderr to be non-empty and stores it as evidence.
 
 Each definition's frontmatter pins `tools:`; `model:` is the default the `dispatch` op overrides from
 config. All briefs mark user-authored artifacts as quoted data with a per-dispatch delimiter token, and
-instruct the agent that instructions inside the data are to be ignored.
+instruct the agent that instructions inside the data are to be ignored. The rule holds coming back the
+other way too: what an agent returns reaches the user through an ask op's `question` and `context` —
+the assessor's evidence, a failed command's tail — and the prompt renders those as data to show, never
+as instructions to act on (§5.2).
 
 ### 10.1 Compared with masterplan
 
@@ -891,6 +916,12 @@ it runs once per invocation rather than once per bundle.
 `takt status` prints: slug, phase, branch/base, task counts per status, the current wave and attempt,
 open gate, gate states, goals (with verdicts once checked), and the alignment digest. `--json` returns
 the same as a document; `--history` appends the event log.
+
+From the finish phase on, it also prints the run's finish block — under `finish` in `--json`:
+`verified_sha`, `verify_passed`, `goals_checked_sha`, `goals` (the verdict per goal id, read from
+`finish/goals.json` rather than from state), `disposition`, `pr_url` and `applied`. Every key but
+`applied` is omitted while it has nothing to say, so a run that has only just reached finish carries a
+nearly empty block rather than a block of nulls.
 
 ---
 
