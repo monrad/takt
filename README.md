@@ -277,6 +277,13 @@ takt ignores `docs/masterplan/**` entirely. Existing masterplan bundles are not 
 under masterplan or archive them by hand. The masterplan plugin can stay installed alongside takt; the two
 share no commands, agents, or state, but only one of them should be driving a given branch at a time.
 
+## Acknowledgements
+
+takt's workflow — the durable run bundle, the one-op-at-a-time decision loop, hash-bound review gates,
+wave assignment from task dependencies, the goals check and the alignment audit — is a from-scratch
+redesign of ideas from [masterplan](https://github.com/rasatpetabit/masterplan) by Richard A Steenbergen.
+masterplan is published under the MIT license; no code or text from it is shared.
+
 ## Development
 
 ```sh
