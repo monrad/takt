@@ -524,3 +524,127 @@ func assertIDs(t *testing.T, ctx map[string]any, key string, want []int) {
 		}
 	}
 }
+
+// planFacts is the facts a plan-phase run has when the alignment audit is
+// the only thing left to do: a valid index, the plan gate satisfied, the
+// audit in state a, and attempts unusable auditor replies since the last
+// reset.
+func planFacts(a decide.AlignmentFacts, attempts int) decide.Facts {
+	f := facts()
+	f.HasIndex, f.IndexValid = true, true
+	f.PlanGate = decide.GateStatus{Satisfied: true}
+	f.Alignment = a
+	f.AlignmentAttempts = attempts
+	f.AlignmentProblems = []string{"no fenced json block"}
+	return f
+}
+
+// finishStateNeedingTheAssessor is row 21's shape: verified at HEAD, goals
+// on, goals not yet checked — the state that dispatches the goal assessor.
+func finishStateNeedingTheAssessor() (*bundle.State, decide.Facts) {
+	return finishState(), decide.Facts{Finish: decide.FinishFacts{Verified: true}}
+}
+
+// choices joins a question's choices, so a test can name the whole option
+// list in one comparison.
+func choices(q op.Op) string {
+	out := make([]string, 0, len(q.Options))
+	for _, o := range q.Options {
+		out = append(out, o.Choice)
+	}
+	return strings.Join(out, ",")
+}
+
+// TestAgentInvalidGateCapsTheAuditor covers spec §5.3 rows 10 and 11: three
+// replies takt could not parse and the run asks instead of handing the same
+// brief out a fourth time.
+func TestAgentInvalidGateCapsTheAuditor(t *testing.T) {
+	t.Parallel()
+	planSt := state(bundle.PhasePlan)
+	confirmed := decide.AlignmentFacts{ClausesPresent: true, ClausesConfirmed: true, ClauseCount: 2}
+	audited := decide.AlignmentFacts{
+		ClausesPresent: true, ClausesConfirmed: true, VerdictsPresent: true, ClauseCount: 2,
+	}
+	cases := []struct {
+		name     string
+		facts    decide.Facts
+		wantOp   string
+		wantGate string
+		wantAg   string
+	}{
+		{"clauses, two rejections: dispatch", planFacts(decide.AlignmentFacts{}, 2),
+			"dispatch", "", "alignment-auditor"},
+		{"clauses, three rejections: ask", planFacts(decide.AlignmentFacts{}, 3),
+			"ask", "agent_invalid", ""},
+		{"verdicts, two rejections: dispatch", planFacts(confirmed, 2),
+			"dispatch", "", "alignment-auditor"},
+		{"verdicts, three rejections: ask", planFacts(confirmed, 3),
+			"ask", "agent_invalid", ""},
+		{"verdicts present: no ask despite rejections", planFacts(audited, 3), "", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			assertCapRow(t, mustDecide(t, planSt, c.facts), c.wantOp, c.wantGate, c.wantAg)
+		})
+	}
+}
+
+// assertCapRow checks one row of the cap table. An empty wantOp asserts only
+// that the row does not raise the gate — whatever else it decides.
+func assertCapRow(t *testing.T, d decide.Decision, wantOp, wantGate, wantAgent string) {
+	t.Helper()
+	switch wantOp {
+	case "":
+		if d.Action == decide.ActAsk && d.Op.Gate == "agent_invalid" {
+			t.Fatalf("must not ask: %+v", d)
+		}
+	case "ask":
+		if d.Action != decide.ActAsk || d.Op.Gate != wantGate {
+			t.Fatalf("%+v", d)
+		}
+		if d.Op.Context["agent"] != "alignment-auditor" || d.Op.Context["attempts"] != 3 {
+			t.Fatalf("context %+v", d.Op.Context)
+		}
+	case "dispatch":
+		if d.Action != decide.ActDispatch || d.Agent == nil || d.Agent.Agent != wantAgent {
+			t.Fatalf("%+v", d)
+		}
+	}
+}
+
+// TestAgentInvalidGateCapsTheAssessor is the same cap on row 21.
+func TestAgentInvalidGateCapsTheAssessor(t *testing.T) {
+	t.Parallel()
+	st, f := finishStateNeedingTheAssessor()
+	f.GoalsAttempts, f.GoalsProblems = 3, []string{"no fenced json block"}
+	d := mustDecide(t, st, f)
+	if d.Action != decide.ActAsk || d.Op.Gate != "agent_invalid" || d.Op.Context["agent"] != "goal-assessor" {
+		t.Fatalf("%+v", d)
+	}
+	f.GoalsAttempts = 2
+	if d = mustDecide(t, st, f); d.Action != decide.ActDispatch || d.Agent == nil || d.Agent.Agent != "goal-assessor" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+// TestAgentInvalidQuestionOffersSkipOnlyForTheAuditor: the alignment digest
+// is advisory and can be skipped; the goal check cannot — a run that must
+// not check its goals is initialised with --no-goals.
+func TestAgentInvalidQuestionOffersSkipOnlyForTheAuditor(t *testing.T) {
+	t.Parallel()
+	q := decide.Question(
+		"agent_invalid",
+		map[string]any{"slug": "demo", "agent": "alignment-auditor", "attempts": 3, "problems": []string{"x"}},
+	)
+	if choices(q) != "retry,skip,stop" {
+		t.Fatalf("auditor choices: %s", choices(q))
+	}
+	q = decide.Question(
+		"agent_invalid",
+		map[string]any{"slug": "demo", "agent": "goal-assessor", "attempts": 3, "problems": []string{"x"}},
+	)
+	if choices(q) != "retry,stop" {
+		t.Fatalf("assessor choices: %s", choices(q))
+	}
+}

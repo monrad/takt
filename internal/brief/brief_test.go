@@ -267,3 +267,65 @@ func TestGoalAssessorBrief(t *testing.T) {
 		t.Fatal("a token collision in a quoted artifact must be an error")
 	}
 }
+
+// TestRejectionReasonsAreQuotedBackOnTheRetry covers spec §5.3 rows 10, 11
+// and 21: a reply takt could not parse is rejected, and the brief handed
+// out on the retry says what was wrong with the last one — ahead of the
+// quoted artifacts, so it is read before them. No problems renders no such
+// section at all, which is what every first dispatch looks like.
+func TestRejectionReasonsAreQuotedBackOnTheRetry(t *testing.T) {
+	t.Parallel()
+	auditorProblems := []string{"no JSON block in the auditor's message", "the auditor's JSON block has no clauses"}
+	for _, mode := range []string{"clauses", "verdicts"} {
+		data := brief.AlignmentData{
+			Mode: mode, Anchor: "do X", Token: quoteToken,
+			Clauses:  []brief.Clause{{ID: "A1", Text: "do X", Span: "do X"}},
+			SpecText: "S", PlanText: "P", IndexText: "{}",
+		}
+		without := mustRender(t, "alignment-"+mode, data)
+		data.Problems = auditorProblems
+		assertRejectionSection(t, "alignment-"+mode, mustRender(t, "alignment-"+mode, data), without, auditorProblems)
+	}
+	assessorProblems := []string{"no JSON block in the assessor's message", "no verdict for G1"}
+	assessor := brief.GoalAssessorData{
+		Slug: "demo", Token: quoteToken, GoalsText: "- G1 — greet works",
+		DiffStat: " a.go | 1 +", VerifySummary: "true → exit 0 (pass)\n",
+		Goals: []brief.GoalLine{{ID: "G1", Text: "greet works"}},
+	}
+	without := mustRender(t, "goal-assessor", assessor)
+	assessor.Problems = assessorProblems
+	assertRejectionSection(t, "goal-assessor", mustRender(t, "goal-assessor", assessor), without, assessorProblems)
+}
+
+// mustRender renders a template or fails the test.
+func mustRender(t *testing.T, name string, data any) string {
+	t.Helper()
+	s, err := brief.Render(name, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// assertRejectionSection checks one template's two renderings: with holds
+// the rejection section, ahead of the first quoted artifact and naming every
+// problem; without holds no such section at all.
+func assertRejectionSection(t *testing.T, name, with, without string, problems []string) {
+	t.Helper()
+	const heading = "## Your previous reply was rejected"
+	if strings.Contains(without, heading) {
+		t.Errorf("%s: a first dispatch must carry no rejection section:\n%s", name, without)
+	}
+	if strings.Contains(with, "{{") {
+		t.Errorf("%s: unrendered template action:\n%s", name, with)
+	}
+	head, _, _ := strings.Cut(with, "BEGIN "+quoteToken)
+	if !strings.Contains(head, heading) {
+		t.Errorf("%s: the rejection must be named before the quoted artifacts:\n%s", name, with)
+	}
+	for _, p := range problems {
+		if !strings.Contains(with, "- "+p) {
+			t.Errorf("%s: missing problem %q:\n%s", name, p, with)
+		}
+	}
+}

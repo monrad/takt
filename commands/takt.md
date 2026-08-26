@@ -36,7 +36,7 @@ A `dispatch` op with `confirm: true` (the run's autonomy is `step`) is preceded 
 
 ## Gates
 
-`ask` ops carry one of these `gate` ids; each has its own options and answer command in the op — you never invent choices: `owner`, `gate_review`, `alignment_confirm`, `plan_invalid`, `wave_failures`, `review_error`, `verification_failed`, `no_verification`, `goals_unmet`, `branch_finish`.
+`ask` ops carry one of these `gate` ids; each has its own options and answer command in the op — you never invent choices: `owner`, `gate_review`, `alignment_confirm`, `plan_invalid`, `agent_invalid`, `wave_failures`, `review_error`, `verification_failed`, `no_verification`, `goals_unmet`, `branch_finish`.
 
 ## Invariants
 

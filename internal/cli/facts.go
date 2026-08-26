@@ -15,6 +15,16 @@ import (
 	"github.com/monrad/takt/internal/wave"
 )
 
+// The invalid/reset event pairs the agent attempt caps are counted from
+// (spec §4.4). `takt record --agent` appends the invalid ones; `takt answer
+// --gate agent_invalid --choice retry` appends the resets.
+const (
+	evAlignmentInvalid = "alignment_invalid"
+	evAlignmentReset   = "alignment_attempts_reset"
+	evGoalsInvalid     = "goals_invalid"
+	evGoalsReset       = "goals_attempts_reset"
+)
+
 // fileNonEmpty reports whether p exists and holds something.
 func fileNonEmpty(p string) bool {
 	fi, err := os.Stat(p)
@@ -42,6 +52,10 @@ func gatherFacts(
 	}
 	gatherIndexFacts(&f, ws, bdir)
 	f.PlanAttempts = countSinceReset(events, "plan_invalid", "plan_attempts_reset")
+	f.AlignmentAttempts = countSinceReset(events, evAlignmentInvalid, evAlignmentReset)
+	f.AlignmentProblems = lastProblems(events, evAlignmentInvalid, evAlignmentReset)
+	f.GoalsAttempts = countSinceReset(events, evGoalsInvalid, evGoalsReset)
+	f.GoalsProblems = lastProblems(events, evGoalsInvalid, evGoalsReset)
 	if err = gatherGateFacts(&f, bdir, st, events); err != nil {
 		return f, err
 	}
@@ -151,6 +165,39 @@ func countSinceReset(events []bundle.Event, typ, reset string) int {
 		}
 	}
 	return n
+}
+
+// lastProblems returns the rejection reasons the retried brief shows the
+// agent and the agent_invalid question quotes: the problems of the newest
+// `invalid` event, or of the newest `reset` when that is later. A retry
+// carries the reasons it reset the count past onto its own event, because
+// handing them to the next attempt is the whole point of the retry — the
+// count starts over, the reasons do not.
+func lastProblems(events []bundle.Event, invalid, reset string) []string {
+	var out []string
+	for _, e := range events {
+		if e.Type == invalid || e.Type == reset {
+			out = problemsOf(e.Data)
+		}
+	}
+	return out
+}
+
+// problemsOf reads an event's recorded problem list. The data is read
+// through comma-ok assertions: a malformed event yields no problems, never
+// a panic.
+func problemsOf(data map[string]any) []string {
+	raw, isList := data[keyProblems].([]any)
+	if !isList {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, p := range raw {
+		if s, ok := p.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // readArtifact returns a bundle file's text ("" when absent).

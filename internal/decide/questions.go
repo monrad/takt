@@ -11,19 +11,21 @@ import (
 const (
 	choiceStop  = "stop"
 	choiceRetry = "retry"
+	choiceSkip  = "skip"
 	choiceFix   = "fix"
 	choiceAbort = "abort"
 	labelStop   = "Stop"
 )
 
 // Gate ids Question switches on (spec §5.2). Vocab returns these same
-// constants, so the ten ids in the switch below and the ten ids the prompt
-// parity test reads can never drift apart without a compile error.
+// constants, so the eleven ids in the switch below and the eleven ids the
+// prompt parity test reads can never drift apart without a compile error.
 const (
 	gateOwner              = "owner"
 	gateReview             = "gate_review"
 	gateAlignmentConfirm   = "alignment_confirm"
 	gatePlanInvalid        = "plan_invalid"
+	gateAgentInvalid       = "agent_invalid"
 	gateWaveFailures       = "wave_failures"
 	gateReviewError        = "review_error"
 	gateVerificationFailed = "verification_failed"
@@ -48,6 +50,8 @@ func Question(gate string, ctx map[string]any) op.Op {
 		questionAlignmentConfirm(&q, ctx)
 	case gatePlanInvalid:
 		questionPlanInvalid(&q, ctx)
+	case gateAgentInvalid:
+		questionAgentInvalid(&q, ctx)
 	case gateWaveFailures:
 		questionWaveFailures(&q, ctx)
 	case gateReviewError:
@@ -128,7 +132,7 @@ func questionAlignmentConfirm(q *op.Op, ctx map[string]any) {
 			Description: "Provide a corrected clause list with `--file <clauses.json>`.",
 		},
 		{
-			Choice:      "skip",
+			Choice:      choiceSkip,
 			Label:       "Skip the audit",
 			Description: "Proceed without the alignment digest (advisory only).",
 		},
@@ -140,7 +144,7 @@ func questionPlanInvalid(q *op.Op, ctx map[string]any) {
 	q.Narration = "the planner produced an invalid index three times"
 	q.Question = fmt.Sprintf(
 		"plan.index.json is still invalid after %v attempts: %v",
-		ctx["attempts"], ctx["problems"],
+		ctx[ctxAttempts], ctx[ctxProblems],
 	)
 	q.Options = []op.Option{
 		{
@@ -154,6 +158,39 @@ func questionPlanInvalid(q *op.Op, ctx map[string]any) {
 			Description: "End the turn; fix the plan by hand and run `takt plan validate`.",
 		},
 	}
+}
+
+// questionAgentInvalid fills the "agent_invalid" gate: an agent whose reply
+// takt could not parse three times running (spec §5.3 rows 10, 11, 21).
+// Skipping is an answer only for the alignment auditor, whose digest is
+// advisory; the goal check has no skip — a run that must not check its
+// goals is initialised with --no-goals.
+func questionAgentInvalid(q *op.Op, ctx map[string]any) {
+	agent, _ := ctx[ctxAgent].(string)
+	q.Narration = fmt.Sprintf("the %s replied unusably %v times", agent, ctx[ctxAttempts])
+	q.Question = fmt.Sprintf(
+		"takt could not parse the %s's reply after %v attempts: %v",
+		agent, ctx[ctxAttempts], ctx[ctxProblems],
+	)
+	q.Options = []op.Option{
+		{
+			Choice:      choiceRetry,
+			Label:       "Try once more (Recommended)",
+			Description: "Re-dispatch the " + agent + " with the rejection reasons appended to its brief.",
+		},
+	}
+	if agent == agentAlignmentAuditor {
+		q.Options = append(q.Options, op.Option{
+			Choice:      choiceSkip,
+			Label:       "Skip the audit",
+			Description: "Proceed without the alignment digest (advisory only).",
+		})
+	}
+	q.Options = append(q.Options, op.Option{
+		Choice:      choiceStop,
+		Label:       labelStop,
+		Description: "End the turn; the brief the agent was given is under briefs/, its rejections in the event log.",
+	})
 }
 
 // questionWaveFailures fills the "wave_failures" gate.

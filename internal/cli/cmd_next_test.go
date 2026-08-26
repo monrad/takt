@@ -793,3 +793,106 @@ func hasEventType(evs []bundle.Event, typ string) bool {
 	}
 	return false
 }
+
+// TestAuditorRepliesTaktCannotParseAreCappedAtThree covers spec §5.3 rows 10
+// and 11 end to end: three rejected replies arm `agent_invalid`, *retry*
+// resets the count through `alignment_attempts_reset` and hands the auditor
+// a brief that quotes what was wrong with its last one, the cap re-arms, and
+// *skip* ends the audit for good.
+//
+//nolint:gocognit // one scripted walk of the cap, deliberately not split
+func TestAuditorRepliesTaktCannotParseAreCappedAtThree(t *testing.T) {
+	t.Parallel()
+	root, bdir := planLoadFixture(t)
+	st, _ := bundle.LoadState(bdir)
+	st.Config.Alignment = true
+	if err := bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	garbage := filepath.Join(t.TempDir(), "reply.md")
+	if err := os.WriteFile(garbage, []byte("I could not find any clauses.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reject := func() {
+		t.Helper()
+		_, o, _ := next(t, root, nil)
+		if o["op"] != "dispatch" {
+			t.Fatalf("expected the auditor dispatch, got %v", o)
+		}
+		c, r, e := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
+			"--mode", "clauses", "--from", garbage, "--slug", "demo")
+		if c != 0 || r[keyValidJSON] != false {
+			t.Fatalf("%d %v %s", c, r, e)
+		}
+	}
+	for range 3 {
+		reject()
+	}
+	_, o, _ := next(t, root, nil)
+	if o["op"] != "ask" || o["gate"] != "agent_invalid" {
+		t.Fatalf("three rejections must ask: %v", o)
+	}
+	ctx, _ := o["context"].(map[string]any)
+	if ctx["agent"] != "alignment-auditor" || ctx["attempts"] != 3.0 {
+		t.Fatalf("context: %v", ctx)
+	}
+	if c, _, e := runIn(
+		t,
+		root,
+		nil,
+		"answer",
+		"--gate",
+		"agent_invalid",
+		"--choice",
+		"retry",
+		"--slug",
+		"demo",
+	); c != 0 {
+		t.Fatal(e)
+	}
+	_, o, _ = next(t, root, nil)
+	if o["op"] != "dispatch" {
+		t.Fatalf("retry must dispatch the auditor again: %v", o)
+	}
+	agents, _ := o["agents"].([]any)
+	ag, _ := agents[0].(map[string]any)
+	b, _ := os.ReadFile(ag["brief"].(string))
+	if !strings.Contains(string(b), "Your previous reply was rejected") || !strings.Contains(string(b), "clauses") {
+		t.Fatalf("the retried brief must carry the rejection reasons:\n%s", b)
+	}
+	for range 3 {
+		reject()
+	}
+	if _, o, _ = next(t, root, nil); o["gate"] != "agent_invalid" {
+		t.Fatalf("the cap re-arms after a retry: %v", o)
+	}
+	if c, _, e := runIn(
+		t,
+		root,
+		nil,
+		"answer",
+		"--gate",
+		"agent_invalid",
+		"--choice",
+		"skip",
+		"--slug",
+		"demo",
+	); c != 0 {
+		t.Fatal(e)
+	}
+	_, o, _ = next(t, root, nil)
+	if o["gate"] == "agent_invalid" {
+		t.Fatalf("skip must end the audit: %v", o)
+	}
+	if agents, _ = o["agents"].([]any); len(agents) > 0 {
+		if ag, _ = agents[0].(map[string]any); ag["agent"] == "alignment-auditor" {
+			t.Fatalf("skip must not dispatch the auditor again: %v", o)
+		}
+	}
+	// The events are the durable record (spec §4.4).
+	ev, _ := os.ReadFile(filepath.Join(bdir, "events.jsonl"))
+	if strings.Count(string(ev), `"alignment_invalid"`) != 6 ||
+		strings.Count(string(ev), `"alignment_attempts_reset"`) != 1 {
+		t.Fatalf("events:\n%s", ev)
+	}
+}

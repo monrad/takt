@@ -88,11 +88,14 @@ type PlannerData struct {
 	Attempt                                                   int
 }
 
-// AlignmentData fills the two alignment templates.
+// AlignmentData fills the two alignment templates. Problems is what takt
+// could not use about the auditor's previous reply, quoted back to it on
+// the retry (spec §5.3 rows 10, 11).
 type AlignmentData struct {
 	Mode, Anchor, Token           string
 	Clauses                       []Clause
 	SpecText, PlanText, IndexText string
+	Problems                      []string
 }
 
 // ClauseLines renders the confirmed clauses as one block, so the verdicts
@@ -108,6 +111,8 @@ func (d AlignmentData) ClauseLines() string {
 }
 
 // GoalAssessorData feeds goal-assessor.md (spec §7.5 step 2, §10).
+// Problems is what takt could not use about the assessor's previous reply,
+// quoted back to it on the retry (spec §5.3 row 21).
 type GoalAssessorData struct {
 	Slug          string
 	Token         string
@@ -115,6 +120,7 @@ type GoalAssessorData struct {
 	DiffStat      string
 	VerifySummary string
 	Goals         []GoalLine
+	Problems      []string
 }
 
 // ReviewData fills the three reviewer templates.

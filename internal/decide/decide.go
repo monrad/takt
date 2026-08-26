@@ -27,6 +27,19 @@ const (
 	ctxBlocked   = "blocked"
 	ctxExhausted = "exhausted"
 	ctxRework    = "rework"
+	ctxAgent     = "agent"
+	ctxAttempts  = "attempts"
+	ctxProblems  = "problems"
+)
+
+// The non-task agents Decide dispatches (spec §5.3 rows 8, 10, 11, 21). The
+// same names identify them in a dispatch op, in the agent_invalid gate's
+// context and in the *_attempts_reset event `takt answer` appends, so they
+// are one constant each rather than a literal per site.
+const (
+	agentPlanner          = "planner"
+	agentAlignmentAuditor = "alignment-auditor"
+	agentGoalAssessor     = "goal-assessor"
 )
 
 // ids normalises a nil id list to an empty one. A gate's context is
@@ -108,6 +121,11 @@ type Facts struct {
 	IndexProblems []string
 	PlanAttempts  int
 
+	AlignmentAttempts int      // alignment_invalid events since the last alignment_attempts_reset
+	AlignmentProblems []string // problems of the newest of those events
+	GoalsAttempts     int      // goals_invalid events since the last goals_attempts_reset
+	GoalsProblems     []string // problems of the newest of those events
+
 	SpecGate  GateStatus
 	PlanGate  GateStatus
 	Alignment AlignmentFacts
@@ -169,6 +187,15 @@ func ask(gate string, ctx map[string]any) Decision {
 	return Decision{Action: ActAsk, Op: &q}
 }
 
+// askAgentInvalid is the cap every agent dispatch shares: after
+// maxAgentAttempts unusable replies the run asks instead of handing the
+// same brief out a fourth time (spec §5.3 rows 8, 10, 11, 21).
+func askAgentInvalid(st *bundle.State, agent string, attempts int, problems []string) Decision {
+	return ask(gateAgentInvalid, map[string]any{
+		ctxSlug: st.Slug, ctxAgent: agent, ctxAttempts: attempts, ctxProblems: problems,
+	})
+}
+
 func exec(narration, command string, timeoutS int) Decision {
 	return Decision{
 		Action: ActExec,
@@ -220,10 +247,10 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 		if f.PlanAttempts >= maxAgentAttempts {
 			return ask(
 				gatePlanInvalid,
-				map[string]any{ctxSlug: st.Slug, "attempts": f.PlanAttempts, "problems": f.IndexProblems},
+				map[string]any{ctxSlug: st.Slug, ctxAttempts: f.PlanAttempts, ctxProblems: f.IndexProblems},
 			)
 		}
-		return Decision{Action: ActDispatch, Agent: &op.Agent{Agent: "planner", Label: "plan the run"}}
+		return Decision{Action: ActDispatch, Agent: &op.Agent{Agent: agentPlanner, Label: "plan the run"}}
 	}
 	if st.Config.Review.Plan && !f.PlanGate.Satisfied {
 		if needsRework(f.PlanGate) {
@@ -242,20 +269,27 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 	if st.Config.Alignment {
 		switch {
 		case !f.Alignment.ClausesPresent:
-			return Decision{
-				Action: ActDispatch,
-				Agent:  &op.Agent{Agent: "alignment-auditor", Mode: "clauses", Label: "decompose the request"},
-			}
+			return dispatchAuditor(st, f, "clauses", "decompose the request")
 		case !f.Alignment.ClausesConfirmed:
 			return ask(gateAlignmentConfirm, map[string]any{ctxSlug: st.Slug, ctxCount: f.Alignment.ClauseCount})
 		case !f.Alignment.VerdictsPresent:
-			return Decision{
-				Action: ActDispatch,
-				Agent:  &op.Agent{Agent: "alignment-auditor", Mode: "verdicts", Label: "audit the plan"},
-			}
+			return dispatchAuditor(st, f, "verdicts", "audit the plan")
 		}
 	}
 	return Decision{Action: ActLoadPlan}
+}
+
+// dispatchAuditor is rows 10 and 11: hand the auditor its brief for mode —
+// unless it has already replied unusably maxAgentAttempts times running, in
+// which case the run asks rather than dispatch a fourth time.
+func dispatchAuditor(st *bundle.State, f Facts, mode, label string) Decision {
+	if f.AlignmentAttempts >= maxAgentAttempts {
+		return askAgentInvalid(st, agentAlignmentAuditor, f.AlignmentAttempts, f.AlignmentProblems)
+	}
+	return Decision{
+		Action: ActDispatch,
+		Agent:  &op.Agent{Agent: agentAlignmentAuditor, Mode: mode, Label: label},
+	}
 }
 
 func decideExecute(st *bundle.State, f Facts) (Decision, error) {

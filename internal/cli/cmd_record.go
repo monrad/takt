@@ -50,11 +50,11 @@ func cmdRecord(env Env) int {
 		})
 	}
 	switch *agent {
-	case "planner":
+	case agentPlanner:
 		return recordPlanner(ctx, env, tgt)
-	case "alignment-auditor":
+	case agentAuditor:
 		return recordAlignment(env, tgt.bdir, tgt.st, *mode, *from)
-	case "goal-assessor":
+	case agentAssessor:
 		return recordGoals(ctx, env, tgt, *from)
 	}
 	return fail(env.Stderr, exitUsage,
@@ -129,11 +129,12 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 	}
 	if len(problems) > 0 {
 		// No record is written, so the dispatch is still pending: the next
-		// `takt next` hands the brief out again and the assessment is
-		// simply retaken (spec §5.3 row 21). The rejection itself is on the
-		// log, as the planner's is — purely audit here, with no attempt cap
-		// reading it back (§4.4).
-		_ = bundle.AppendEvent(tgt.bdir, "goals_invalid", map[string]any{keyProblems: problems})
+		// `takt next` hands the brief out again — with these problems
+		// quoted in the brief — and the assessment is simply retaken (spec
+		// §5.3 row 21). The event is the durable record the attempt cap
+		// counts: three of them since the last `goals_attempts_reset` and
+		// the run asks `agent_invalid` instead of retrying again (§4.4).
+		_ = bundle.AppendEvent(tgt.bdir, evGoalsInvalid, map[string]any{keyProblems: problems})
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
 	head, err := tgt.ws.Repo.HeadSHA(ctx)
@@ -222,8 +223,10 @@ func unmetList(vs []finish.GoalVerdict) []map[string]any {
 // the same contract the planner and the assessor do — `{valid:false,
 // problems}` at exit 0, the rejection on the event log as
 // `alignment_invalid`, and nothing written — so `takt next` finds the
-// dispatch still pending and simply hands the brief out again (spec §5.1,
-// §5.3). Exiting 1 instead stopped the loop dead on a mistake the auditor
+// dispatch still pending and hands the brief out again, this time quoting
+// what was wrong with the last reply; after three rejections since the last
+// `alignment_attempts_reset` it asks `agent_invalid` rather than retry a
+// fourth time (spec §5.1, §5.3). Exiting 1 instead stopped the loop dead on a mistake the auditor
 // could have corrected on a second attempt, and did it for the one agent
 // whose result is advisory. takt's own invariants stay failures: an
 // unreadable --from file and an unusable --mode are a mis-wired session, and
@@ -241,7 +244,7 @@ func recordAlignment(env Env, bdir string, st *bundle.State, mode, from string) 
 		a = &alignmentFile{AnchorHash: anchorHash(st.Topic)}
 	}
 	if problems := applyAuditorMessage(bdir, a, mode, string(raw)); len(problems) > 0 {
-		_ = bundle.AppendEvent(bdir, "alignment_invalid", map[string]any{keyProblems: problems})
+		_ = bundle.AppendEvent(bdir, evAlignmentInvalid, map[string]any{keyProblems: problems})
 		return printJSON(env, map[string]any{keyValid: false, keyProblems: problems})
 	}
 	if err = writeAlignment(bdir, *a); err != nil {

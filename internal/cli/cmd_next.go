@@ -488,11 +488,11 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	ag.Cwd = r.ws.Repo.Root
 	render := func(tok string) (string, string, error) {
 		switch ag.Agent {
-		case "planner":
+		case agentPlanner:
 			return r.plannerBrief(ctx, &ag, tok)
-		case "alignment-auditor":
+		case agentAuditor:
 			return r.auditorBrief(&ag, tok)
-		case "goal-assessor":
+		case agentAssessor:
 			return r.assessorBrief(ctx, &ag, tok)
 		}
 		return "", "", errors.New("unknown agent " + ag.Agent)
@@ -589,7 +589,8 @@ func (r *nextRun) plannerBrief(ctx context.Context, ag *op.Agent, tok string) (s
 // the verdicts pass also carries the confirmed clauses and the plan.
 func (r *nextRun) auditorBrief(ag *op.Agent, tok string) (string, string, error) {
 	ag.Model = r.ws.Cfg.Agents.AlignmentAuditor.Model
-	data := brief.AlignmentData{Mode: ag.Mode, Anchor: r.st.Topic, Token: tok}
+	data := brief.AlignmentData{Mode: ag.Mode, Anchor: r.st.Topic, Token: tok,
+		Problems: lastProblemsIn(r.bdir, evAlignmentInvalid, evAlignmentReset)}
 	if ag.Mode == "verdicts" {
 		if a, err := readAlignment(r.bdir); err == nil && a != nil {
 			data.Clauses = a.Clauses
@@ -633,8 +634,19 @@ func (r *nextRun) assessorBrief(ctx context.Context, ag *op.Agent, tok string) (
 	text, err := brief.Render("goal-assessor", brief.GoalAssessorData{
 		Slug: r.slug, Token: tok, GoalsText: string(gb), DiffStat: stat,
 		VerifySummary: verifySummary(rec), Goals: lines,
+		Problems: lastProblemsIn(r.bdir, evGoalsInvalid, evGoalsReset),
 	})
 	return text, "goal-assessor.md", err
+}
+
+// lastProblemsIn reads the bundle's events for lastProblems; an unreadable
+// log yields no problems — the brief is still valid, just without them.
+func lastProblemsIn(bdir, invalid, reset string) []string {
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		return nil
+	}
+	return lastProblems(events, invalid, reset)
 }
 
 // verifySummary is one line per verify command for the assessor.

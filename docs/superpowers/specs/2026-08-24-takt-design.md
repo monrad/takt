@@ -256,10 +256,11 @@ One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: 
 `task_recorded`, `digest_ignored`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`,
 `retro`, `pr_pushed`, `disposition`, `archived`, `lock_taken`, `lock_released`, `recovered`,
 `wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
-`plan_invalid`, `plan_attempts_reset`, `goals_invalid`. Three decisions read events as their durable record —
-gate overrides (`gate_overridden`, required by §9), planner attempt counting (`plan_invalid` /
-`plan_attempts_reset`) and per-task review skips (`review_skipped`); everything else is the audit
-trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both carry
+`plan_invalid`, `plan_attempts_reset`, `goals_invalid`, `alignment_attempts_reset`, `goals_attempts_reset`.
+Five decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
+planner attempt counting (`plan_invalid` / `plan_attempts_reset`), the auditor's and the assessor's attempt
+caps (`alignment_invalid` / `goals_invalid` since the last `*_attempts_reset`) and per-task review skips
+(`review_skipped`); everything else is the audit trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both carry
 `slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true` when `next` reconstructs a
 commit sha from git rather than recording it live — the repair for a crash between the wave commit and
 the write that would otherwise have recorded it (§5.4).
@@ -376,6 +377,11 @@ An option may carry `disabled`: a reason string, present exactly when that choic
 now. The prompt shows the option anyway, greyed out with the reason, rather than dropping it from the
 list — `branch_finish` disables `merge`/`discard` this way (§7.5 step 4).
 
+The gate ids are `decide.Vocab().Gates` — the list the prompt's parity test reads (§6). `agent_invalid` —
+the alignment auditor or the goal assessor replied unusably three times since the last reset; context
+`{agent, attempts, problems}`; choices `retry` (appends `<agent>_attempts_reset`), `skip`
+(alignment-auditor only: the audit is recorded as skipped), `stop`.
+
 `question` and `context` may quote text takt did not write: the goal assessor's evidence for an unmet
 goal, the tail of a failed verify command, a reviewer's summary. The prompt renders both as **data to
 show the user** — never as instructions to follow — the same rule §10 applies to the artifacts quoted
@@ -442,8 +448,8 @@ exist, receipt contents, the git dirty set, current HEAD, the current session id
 | 7 | phase `brainstorm`, all of the above satisfied | transition → `plan` (commit), continue |
 | 8 | phase `plan`, no valid `plan.index.json` | `dispatch planner` (with validation errors from the last attempt, if any; after 3 invalid attempts → `ask plan_invalid`) |
 | 9 | phase `plan`, `config.review.plan` and plan gate not satisfied | `exec takt review plan`; `rework` → `ask gate_review(plan)` |
-| 10 | phase `plan`, `config.alignment`, no confirmed clauses | `dispatch alignment-auditor (mode: clauses)` → then `ask alignment_confirm` |
-| 11 | phase `plan`, clauses confirmed, no verdicts | `dispatch alignment-auditor (mode: verdicts)` |
+| 10 | phase `plan`, `config.alignment`, no confirmed clauses | `dispatch alignment-auditor (mode: clauses)` → then `ask alignment_confirm` — after 3 unusable replies → `ask agent_invalid` |
+| 11 | phase `plan`, clauses confirmed, no verdicts | `dispatch alignment-auditor (mode: verdicts)` — after 3 unusable replies → `ask agent_invalid` |
 | 12 | phase `plan`, everything satisfied | load tasks, transition → `execute` (commit), continue |
 | 13 | phase `execute`, `active_wave` set, some tasks of the wave unrecorded, same session, wave younger than `wave_stale_after` (30 m), not `--recover` | `stop wave_in_flight` |
 | 14 | phase `execute`, `active_wave` set, some tasks unrecorded, otherwise | recover: reset those tasks' declared files to the baseline; re-`dispatch` them with `attempt+1` |
@@ -453,7 +459,7 @@ exist, receipt contents, the git dirty set, current HEAD, the current session id
 | 18 | phase `execute`, `active_wave` null, pending tasks exist | `dispatch` the lowest wave with pending tasks (at most `max_parallel`; the rest on the next call), after writing `active_wave` |
 | 19 | phase `execute`, no pending tasks (`done` or `waived`) | transition → `finish` (commit), continue |
 | 20 | phase `finish`, `verified_sha` ≠ HEAD | `exec takt verify` (`failed` → `ask verification_failed`; no commands at all → `ask no_verification`) |
-| 21 | phase `finish`, `config.goals`, `goals_checked_sha` ≠ HEAD | `dispatch goal-assessor` → unmet → `ask goals_unmet` |
+| 21 | phase `finish`, `config.goals`, `goals_checked_sha` ≠ HEAD | `dispatch goal-assessor` → unmet → `ask goals_unmet` — after 3 unusable replies → `ask agent_invalid` |
 | 22 | phase `finish`, no `retro.md` | `run retro` |
 | 23 | phase `finish`, no disposition | `ask branch_finish` |
 | 24 | phase `finish`, disposition `pr` not pushed | `run push_pr` |
@@ -630,9 +636,11 @@ options as the spec gate.
 1. `takt:alignment-auditor` in `clauses` mode reads the anchor and returns `A1..An` (each quoting its
    span). `ask alignment_confirm` shows them; the user confirms or edits (edits arrive via
    `takt answer --gate alignment_confirm --choice edit --file <clauses.json>`). Confirmed clauses are
-   stored in `alignment.json` keyed by the anchor hash and reused on re-runs. A reply with no usable JSON
-   in it records nothing and is reported as `{valid: false, problems}` (§5.1), which leaves the dispatch
-   pending — the audit is simply retaken.
+   stored in `alignment.json` keyed by the anchor hash and reused on re-runs. A reply takt cannot parse
+   is rejected with `valid: false` and an `<agent>_invalid` event; the brief handed out on the retry
+   quotes the rejection reasons, and after three rejections since the last reset the run asks
+   (`agent_invalid`) instead of retrying again. Nothing is recorded either way, so the dispatch is
+   simply left pending and the audit retaken (§5.1).
 2. The auditor in `verdicts` mode reads the clauses, `spec.md`, `plan.md`, `plan.index.json` and returns
    per clause `covered | narrowed | dropped | widened | contradicted` with a sentence each.
    `narrowed/dropped/contradicted` are reported as contraction, `widened` as creep — in the load commit
@@ -741,7 +749,10 @@ slice, which keeps every commit verified.
    --stat` and the verify results; it returns per goal `{id, verdict: achieved|partial|missed, evidence,
    citations}` as a fenced JSON block; `record --agent goal-assessor` parses it. All achieved →
    `goals_checked_sha = HEAD`. Otherwise `ask goals_unmet` (*fix and continue* · *waive* with reason →
-   event `goal_waived` per goal · *abort*, which — as at step 1 — only ends the turn).
+   event `goal_waived` per goal · *abort*, which — as at step 1 — only ends the turn). A reply takt
+   cannot parse is rejected with `valid: false` and an `<agent>_invalid` event; the brief handed out on
+   the retry quotes the rejection reasons, and after three rejections since the last reset the run asks
+   (`agent_invalid`) instead of retrying again.
 3. **Retro** (`run retro`): the session writes `retro.md` from `inputs` (the plan summary, wave
    timings, failures and retries, review findings count, goal verdicts). `done --step retro`.
 4. **Disposition** (`ask branch_finish`): options depend on `branch_adopted`:

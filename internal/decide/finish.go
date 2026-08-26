@@ -53,9 +53,12 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 		// while "Unmet goals: []" is a question with no answer the user
 		// could give, persisted as a gate.
 		if !fin.Goals.Present || len(fin.Goals.Unmet) == 0 {
+			if f.GoalsAttempts >= maxAgentAttempts {
+				return askAgentInvalid(st, agentGoalAssessor, f.GoalsAttempts, f.GoalsProblems)
+			}
 			return Decision{
 				Action: ActDispatch,
-				Agent:  &op.Agent{Agent: "goal-assessor", Label: "assess the goals at HEAD"},
+				Agent:  &op.Agent{Agent: agentGoalAssessor, Label: "assess the goals at HEAD"},
 			}
 		}
 		return ask(gateGoalsUnmet, map[string]any{ctxSlug: st.Slug, "unmet": fin.Goals.Unmet})

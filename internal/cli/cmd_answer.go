@@ -77,6 +77,8 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 			return false, bundle.AppendEvent(tgt.bdir, "plan_attempts_reset", nil)
 		}
 		return true, nil
+	case "agent_invalid":
+		return answerAgentInvalid(tgt.bdir, tgt.st, choice)
 	case "wave_failures", "review_error":
 		return answerWaveGate(tgt.bdir, tgt.st, g, choice, reason)
 	case "verification_failed":
@@ -140,9 +142,53 @@ func answerAlignment(bdir string, st *bundle.State, choice, file string) (bool, 
 		}
 		a.Clauses, a.Confirmed, a.Verdicts = clauses, true, nil
 	case "skip":
-		a.Skipped = true
+		return false, skipAlignment(bdir, st)
 	default:
 		return false, errorf("unknown choice %q for alignment_confirm", choice)
 	}
 	return false, writeAlignment(bdir, *a)
+}
+
+// answerAgentInvalid clears a capped agent: retry resets its attempt count
+// through a *_attempts_reset event — the durable record, as the planner's
+// is (spec §4.4) — carrying the rejection reasons forward so the retried
+// brief can still quote them, and skip records the audit as skipped
+// (alignment only).
+func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, error) {
+	var payload struct {
+		Context map[string]any `json:"context"`
+	}
+	_ = json.Unmarshal(st.PendingGate.Payload, &payload)
+	agent, _ := payload.Context["agent"].(string)
+	switch choice {
+	case "retry":
+		reset := map[string]string{
+			agentAuditor:  evAlignmentReset,
+			agentAssessor: evGoalsReset,
+		}[agent]
+		if reset == "" {
+			return false, errorf("agent_invalid gate names no agent")
+		}
+		return false, bundle.AppendEvent(bdir, reset, map[string]any{keyProblems: payload.Context[keyProblems]})
+	case "skip":
+		if agent != agentAuditor {
+			return false, errorf("skip answers only the alignment-auditor, not the %s", agent)
+		}
+		return false, skipAlignment(bdir, st)
+	case "stop":
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for agent_invalid", choice)
+}
+
+// skipAlignment records the audit as skipped for this run's anchor: the
+// alignment digest is advisory, and a skipped audit reads as complete to
+// every row that checks it (spec §7.3).
+func skipAlignment(bdir string, st *bundle.State) error {
+	a, _ := readAlignment(bdir)
+	if a == nil || a.AnchorHash != anchorHash(st.Topic) {
+		a = &alignmentFile{AnchorHash: anchorHash(st.Topic)}
+	}
+	a.Skipped = true
+	return writeAlignment(bdir, *a)
 }

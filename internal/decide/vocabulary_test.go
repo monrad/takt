@@ -11,8 +11,9 @@ import (
 func TestVocabularyIsComplete(t *testing.T) {
 	t.Parallel()
 	v := decide.Vocab()
-	for _, want := range []string{"owner", "gate_review", "alignment_confirm", "plan_invalid", "wave_failures",
-		"review_error", "verification_failed", "no_verification", "goals_unmet", "branch_finish"} {
+	for _, want := range []string{"owner", "gate_review", "alignment_confirm", "plan_invalid", "agent_invalid",
+		"wave_failures", "review_error", "verification_failed", "no_verification", "goals_unmet",
+		"branch_finish"} {
 		if !slices.Contains(v.Gates, want) {
 			t.Errorf("gate %s missing", want)
 		}

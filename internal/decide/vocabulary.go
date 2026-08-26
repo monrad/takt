@@ -24,8 +24,9 @@ type Vocabulary struct {
 // Vocab is the single source of truth the prompt parity test reads.
 func Vocab() Vocabulary {
 	return Vocabulary{
-		Gates: []string{gateOwner, gateReview, gateAlignmentConfirm, gatePlanInvalid, gateWaveFailures,
-			gateReviewError, gateVerificationFailed, gateNoVerification, gateGoalsUnmet, gateBranchFinish},
+		Gates: []string{gateOwner, gateReview, gateAlignmentConfirm, gatePlanInvalid, gateAgentInvalid,
+			gateWaveFailures, gateReviewError, gateVerificationFailed, gateNoVerification, gateGoalsUnmet,
+			gateBranchFinish},
 		RunSteps:     op.Steps(),
 		ExecCommands: []string{"review", "close-wave", "verify"},
 		StopReasons:  []string{reasonWaveInFlight, reasonArchived},
