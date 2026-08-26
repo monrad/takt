@@ -45,6 +45,11 @@ const (
 	modelOpus   = "opus"
 )
 
+// autonomyStep is config.Autonomy's "ask before each wave" value (spec
+// §5.5, task-4 addendum) — distinct from keyStep, cmd_done.go's `run` step
+// JSON key, which the two happen to share only in spelling.
+const autonomyStep = "step"
+
 // verifyTailLines is how much of a failed verify command's output a retry
 // brief quotes back at the implementer.
 const verifyTailLines = 5
@@ -159,7 +164,12 @@ func launchWave(ctx context.Context, r *nextRun, d decide.Decision) int {
 }
 
 // dispatchOp is the wave's dispatch op: one agent per task, and the exact
-// `takt record` line the session must run for each of them.
+// `takt record` line the session must run for each of them. Confirm is set
+// when the run's autonomy is step (spec §5.5, task-4 addendum) — this is
+// the only dispatch op that ever carries it: launchWave is called for both
+// a fresh launch and a recovery re-dispatch (recoverWave ends by calling it),
+// so both get the signal the same way, while the planner/auditor/assessor
+// dispatch (dispatchAgent, cmd_next.go) never touches this function at all.
 func dispatchOp(r *nextRun, waveN, slice, attempt int, agents []op.Agent) op.Op {
 	return op.Op{
 		Op:        op.Dispatch,
@@ -167,6 +177,7 @@ func dispatchOp(r *nextRun, waveN, slice, attempt int, agents []op.Agent) op.Op 
 		Wave:      new(waveN),
 		Attempt:   attempt,
 		Agents:    agents,
+		Confirm:   r.st.Config.Autonomy == autonomyStep,
 		Record: fmt.Sprintf("takt record --task <N> --attempt %d --from <file> --slug %s",
 			attempt, r.slug),
 	}

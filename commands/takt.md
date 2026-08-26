@@ -32,7 +32,7 @@ One row per op kind:
 - **`exec`** — Run `command` with the Bash tool with `run_in_background: true` and wait for its completion notification, then `takt next`. `timeout_s` is the deadline after which you stop waiting and report the command as not finished — it is not a tool parameter. The command is one of `takt review spec|plan`, `takt close-wave` or `takt verify`, and nothing else; print its JSON when it exits. A `takt verify` that prints `"passed": false` is a result, not an error — it exits 0.
 - **`stop`** — Print `narration`, and the op's `context` when it carries one (a merge takt could not make lands in `context.error`). `wave_in_flight`: agents of this session are still running — wait for their results, record them, then `takt next`. `archived`: the run is done; if the op carries `cleanup`, show those git commands to the user and ask before running any of them; then end the turn.
 
-With `config.autonomy = step`, ask "continue?" (`AskUserQuestion`) before each `dispatch` of implementers; otherwise run ops back to back and end the turn only at `ask` or `stop`.
+A `dispatch` op with `confirm: true` (the run's autonomy is `step`) is preceded by an `AskUserQuestion` "continue with this wave?" — a no ends the turn with the wave un-dispatched; otherwise run ops back to back and end the turn only at `ask` or `stop`.
 
 ## Gates
 

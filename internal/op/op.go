@@ -53,6 +53,12 @@ type Op struct {
 	Agents  []Agent `json:"agents,omitempty"`
 	Record  string  `json:"record,omitempty"`
 
+	// Confirm is set on a wave's dispatch op when the run's autonomy is
+	// step (spec §5.5): the prompt asks "continue with this wave?" before
+	// running it. It is never set on the planner, alignment-auditor or
+	// goal-assessor dispatch — only a wave of implementers asks.
+	Confirm bool `json:"confirm,omitempty"`
+
 	// ask
 	Gate     string         `json:"gate,omitempty"`
 	Question string         `json:"question,omitempty"`

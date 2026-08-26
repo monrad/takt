@@ -35,7 +35,14 @@ func statusText(t *testing.T, root string) string {
 // (task 1 bounded → sonnet, task 2 implement → opus, task 3 depends on 1).
 func executeRun(t *testing.T) (string, string) {
 	t.Helper()
-	root, bdir := setupRun(t)
+	return executeRunWith(t)
+}
+
+// executeRunWith is executeRun with extra `takt init` flags — used by the
+// task-4 addendum to build the same fixture under --autonomy step.
+func executeRunWith(t *testing.T, initFlags ...string) (string, string) {
+	t.Helper()
+	root, bdir := setupRunWith(t, initFlags...)
 	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
 	idx := `{"schema":1,"spec_hash":"x","tasks":[
  {"id":1,"title":"a","description":"create a.go with package a","files":["a.go"],"verify":["test -f a.go"],"depends_on":[],"goals":[],"class":"bounded"},

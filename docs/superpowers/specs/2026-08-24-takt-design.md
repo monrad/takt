@@ -472,7 +472,10 @@ the caller gets the first real op of the new phase in the same call.
 
 `config.autonomy ∈ auto | step`. `auto` (default): the prompt executes ops back-to-back and ends a turn
 only at an `ask` or `stop`. `step`: the prompt additionally asks "continue?" before each `dispatch` of a
-wave. Neither level skips a gate; the set of `ask` ops is identical. Gates are never auto-answered.
+wave. Neither level skips a gate; the set of `ask` ops is identical. Gates are never auto-answered. The
+signal is carried on the op itself, not read from config by the prompt: `launchWave` sets `confirm: true`
+(§5.2) on a wave's `dispatch` op when autonomy is `step`, and only there — the planner, alignment-auditor
+and goal-assessor dispatches never carry it.
 
 ---
 

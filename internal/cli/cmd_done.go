@@ -68,7 +68,7 @@ func cmdDone(env Env) int {
 		return fail(env.Stderr, exitError, rerr.Error(), "")
 	}
 	if replayed {
-		return printJSON(env, map[string]any{"step": *step, "ok": true, keyIgnored: true})
+		return printJSON(env, map[string]any{keyStep: *step, "ok": true, keyIgnored: true})
 	}
 	if code = doneStepWork(env, tgt, *step, *prURL); code != 0 {
 		return code
@@ -76,7 +76,7 @@ func cmdDone(env Env) int {
 	if _, _, err := commitBundle(ctx, tgt.ws, tgt.bdir, tgt.slug, *step+" done"); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	return printJSON(env, map[string]any{"step": *step, "ok": true})
+	return printJSON(env, map[string]any{keyStep: *step, "ok": true})
 }
 
 // doneStepWork runs one step's own checks and records its receipt.

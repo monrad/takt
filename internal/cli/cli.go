@@ -69,6 +69,7 @@ const (
 	keyIgnored       = "ignored"
 	keyHealed        = "healed"
 	keyVersion       = "version"
+	keyStep          = "step"
 )
 
 // state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`
