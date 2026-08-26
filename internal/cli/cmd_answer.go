@@ -129,8 +129,10 @@ func pendingGateName(st *bundle.State) string {
 //
 // It writes nothing for the plan gate, for a blocking rework, or for
 // reject/error: those keep the re-arm-and-re-review loop. It also writes
-// nothing when the receipt does not answer at the current hash, since then
-// the user is not looking at the verdict the receipt records.
+// nothing when there is no receipt at all — the gate has never been
+// reviewed, so there is no verdict to accept — or when the receipt does not
+// answer at the current hash, since then the user is not looking at the
+// verdict the receipt records.
 func acceptRevision(bdir, which string) error {
 	if which != gate.Spec {
 		return nil

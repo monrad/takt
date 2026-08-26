@@ -96,3 +96,23 @@ func TestAcceptRevisionIgnoresAStaleReceipt(t *testing.T) {
 		}
 	}
 }
+
+func TestAcceptRevisionIgnoresNoReceiptAtAll(t *testing.T) {
+	t.Parallel()
+	bdir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bdir, "spec.md"), []byte("# spec\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := acceptRevision(bdir, "spec"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.Type == gate.EvRevisionAccepted {
+			t.Fatal("a gate with no receipt at all has never been reviewed, so revise must record nothing")
+		}
+	}
+}
