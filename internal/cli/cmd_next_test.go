@@ -1135,6 +1135,57 @@ func TestNextWithAGeneratedIdLeavesTheTrackedBundleUntouched(t *testing.T) {
 	}
 }
 
+// TestNextWithAGeneratedIdIgnoresAStaleGeneratedHolder is that same
+// invariant once the holder has aged past lock_ttl. [bundle.Acquire] grades
+// an expired heartbeat before it grades force, so a generated holder left
+// behind by a session that paused for longer than the ttl — the ordinary
+// state of a host that was idle for ten minutes — came back as `stolen` and
+// was logged, dirtying the tracked events.jsonl on a call that decided
+// nothing. Whether a takeover is worth recording is a fact about the
+// holder, not about how old it is (spec §4.6).
+func TestNextWithAGeneratedIdIgnoresAStaleGeneratedHolder(t *testing.T) {
+	t.Parallel()
+	stale := func() *bundle.Session {
+		return &bundle.Session{
+			ID: "takt-old", Host: "elsewhere",
+			Heartbeat: time.Now().UTC().Add(-time.Hour), Generated: true,
+		}
+	}
+	root, bdir := setupRun(t)
+	if err := bundle.WriteSession(bdir, stale()); err != nil {
+		t.Fatal(err)
+	}
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("precondition: init commits the bundle and the sidecar is ignored: %q", out)
+	}
+	if c, o, e := next(t, root, nil); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("a stale generated holder must leave the tracked bundle alone:\n%s", out)
+	}
+	if taken := eventsOfType(t, bdir, "lock_taken"); len(taken) != 0 {
+		t.Fatalf("nobody could have been driving, so nothing was taken over: %+v", taken)
+	}
+	if sess, err := bundle.ReadSession(bdir); err != nil || sess == nil || !sess.Generated {
+		t.Fatalf("holder: %+v %v", sess, err)
+	}
+
+	// A *named* session over the same stale holder is the takeover worth a
+	// line: an id someone handed takt is one a second process can present.
+	root2, bdir2 := setupRun(t)
+	if err := bundle.WriteSession(bdir2, stale()); err != nil {
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root2, map[string]string{"TAKT_SESSION": "S"}); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	taken := eventsOfType(t, bdir2, "lock_taken")
+	if len(taken) != 1 || taken[0].Data[keyReasonJSON] != "orphaned" {
+		t.Fatalf("a named session's takeover of an orphan is recorded once, as one: %+v", taken)
+	}
+}
+
 // TestNextRestoresADeletedLogsIgnore covers a bundle that predates the
 // ignore rule: commitBundle stages the bundle directory wholesale, so a lock
 // written into a logs/ with no .gitignore would ride into the next takt

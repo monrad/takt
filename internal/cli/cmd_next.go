@@ -142,14 +142,23 @@ func (r *nextRun) acquireLock() (int, bool) {
 	// rewrite events.jsonl, a tracked file, on every single `takt next` a
 	// session without CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes. A named
 	// session taking over a generated holder still logs it.
+	//
+	// The exception is decided on the holder's record, not on Acquire's
+	// outcome, and so is graded first. Acquire grades an expired heartbeat
+	// ahead of force, so a generated holder that has simply been idle longer
+	// than lock_ttl comes back as `stolen` rather than `forced` — reading
+	// the outcome instead put a lock_taken line in the tracked events.jsonl
+	// after every pause, which is exactly the dirty tree this exemption
+	// exists to prevent.
 	switch {
+	case orphaned && r.genID: // nobody could have been driving; nothing to report
+	case orphaned:
+		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
+			keySession: r.session, "outcome": string(outcome), keyReason: "orphaned",
+		})
 	case outcome == bundle.LockStolen, outcome == bundle.LockForced && r.force:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome),
-		})
-	case outcome == bundle.LockForced && orphaned && !r.genID:
-		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
-			keySession: r.session, "outcome": string(outcome), keyReason: "orphaned",
 		})
 	}
 	return 0, false

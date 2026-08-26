@@ -492,8 +492,9 @@ the caller gets the first real op of the new phase in the same call.
   `close.json` marks success and HEAD contains the wave commit → clear and continue.
 - **A crash mid-brainstorm** re-issues `run brainstorm`; the session decides whether to continue or restart
   the skill (the spec file is either there or not).
-- **Compaction** is not a crash: the session id is stable, `next` re-derives the op from disk, and the
-  prompt's op table needs no conversation history.
+- **Compaction** is not a crash: a named session id (CLAUDE_CODE_SESSION_ID / TAKT_SESSION) is stable
+  across it; a generated id is not, and a generated holder is simply taken over. `next` re-derives the op
+  from disk, and the prompt's op table needs no conversation history.
 - exec review — a replay at the same hash returns the existing receipt (cached: true) instead of a second
   backend call and a second reviewed commit.
 
