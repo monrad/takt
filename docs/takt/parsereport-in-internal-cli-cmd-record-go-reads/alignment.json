@@ -1,0 +1,31 @@
+{
+  "anchor_hash": "sha256:b5c4d78a9af9ed266d2acd30000c638c6a9b8b114dc86a8c8c7ca0b753dbf884",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Make the trailer parsing in parseReport (internal/cli/cmd_record.go) tolerant of leading list markers and of bold, italic, or backtick decoration around the key and around the value.",
+      "span": "Make the trailer parsing tolerant of leading list markers and of bold, italic or backtick decoration around the key and around the value"
+    },
+    {
+      "id": "A2",
+      "text": "Exact-prefix (undecorated) trailer lines must keep working.",
+      "span": "while exact-prefix lines keep working"
+    },
+    {
+      "id": "A3",
+      "text": "Add table-driven tests for every decorated shape (e.g. \"**STATUS:** done\", \"- STATUS: done\", \"STATUS: **done**\", \"`STATUS:` done\").",
+      "span": "add table-driven tests for every decorated shape"
+    },
+    {
+      "id": "A4",
+      "text": "Add a test for a body line that merely mentions STATUS: mid-sentence, asserting it must not match.",
+      "span": "for a body line that merely mentions STATUS: mid-sentence (must not match)"
+    },
+    {
+      "id": "A5",
+      "text": "Mention the tolerance in the implementer agent's report contract in agents/implementer.md.",
+      "span": "mention the tolerance in the implementer agent's report contract in agents/implementer.md"
+    }
+  ],
+  "confirmed": true
+}

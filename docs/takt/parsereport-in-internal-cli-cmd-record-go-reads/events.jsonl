@@ -31,3 +31,6 @@
 {"ts":"2026-08-26T17:28:41.841149711Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-26T17:29:05.10401505Z","type":"gate_overridden","data":{"gate":"plan","hash":"sha256:21e6988f3cf64282e970499abacf90764dce79836fb22f3b7b6fe6fb1b5af016","reason":"The one finding was correct and is fixed in the plan rather than overridden: task 1 no longer requires '** STATUS: done' to match, and now asserts it must not, since '**' is not a marker and step 2 strips the run without the following whitespace, leaving the key unanchored. Accepting instead of re-reviewing because the user capped the plan gate at four review calls and no finding remains open."}}
 {"ts":"2026-08-26T17:29:05.116595578Z","type":"gate_answered","data":{"choice":"accept","gate":"gate_review"}}
+{"ts":"2026-08-26T17:29:52.720252237Z","type":"alignment_clauses","data":{"count":5}}
+{"ts":"2026-08-26T17:29:52.727031163Z","type":"gate_opened","data":{"gate":"alignment_confirm"}}
+{"ts":"2026-08-26T17:30:08.981593343Z","type":"gate_answered","data":{"choice":"confirm","gate":"alignment_confirm"}}
