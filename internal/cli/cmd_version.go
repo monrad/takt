@@ -43,6 +43,16 @@ func cmdVersion(env Env) int {
 // build` with no ldflags, so every development binary reports [version.Dev]
 // and must pass the handshake rather than fail it.
 func versionExpect(env Env, want string) int {
+	// The one judgment that is not the manifest one: an expectation with no
+	// version in it. manifestFailure would call it a manifest with no
+	// version field and send the reader off to reinstall a plugin bundle
+	// this flag never reads — `--expect` is for the host that carries the
+	// version in its own prompt, so the failure has to point back at that
+	// line.
+	if strings.TrimSpace(want) == "" {
+		return fail(env.Stderr, exitError, "the host's handshake names no version",
+			"check the host prompt's takt version --expect line")
+	}
 	if problem, hint := manifestFailure(version.Current(), "--expect", want); problem != "" {
 		return fail(env.Stderr, exitError, problem, hint)
 	}

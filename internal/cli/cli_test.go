@@ -43,14 +43,25 @@ func TestVersionPrintsJSON(t *testing.T) {
 // shape, TestManifestFailure the stamped binary's mismatch). What no build
 // may match is an expectation with no version in it — a handshake line that
 // lost its version is a broken host, not a match.
+//
+// It has to say so in the host's own terms. Routing the blank case through
+// manifestFailure printed "plugin manifest --expect has no version field"
+// and sent the reader to reinstall a plugin bundle `--expect` never reads:
+// this flag exists for the host that carries the version in its prompt.
 func TestVersionExpectRefusesAVersionlessExpectation(t *testing.T) {
 	t.Parallel()
 	code, _, errb := run(t, "version", "--expect", "   ")
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if !strings.Contains(errb, `"error"`) || !strings.Contains(errb, `"hint"`) {
-		t.Fatalf("stderr = %q", errb)
+	if !strings.Contains(errb, "the host's handshake names no version") {
+		t.Errorf("the error must name the handshake, not a manifest: %s", errb)
+	}
+	if strings.Contains(errb, "plugin manifest") {
+		t.Errorf("--expect reads no manifest, so it must not name one: %s", errb)
+	}
+	if !strings.Contains(errb, "check the host prompt's takt version --expect line") {
+		t.Errorf("the hint must point at the host prompt: %s", errb)
 	}
 }
 
