@@ -1,6 +1,7 @@
 package prompt_test
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -30,7 +31,10 @@ func TestPromptNamesEveryOpGateStepAndReason(t *testing.T) {
 	}
 	table := prompt.Section(md, "The op table")
 	for _, k := range op.Kinds() {
-		mustContain(t, table, "`"+string(k)+"`", "op kind "+string(k)+" missing from the op table")
+		if !opBullet(string(k)).MatchString(table) {
+			t.Errorf("op kind %s has no bullet of its own in the op table "+
+				"(looked for a line %s)", k, opBulletForm(string(k)))
+		}
 	}
 	v := decide.Vocab()
 	gates := prompt.Section(md, "Gates")
@@ -93,6 +97,21 @@ func taktCommandsNamed(md string) []string {
 		}
 	}
 	return out
+}
+
+// opBulletForm is the shape the op table writes one kind's row in: a
+// top-level list item opening with the kind as bold code. The table is a
+// bullet list rather than a markdown table (task-2 ruling), so this is what
+// "one row per op kind" means here.
+func opBulletForm(kind string) string { return "- **`" + kind + "`**" }
+
+// opBullet matches [opBulletForm] at the start of a line. Matching the row
+// rather than the bare word is the whole point of the assertion: `stop` and
+// `ask` are named in half the other bullets' prose, so a kind whose own row
+// was deleted — or written without its code span, which is how the prompt's
+// reader finds it — would still "appear" in the table.
+func opBullet(kind string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^- \*\*` + "`" + regexp.QuoteMeta(kind) + "`" + `\*\*`)
 }
 
 // mustContain reports what unless text holds needle.
