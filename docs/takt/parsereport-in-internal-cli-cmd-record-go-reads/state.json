@@ -110,5 +110,9 @@
   "pending_gate": null,
   "verified_sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
   "goals_checked_sha": "cdd73eff4704cecdb1013a65172a13d8c28c9800",
-  "disposition": null
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-26T18:06:10.987924014Z",
+    "applied": false
+  }
 }
