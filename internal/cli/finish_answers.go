@@ -75,9 +75,10 @@ func answerNoVerification(ctx context.Context, tgt *runTarget, choice, reason st
 }
 
 // markGoalsChecked writes the record, sets goals_checked_sha and records
-// goal_check with the verdict counts. Every path that declares HEAD's goals
-// checked goes through here.
-func markGoalsChecked(tgt *runTarget, rec finish.GoalsRecord) error {
+// goal_check with the verdict counts, plus whatever else the caller wants on
+// that event (healFinish marks its repair). Every path that declares HEAD's
+// goals checked goes through here.
+func markGoalsChecked(tgt *runTarget, rec finish.GoalsRecord, data map[string]any) error {
 	if err := finish.WriteGoals(tgt.bdir, rec); err != nil {
 		return err
 	}
@@ -90,10 +91,12 @@ func markGoalsChecked(tgt *runTarget, rec finish.GoalsRecord) error {
 	for _, v := range rec.Verdicts {
 		counts[v.Verdict]++
 	}
-	return bundle.AppendEvent(tgt.bdir, "goal_check", map[string]any{
+	ev := map[string]any{
 		keySHA: sha, "achieved": counts["achieved"], "partial": counts["partial"],
 		"missed": counts["missed"], "waived": len(rec.Waived),
-	})
+	}
+	maps.Copy(ev, data)
+	return bundle.AppendEvent(tgt.bdir, "goal_check", ev)
 }
 
 // answerGoalsUnmet applies goals_unmet: fix drops the record (re-assess
@@ -135,7 +138,7 @@ func waiveGoals(tgt *runTarget, reason string) error {
 		rec.Waived[v.ID] = reason
 		_ = bundle.AppendEvent(tgt.bdir, "goal_waived", map[string]any{"goal": v.ID, keyReason: reason})
 	}
-	return markGoalsChecked(tgt, *rec)
+	return markGoalsChecked(tgt, *rec, nil)
 }
 
 // dropVerify removes the record; absence is not an error.

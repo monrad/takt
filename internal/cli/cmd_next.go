@@ -85,6 +85,9 @@ func cmdNext(env Env) int {
 	if lockCode, done := r.acquireLock(); done {
 		return lockCode
 	}
+	if code = r.healFinish(ctx); code != 0 {
+		return code
+	}
 	return r.loop(ctx)
 }
 
@@ -323,6 +326,67 @@ func (r *nextRun) backfillCommitSHA(ctx context.Context, c *wave.CloseResult) bo
 		keyTasks: ids, "backfilled": true,
 	})
 	return true
+}
+
+// healFinish completes the bookkeeping of a finish record whose state write
+// did not land. markVerified and markGoalsChecked write the record first and
+// state.json second, so a kill between the two leaves a passed verify.json —
+// or an all-achieved goals.json — still covering HEAD with no verified_sha
+// or goals_checked_sha behind it. Row 20 then asked verification_failed with
+// an empty failed list and row 21 "Unmet goals: []": questions with no
+// answer the user could give, persisted as gates that outlive the turn
+// (review I2). backfillCommitSHA is the precedent — a re-derivation step
+// that finishes what an interrupted write started, from what is already on
+// disk.
+//
+// It is a pure function of that disk. It runs only in the finish phase, only
+// for a record that still covers HEAD, and only where the record itself says
+// the work passed — so the same bundle yields the same writes and the same
+// op, and nothing is decided here that decideFinish would not decide the
+// same way a moment later.
+func (r *nextRun) healFinish(ctx context.Context) int {
+	if r.st.Phase != bundle.PhaseFinish {
+		return 0
+	}
+	fin, err := gatherFinishFacts(ctx, r.ws, r.bdir, r.st)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	tgt := &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st}
+	if !fin.Verified && fin.Verify.Present && fin.Verify.Passed {
+		if err = healVerified(ctx, tgt); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+	}
+	if !fin.GoalsChecked && fin.Goals.Present && len(fin.Goals.Unmet) == 0 {
+		if err = healGoalsChecked(tgt); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+	}
+	return 0
+}
+
+// healVerified sets verified_sha from the passed record that is already on
+// disk — the same record, re-written by the same code path a `takt verify`
+// pass takes, so the repair leaves the bundle exactly as the interrupted
+// call would have.
+func healVerified(ctx context.Context, tgt *runTarget) error {
+	rec, err := finish.ReadVerify(tgt.bdir)
+	if err != nil || rec == nil {
+		return err
+	}
+	return markVerified(ctx, tgt, *rec, map[string]any{keyHealed: true})
+}
+
+// healGoalsChecked is healVerified for goals_checked_sha: the all-achieved
+// record on disk, re-recorded through the one path that declares HEAD's
+// goals checked.
+func healGoalsChecked(tgt *runTarget) error {
+	rec, err := finish.ReadGoals(tgt.bdir)
+	if err != nil || rec == nil {
+		return err
+	}
+	return markGoalsChecked(tgt, *rec, map[string]any{keyHealed: true})
 }
 
 // loadPlan materialises state.tasks from the validated index, writes the

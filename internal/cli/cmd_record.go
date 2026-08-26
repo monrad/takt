@@ -118,7 +118,7 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 	}
 	unmet := rec.Unmet()
 	if len(unmet) == 0 {
-		if err = markGoalsChecked(tgt, rec); err != nil {
+		if err = markGoalsChecked(tgt, rec, nil); err != nil {
 			return fail(env.Stderr, exitError, err.Error(), "")
 		}
 	} else if err = finish.WriteGoals(tgt.bdir, rec); err != nil {

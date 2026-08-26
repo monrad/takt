@@ -47,8 +47,34 @@ func TestFinishRows(t *testing.T) {
 			"",
 			"",
 		},
+		{
+			// review I2: the record landed, the state write did not. Row 20
+			// only sees a passed record when verified_sha is missing, and
+			// re-verifying HEAD is the only answer that cannot be wrong —
+			// `verification_failed` with an empty failed list is the one
+			// that always is.
+			"20 record passed with no verified_sha → re-verify, never a gate",
+			finishState,
+			decide.FinishFacts{Verify: decide.VerifyFacts{Present: true, Passed: true}},
+			decide.ActExec,
+			"",
+			"",
+			"",
+		},
 		{"21 verified, goals unchecked, no record → dispatch goal-assessor", finishState,
 			decide.FinishFacts{Verified: true}, decide.ActDispatch, "", "", "goal-assessor"},
+		{
+			// The goals-side twin: an all-achieved record with no
+			// goals_checked_sha is re-assessed, never turned into
+			// "Unmet goals: []" (review I2).
+			"21 record with nothing unmet and no goals_checked_sha → dispatch again",
+			finishState,
+			decide.FinishFacts{Verified: true, Goals: decide.GoalFacts{Present: true}},
+			decide.ActDispatch,
+			"",
+			"",
+			"goal-assessor",
+		},
 		{
 			"21 record with unmet → ask goals_unmet",
 			finishState,

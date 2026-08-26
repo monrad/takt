@@ -67,6 +67,7 @@ const (
 	keyFailed        = "failed"
 	keyNoCommands    = "no_commands"
 	keyIgnored       = "ignored"
+	keyHealed        = "healed"
 )
 
 // state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`

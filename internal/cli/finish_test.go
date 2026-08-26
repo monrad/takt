@@ -540,3 +540,103 @@ func countEvents(t *testing.T, bdir, typ string) int {
 	}
 	return n
 }
+
+// forgetSha reproduces the window review I2 names: markVerified and
+// markGoalsChecked write the record first and state.json second, so a kill
+// between the two leaves a record that still covers HEAD with nothing in
+// state pointing at it. The state write is undone through bundle.SaveState —
+// the same API takt uses — rather than by editing the file.
+func forgetSha(t *testing.T, bdir string, forget func(*bundle.State)) {
+	t.Helper()
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forget(st)
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// healedEvent reports whether the run logged an event of this type that says
+// it repaired an interrupted write.
+func healedEvent(t *testing.T, bdir, typ string) bool {
+	t.Helper()
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.Type == typ && e.Data["healed"] == true {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPassedVerifyRecordWithoutItsStateWriteIsHealed covers review I2's
+// first shape: verify passed and the record says so, but the state write
+// that follows it never landed. The run must not be asked
+// verification_failed with nothing to show for it — the bookkeeping is
+// finished from the record and the run moves on.
+func TestPassedVerifyRecordWithoutItsStateWriteIsHealed(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t) // goals on
+	driveToFinish(t, d)
+	if code, got, errb := d.cmd("verify", "--slug", "demo"); code != 0 || got["passed"] != true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	head := testutil.Git(t, d.root, "rev-parse", "HEAD")
+	forgetSha(t, bdir, func(st *bundle.State) { st.VerifiedSHA = nil })
+	o := d.nextOp()
+	if o["op"] != "dispatch" {
+		t.Fatalf("a passed record must never come back as a gate: %v", o)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.VerifiedSHA == nil || *st.VerifiedSHA != head {
+		t.Fatalf("verified_sha = %v, want HEAD %s", st.VerifiedSHA, head)
+	}
+	if st.PendingGate != nil {
+		t.Fatalf("no gate may be persisted for a record that passed: %+v", st.PendingGate)
+	}
+	if !healedEvent(t, bdir, "verify") {
+		t.Fatal("the repair must be on the event log")
+	}
+}
+
+// TestAllAchievedGoalsRecordWithoutItsStateWriteIsHealed is the goals-side
+// twin: every goal achieved, the record written, goals_checked_sha lost.
+// "Unmet goals: []" is a question with no answer the user could give, so the
+// bookkeeping is finished instead and the run reaches the retro.
+func TestAllAchievedGoalsRecordWithoutItsStateWriteIsHealed(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t)
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	d.nextOp() // the assessor dispatch
+	if code, got, errb := recordGoalVerdict(t, d, "achieved"); code != 0 || got["all_achieved"] != true {
+		t.Fatalf("%d %v %s", code, got, errb)
+	}
+	head := testutil.Git(t, d.root, "rev-parse", "HEAD")
+	forgetSha(t, bdir, func(st *bundle.State) { st.GoalsCheckedSHA = nil })
+	o := d.nextOp()
+	if o["op"] != "run" || o["step"] != "retro" {
+		t.Fatalf("an all-achieved record must never come back as goals_unmet: %v", o)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.GoalsCheckedSHA == nil || *st.GoalsCheckedSHA != head {
+		t.Fatalf("goals_checked_sha = %v, want HEAD %s", st.GoalsCheckedSHA, head)
+	}
+	if st.PendingGate != nil {
+		t.Fatalf("no gate may be persisted for a record with nothing unmet: %+v", st.PendingGate)
+	}
+	if !healedEvent(t, bdir, "goal_check") {
+		t.Fatal("the repair must be on the event log")
+	}
+}

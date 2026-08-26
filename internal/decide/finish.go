@@ -45,7 +45,14 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 		return decideVerify(st, fin.Verify)
 	}
 	if st.Config.Goals && !fin.GoalsChecked {
-		if !fin.Goals.Present {
+		// A record with nothing unmet is the goals-side twin of a passed
+		// verify record with no verified_sha: the assessment landed and the
+		// state write did not (review I2). healFinish repairs that before
+		// the loop runs, so reaching here means something else produced it
+		// — and re-assessing HEAD is the answer that can only be right,
+		// while "Unmet goals: []" is a question with no answer the user
+		// could give, persisted as a gate.
+		if !fin.Goals.Present || len(fin.Goals.Unmet) == 0 {
 			return Decision{
 				Action: ActDispatch,
 				Agent:  &op.Agent{Agent: "goal-assessor", Label: "assess the goals at HEAD"},
@@ -67,10 +74,16 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 }
 
 // decideVerify is row 20: no record → run it; a record that failed or found
-// nothing to run → ask.
+// nothing to run → ask. A record that *passed* is the one shape this row
+// should never be looking at — decideFinish only comes here when
+// verified_sha does not cover HEAD, and a pass is what sets it — so it means
+// the record landed and the state write did not (review I2). healFinish
+// repairs that before the loop runs; as defence in depth, verifying HEAD
+// again is the answer that can only be right, while `verification_failed`
+// with an empty failed list is the one that can only be wrong.
 func decideVerify(st *bundle.State, v VerifyFacts) Decision {
 	switch {
-	case !v.Present:
+	case !v.Present, v.Passed:
 		return exec("verifying at HEAD", "takt verify --slug "+st.Slug, verifyTimeoutS)
 	case v.NoCommands:
 		return ask("no_verification", map[string]any{ctxSlug: st.Slug})
