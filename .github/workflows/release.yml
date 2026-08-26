@@ -1,0 +1,45 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # goreleaser builds the changelog from history.
+          fetch-depth: 0
+
+      - name: The plugin manifest must agree with the tag
+        run: |
+          set -euo pipefail
+          manifest="$(jq -r .version .claude-plugin/plugin.json)"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$manifest" != "$tag" ]; then
+            echo "::error::.claude-plugin/plugin.json says $manifest but the tag ${GITHUB_REF_NAME} means $tag."
+            echo "::error::Run 'task version:set VERSION=$tag', commit the manifests, then move the tag."
+            exit 1
+          fi
+          echo "plugin.json $manifest matches tag ${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A repo secret the maintainer creates: a PAT with contents:write
+          # on monrad/homebrew-tap. Without it the cask step cannot push.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

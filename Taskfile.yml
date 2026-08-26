@@ -23,6 +23,25 @@ tasks:
       - task: test
       - task: lint
 
+  snapshot:
+    desc: Build an unpublished release snapshot with goreleaser into dist/.
+    cmds:
+      # goreleaser is not a repo dependency and is not always installed:
+      # fall back to the pinned nixpkgs copy (the same one flake.nix's
+      # devShell provides) rather than fail.
+      - |
+        if command -v goreleaser >/dev/null 2>&1; then
+          goreleaser release --snapshot --clean --skip=publish
+        else
+          nix shell nixpkgs#goreleaser -c goreleaser release --snapshot --clean --skip=publish
+        fi
+
+  nix:build:
+    desc: Build takt through the flake and print the version it stamped.
+    cmds:
+      - nix build .#default
+      - ./result/bin/takt version
+
   version:set:
     desc: Rewrite the plugin manifests' version fields — VERSION=x.y.z.
     requires:

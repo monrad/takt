@@ -1,0 +1,122 @@
+# goreleaser v2 — release build for takt.
+#
+# goreleaser is not a repo dependency: `task snapshot` uses it from PATH when
+# present, otherwise `nix shell nixpkgs#goreleaser -c goreleaser …`. The
+# pinned nixpkgs ships 2.17.1; `goreleaser check` must stay warning-free.
+#
+# The version string has one source — `.claude-plugin/plugin.json`. Here it
+# arrives as the git tag ({{.Version}}, tag minus the leading v); release.yml
+# refuses to build a tag that disagrees with the manifest. flake.nix reads the
+# manifest directly. Both stamp the same symbol.
+version: 2
+
+project_name: takt
+
+before:
+  hooks:
+    - go vet ./...
+
+builds:
+  - id: takt
+    main: ./cmd/takt
+    binary: takt
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/monrad/takt/internal/version.Version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: takt
+    ids:
+      - takt
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "^Merge "
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Refactors
+      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: Build and tooling
+      regexp: '^.*?build(\([[:word:]]+\))??!?:.+$'
+      order: 5
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: monrad
+    name: takt
+  draft: false
+  prerelease: auto
+  mode: replace
+  name_template: "v{{ .Version }}"
+
+# goreleaser 2.17 deprecates `brews` (formulae) in favour of `homebrew_casks`,
+# so the tap ships a cask: `brew install monrad/tap/takt`. goreleaser emits
+# on_macos and on_linux blocks, so it serves linuxbrew too; anyone not on brew
+# takes a tarball or the flake.
+homebrew_casks:
+  - name: takt
+    binaries:
+      - takt
+    ids:
+      - takt
+    repository:
+      owner: monrad
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/monrad/takt
+    description: Resumable brainstorm-plan-execute workflow with a deterministic Go core
+    license: mit
+    # Prereleases (v0.2.0-rc1 &c.) do not move the tap.
+    skip_upload: auto
+    hooks:
+      post:
+        # An unsigned binary downloaded by brew is quarantined by Gatekeeper;
+        # strip the attribute so `takt` runs without a right-click dance.
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/takt"]
+          end

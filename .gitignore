@@ -1,3 +1,4 @@
 /takt
 /dist/
 *.test
+/result

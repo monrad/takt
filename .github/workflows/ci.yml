@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  # Branch pushes are covered by their pull request; keying push on main only
+  # keeps a PR from running the same job twice under two refs.
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: vet, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          # go.mod is the single source of the Go version (1.26).
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # .golangci.yml is the maratori golden config for this exact
+          # version — keep the two in step.
+          version: v2.13.1
+
+      - name: go test
+        run: go test ./... -race -count=1
+
+      - name: go build
+        run: go build ./...
