@@ -153,6 +153,60 @@ type GoalAssessorData struct {
 	Problems      []string
 }
 
+// LensTask is one task in a wave reviewed through a lens.
+type LensTask struct {
+	ID          int
+	Title       string
+	Description string
+	Files       []string
+}
+
+// LensData feeds review-lens.md (spec §7.4 row 8, §10).
+type LensData struct {
+	Slug                 string
+	Wave, Slice, Attempt int
+	Lens                 string
+	Rubric               string
+	DiffPath             string // absolute path of the slice diff file
+	Tasks                []LensTask
+	Token                string
+}
+
+// TaskBlock renders one task for quoting: title, description and declared
+// files in a single delimiter pair, so the template stays one quote call
+// per task.
+func (LensData) TaskBlock(t LensTask) string {
+	return t.Title + "\n" + t.Description + "\nfiles: " + strings.Join(t.Files, ", ")
+}
+
+// VerifyCandidate is one candidate finding a lens review proposed, being
+// verified in a pass over the candidates.
+type VerifyCandidate struct {
+	ID, Severity, File, Title, Detail string
+	Line                              int
+}
+
+// VerifyData feeds review-verify.md (spec §7.4 row 9, §10).
+type VerifyData struct {
+	Slug                 string
+	Wave, Slice, Attempt int
+	DiffPath             string
+	Token                string
+	Candidates           []VerifyCandidate
+}
+
+// CandidateLines renders the merged candidates as one block for a single
+// delimiter pair — distilled claims only, no lens names and no reasoning
+// (design D6): a candidate is another agent's words about implementer-
+// authored code, exactly the laundering path PriorFindingLines closes.
+func (d VerifyData) CandidateLines() string {
+	var b strings.Builder
+	for _, c := range d.Candidates {
+		fmt.Fprintf(&b, "%s %s %s:%d — %s: %s\n", c.ID, c.Severity, c.File, c.Line, c.Title, c.Detail)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // PriorFinding is one finding from the pass a scoped review is confirming.
 // brief keeps its own shape rather than importing internal/backend so this
 // package stays a leaf; the caller maps backend.Finding onto it.

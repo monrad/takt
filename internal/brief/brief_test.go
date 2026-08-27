@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
 )
 
@@ -398,5 +399,87 @@ func assertRejectionSection(t *testing.T, name, with, without string, problems [
 	}
 	if !strings.Contains(tail, "Reply again in exactly the format this brief describes.") {
 		t.Errorf("%s: the instruction to retry must sit outside the quote:\n%s", name, with)
+	}
+}
+
+func TestRenderLensBrief(t *testing.T) {
+	t.Parallel()
+	text, err := brief.Render("review-lens", brief.LensData{
+		Slug: "run-x", Wave: 0, Slice: 1, Attempt: 1, Lens: "correctness",
+		Rubric: "RUBRIC-BODY-MARKER", DiffPath: "/abs/logs/wave-0.s1.a1.diff",
+		Tasks: []brief.LensTask{{ID: 3, Title: "t3", Description: "d3", Files: []string{"a.go", "b.go"}}},
+		Token: "UNTRUSTED-ARTIFACT-0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"**correctness**", "RUBRIC-BODY-MARKER", "/abs/logs/wave-0.s1.a1.diff",
+		"BEGIN UNTRUSTED-ARTIFACT-0123456789abcdef task-3", "files: a.go, b.go",
+		"blocking", `"lens":"correctness"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("lens brief lacks %q", want)
+		}
+	}
+	if strings.Contains(text, "attempt 1:") || strings.Contains(text, "blocking and major findings only") {
+		t.Error("attempt-1 brief must not carry the retry-only severity rule")
+	}
+}
+
+func TestRenderLensBriefRetryNarrowsSeverity(t *testing.T) {
+	t.Parallel()
+	text, err := brief.Render("review-lens", brief.LensData{
+		Slug: "run-x", Wave: 0, Slice: 1, Attempt: 2, Lens: "tests", Rubric: "r",
+		DiffPath: "/d", Token: "UNTRUSTED-ARTIFACT-0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "blocking and major findings only") {
+		t.Error("attempt-2 brief must narrow to blocking and major (design D8)")
+	}
+}
+
+func TestRenderVerifyBrief(t *testing.T) {
+	t.Parallel()
+	text, err := brief.Render("review-verify", brief.VerifyData{
+		Slug: "run-x", Wave: 0, Slice: 1, Attempt: 1, DiffPath: "/abs/diff",
+		Token: "UNTRUSTED-ARTIFACT-0123456789abcdef",
+		Candidates: []brief.VerifyCandidate{
+			{ID: "c1", Severity: "blocking", File: "a.go", Line: 4, Title: "t", Detail: "d"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"REFUTE", "c1 blocking a.go:4 — t: d", "false_positive",
+		"one verdict per candidate id", "Do not add findings",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("verify brief lacks %q", want)
+		}
+	}
+}
+
+func TestRenderTaskFollowupQuotesClaims(t *testing.T) {
+	t.Parallel()
+	tok, _ := brief.Token()
+	text, err := brief.Render("review-task-followup", brief.ReviewData{
+		Gate: "task-followup", Title: "t3", Token: tok, Schema: backend.ResultSchema,
+		Diff: "DIFF-BODY", TaskDescription: "desc", VerifyOutput: "ok",
+		PriorFindings: []brief.PriorFinding{{Severity: "blocking", File: "a.go", Line: 4, Title: "ti", Detail: "de"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"BEGIN " + tok + " prior-findings", "blocking a.go:4 — ti: de",
+		"refute it with a code-grounded reason", "Do not raise new findings",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("followup brief lacks %q", want)
+		}
 	}
 }
