@@ -186,6 +186,20 @@ func taskForFile(st *bundle.State, aw *bundle.ActiveWave, file string) int {
 // construction, where a re-run close could carry them twice (design §3.5).
 func recordVerify(env Env, tgt *runTarget, msg string) int {
 	aw := tgt.st.ActiveWave
+	existing, rerr := wave.ReadInternalRecord(tgt.bdir, aw.N, sliceOf(aw), aw.Attempt)
+	if rerr != nil {
+		return fail(env.Stderr, exitError, rerr.Error(), "")
+	}
+	if existing != nil {
+		// A replay of a dispatch already verified — every record is safe to
+		// run twice (design §5.4 "every op is safe to execute twice"), so
+		// this must not re-append internal_review_recorded or carry the
+		// unattributed findings to follow-ups.json a second time.
+		return printJSON(env, map[string]any{
+			keyValid: true, keyIgnored: true,
+			keyCandidates: len(existing.Candidates), keyConfirmed: len(existing.Confirmed),
+		})
+	}
 	lenses := tgt.st.Config.Review.Lenses
 	records := map[string]*wave.LensRecord{}
 	for _, l := range lenses {

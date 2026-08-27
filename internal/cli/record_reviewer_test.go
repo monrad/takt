@@ -103,6 +103,22 @@ func hasEventOfType(t *testing.T, bdir, typ string) bool {
 	return false
 }
 
+// countEventsOfType counts how many events of typ were appended.
+func countEventsOfType(t *testing.T, bdir, typ string) int {
+	t.Helper()
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range events {
+		if e.Type == typ {
+			n++
+		}
+	}
+	return n
+}
+
 const correctnessLensMsg = "Here is my review.\n\n```json\n" +
 	`{"lens":"correctness","findings":[` +
 	`{"severity":"major","file":"a.go","line":4,"title":"t1","detail":"d1"},` +
@@ -141,6 +157,35 @@ func TestRecordLensWritesTheRecordAndAttributesTasks(t *testing.T) {
 	ev := lastEventOfType(t, bdir, "lens_recorded")
 	if ev.Data["mode"] != "correctness" {
 		t.Fatalf("lens_recorded event = %+v", ev.Data)
+	}
+}
+
+// TestRecordLensValidReplyEndsTheRejectionStreak covers review finding 2: no
+// test previously seeded a reviewer_invalid streak and asserted the
+// following valid reply appends reviewer_attempts_reset with reason
+// "recorded" — the pairing endAttemptStreak relies on (spec §5.3 rows 10,
+// 11, 21, mirrored for the reviewer agent).
+func TestRecordLensValidReplyEndsTheRejectionStreak(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	badMsg := writeMsg(t, "no JSON block here at all, just prose.")
+	code, out, errb := runIn(t, root, nil, "record", "--agent", "reviewer",
+		"--mode", "correctness", "--attempt", "1", "--from", badMsg, "--slug", "demo")
+	if code != 0 || out["valid"] != false {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	if !hasEventOfType(t, bdir, "reviewer_invalid") {
+		t.Fatal("reviewer_invalid event must be appended by the unusable reply")
+	}
+	goodMsg := writeMsg(t, correctnessLensMsg)
+	code, out, errb = runIn(t, root, nil, "record", "--agent", "reviewer",
+		"--mode", "correctness", "--attempt", "1", "--from", goodMsg, "--slug", "demo")
+	if code != 0 || out["valid"] != true {
+		t.Fatalf("%d %v %s", code, out, errb)
+	}
+	ev := lastEventOfType(t, bdir, "reviewer_attempts_reset")
+	if ev.Data["reason"] != "recorded" {
+		t.Fatalf("reviewer_attempts_reset event = %+v", ev.Data)
 	}
 }
 
@@ -328,6 +373,51 @@ func TestRecordVerifyWritesInternalRecordAndCarriesUnattributed(t *testing.T) {
 	}
 	if !hasEventOfType(t, bdir, "internal_review_recorded") {
 		t.Fatal("an internal_review_recorded event must be appended")
+	}
+}
+
+// TestRecordVerifyReplayIsIdempotent covers review finding 1: unlike
+// recordLens, recordVerify had no short-circuit for a dispatch already
+// verified, so a same-attempt replay re-appended internal_review_recorded
+// and re-carried the unattributed confirmed findings to follow-ups.json —
+// breaking "every record is safe to run twice" (design §5.4). A replay must
+// report success off the existing record without appending anything twice.
+func TestRecordVerifyReplayIsIdempotent(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	writeLensRecord(t, bdir, "correctness", []wave.LensFinding{
+		{Finding: backend.Finding{Severity: "major", File: "a.go", Line: 4, Title: "t1"}, Task: 3},
+	})
+	writeLensRecord(t, bdir, "intent", []wave.LensFinding{
+		{Finding: backend.Finding{Severity: "minor", File: "other.go", Line: 1, Title: "t2"}, Task: 0},
+	})
+	verifyMsg := "```json\n" +
+		`{"mode":"verify","verdicts":[` +
+		`{"id":"c1","verdict":"confirmed","evidence":"read a.go:2-8; span shows it","citations":["a.go:4"]},` +
+		`{"id":"c2","verdict":"confirmed","evidence":"read other.go; stale doc","citations":["other.go:1"]}]}` +
+		"\n```\n"
+	msg := writeMsg(t, verifyMsg)
+	code, out, errb := runIn(t, root, nil, "record", "--agent", "reviewer",
+		"--mode", "verify", "--attempt", "1", "--from", msg, "--slug", "demo")
+	if code != 0 || out["valid"] != true {
+		t.Fatalf("first record: %d %v %s", code, out, errb)
+	}
+	// Replay: the identical message recorded a second time for the same
+	// (wave, slice, attempt).
+	code, out, errb = runIn(t, root, nil, "record", "--agent", "reviewer",
+		"--mode", "verify", "--attempt", "1", "--from", msg, "--slug", "demo")
+	if code != 0 || out["valid"] != true {
+		t.Fatalf("replay: %d %v %s", code, out, errb)
+	}
+	fups, err := gate.ReadFollowUps(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fups.Items) != 1 {
+		t.Fatalf("a replay must not duplicate follow-ups, got %d: %+v", len(fups.Items), fups.Items)
+	}
+	if n := countEventsOfType(t, bdir, "internal_review_recorded"); n != 1 {
+		t.Fatalf("a replay must not re-append internal_review_recorded, got %d events", n)
 	}
 }
 
