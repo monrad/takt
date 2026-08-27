@@ -14,6 +14,7 @@ var wantAgents = map[string]struct{ model, tools string }{
 	"planner":           {"fable", "Read, Grep, Glob, Write"},
 	"goal-assessor":     {"sonnet", "Read, Grep, Glob, Bash"},
 	"alignment-auditor": {"sonnet", "Read, Grep, Glob"},
+	"reviewer":          {"sonnet", "Read, Grep, Glob"},
 }
 
 func TestAgentDefinitionsMatchSpec(t *testing.T) {
@@ -40,5 +41,23 @@ func TestAgentDefinitionsMatchSpec(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Join("..", "..", "agents"))
 	if len(entries) != len(wantAgents) {
 		t.Errorf("agents/ has %d files, want %d", len(entries), len(wantAgents))
+	}
+}
+
+func TestPromptNamesTheReviewerDispatch(t *testing.T) {
+	t.Parallel()
+	for _, p := range []string{
+		filepath.Join("..", "..", "commands", "takt.md"),
+		filepath.Join("..", "..", "hosts", "copilot", "skills", "takt", "SKILL.md"),
+	} {
+		md, err := prompt.Load(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"`reviewer`", "<mode>"} {
+			if !strings.Contains(md, want) {
+				t.Errorf("%s lacks %q", p, want)
+			}
+		}
 	}
 }
