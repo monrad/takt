@@ -186,6 +186,17 @@ func readJSONRecord[T any](path string) (*T, error) {
 //nolint:mnd // magic numbers are severity ranks (lower = higher precedence)
 var severityRank = map[string]int{"blocking": 0, "major": 1, "minor": 2, "nit": 3}
 
+// getSeverityRank returns the rank of a severity, with unknown severities
+// ranking last (worse than "nit") to prevent unvalidated LLM output from
+// masking genuine blocking findings.
+func getSeverityRank(s string) int {
+	rank, ok := severityRank[s]
+	if !ok {
+		return len(severityRank) // unknown = worse than nit
+	}
+	return rank
+}
+
 // MergeCandidates merges the lens records mechanically (two-layers design
 // §5.2): same file and same line become one candidate — highest severity
 // wins, the title and detail come from the earliest contributing lens in
@@ -216,7 +227,7 @@ func MergeCandidates(order []string, records map[string]*LensRecord) []Candidate
 			if !slices.Contains(c.Lenses, lens) {
 				c.Lenses = append(c.Lenses, lens)
 			}
-			if severityRank[f.Severity] < severityRank[c.Severity] {
+			if getSeverityRank(f.Severity) < getSeverityRank(c.Severity) {
 				c.Severity = f.Severity
 			}
 		}
@@ -232,7 +243,7 @@ func MergeCandidates(order []string, records map[string]*LensRecord) []Candidate
 		if out[i].Line != out[j].Line {
 			return out[i].Line < out[j].Line
 		}
-		return severityRank[out[i].Severity] < severityRank[out[j].Severity]
+		return getSeverityRank(out[i].Severity) < getSeverityRank(out[j].Severity)
 	})
 	for i := range out {
 		out[i].ID = "c" + strconv.Itoa(i+1)

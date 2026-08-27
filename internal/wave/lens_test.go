@@ -142,3 +142,22 @@ func TestLensAndInternalRecordsRoundTrip(t *testing.T) {
 		t.Fatalf("AllInternalRecords = %v, %v", all, errAll)
 	}
 }
+
+func TestMergeCandidatesUnknownSeverityDoesNotMaskBlocking(t *testing.T) {
+	t.Parallel()
+	recs := map[string]*wave.LensRecord{
+		"first":  lensRec("first", lf("bogus", "a.go", 5, 1, "malformed")),
+		"second": lensRec("second", lf("blocking", "a.go", 5, 1, "genuine")),
+	}
+	got := wave.MergeCandidates([]string{"first", "second"}, recs)
+	if len(got) != 1 {
+		t.Fatalf("candidates = %d, want 1", len(got))
+	}
+	c := got[0]
+	if c.Severity != "blocking" {
+		t.Fatalf("severity = %s, want blocking (unknown from first lens must not mask)", c.Severity)
+	}
+	if c.Title != "malformed" {
+		t.Fatalf("title = %s, want malformed (from earliest lens)", c.Title)
+	}
+}
