@@ -105,7 +105,10 @@ At answer time the session has not edited yet, so there is no new hash to bind a
 at the current hash:
 
 > A `gate_revision_accepted` event for this gate satisfies it **when the current hash differs from the
-> event's hash**. The newest such event for the gate wins. Status verdict is `revised`.
+> event's hash, and no `gate_reviewed` event for the gate has followed it**. The newest revision event
+> for the gate wins, but a `gate_reviewed` event for the gate clears whatever revision was pending
+> before it — a later review has now answered the revision, so it must not go on satisfying the gate
+> once that review has spoken. Status verdict is `revised`.
 
 The precedence matters. A receipt at the current hash is a fresher and more specific answer than an
 event bound to an older hash, so it governs. In the ordinary flow there is no receipt at the new hash
@@ -133,16 +136,26 @@ accepts, and it applies only where the reviewer itself said nothing blocking.
 | `revise` answered, nothing edited | Gate stays open; `Decide` re-asks `gate_review` from the unchanged receipt. |
 | Spec edited back to H1 after a revision event at H1 | Gate re-opens. Correct: the reviewed text is once again the text the reviewer objected to. |
 | Several revision events for `spec` | Newest wins; older ones are inert history. |
-| Revision event present, artifact later edited again | Still satisfied — the event is not consumed. A *new* review is only requested if something else re-arms the gate. |
+| Revision event present, artifact later edited again, no review since | Still satisfied — an edit does not consume the event, only a later review does. |
+| A `gate_reviewed` event for the gate follows the revision event (e.g. `takt review spec --force`) | Revision cleared; a later edit no longer resurrects it on its own — the new receipt, if it answers at the current hash, governs, otherwise the gate is open until revised again. |
 | `revise` on the plan gate, or on a blocking/`reject`/`error` spec receipt | No event written; today's re-arm behaviour, unchanged. |
 
 ---
 
 ## 5. The scoped confirming pass
 
-When a blocking `rework` re-arms at H2, `runReview` reads the previous receipt. If its verdict was
-`rework` with `Severities["blocking"] > 0`, it renders `review-spec-followup.md` instead of
-`review-spec.md`, quoting the prior findings from `reviews/spec.json` (§7.2).
+When a blocking `rework` re-arms at H2, `runReview` reads `reviews/spec.json` (§7.2) — not the
+receipt — for both the verdict and the blocking count: if that file's verdict is `rework` with
+`SeverityCounts()["blocking"] > 0`, it renders `review-spec-followup.md` instead of `review-spec.md`,
+quoting the findings it holds.
+
+The receipt is not the source here because it records the gate's state *including* its failures — a
+backend outage between a blocking rework and its confirming pass comes back as a result with
+`Verdict == error`, and that error legitimately replaces the receipt's `rework`. An `error` verdict is
+not an answer — the same principle `cachedReceipt` applies when deciding whether a receipt can
+short-circuit a re-run — so `storeFindings` leaves `reviews/spec.json` untouched on one (§7.2). Reading
+the findings file instead of the receipt keeps a transient outage from silently widening the scoped
+pass back to the full rubric.
 
 The scoped rubric asks one question: **are these N findings addressed in the new text? Do not raise new
 findings.** That question has the property the current one lacks — a finite, checkable referent — so it
@@ -206,9 +219,11 @@ consume. `Receipt.Findings` continues to point at the `.md`; the `.json` sits be
 name.
 
 It is written for **both** gates, because `runReview` is shared and the cost is one file; only the spec
-gate reads it. Each review overwrites it, so it always describes the newest pass — which is what §5
-needs when a scoped pass reports a still-unaddressed subset and that subset must scope the pass after
-it.
+gate reads it. Each review overwrites it — except one with an `error` verdict, which writes neither the
+`.json` nor the `.md`: a backend failure is not a reviewer's answer, and letting it erase the last real
+pass's findings would drop the run back into the unscoped re-review loop this design exists to end. So
+it always describes the newest pass a reviewer actually answered, which is what §5 needs when a scoped
+pass reports a still-unaddressed subset and that subset must scope the pass after it.
 
 ### 7.3 `follow-ups.json`
 
