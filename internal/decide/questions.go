@@ -23,6 +23,7 @@ const (
 const (
 	gateOwner              = "owner"
 	gateReview             = "gate_review"
+	gateReviewCapped       = "gate_review_capped"
 	gateAlignmentConfirm   = "alignment_confirm"
 	gatePlanInvalid        = "plan_invalid"
 	gateAgentInvalid       = "agent_invalid"
@@ -46,6 +47,8 @@ func Question(gate string, ctx map[string]any) op.Op {
 		questionOwner(&q, ctx)
 	case gateReview:
 		questionGateReview(&q, ctx)
+	case gateReviewCapped:
+		questionGateReviewCapped(&q, ctx)
 	case gateAlignmentConfirm:
 		questionAlignmentConfirm(&q, ctx)
 	case gatePlanInvalid:
@@ -92,26 +95,72 @@ func questionOwner(q *op.Op, ctx map[string]any) {
 	}
 }
 
-// questionGateReview fills the "gate_review" gate (spec/plan review asked for rework).
+// questionGateReview fills the "gate_review" gate (spec/plan review asked for
+// rework). The revise option's text depends on what revising will actually
+// do: on the spec gate, a rework verdict that found nothing blocking is
+// "usable after the listed edits" and the edit itself closes the gate
+// (fixed-point design §4), so promising a re-review there would tell the user
+// the opposite of what happens.
+//
+// The verdict is half of that condition, not just the severity: acceptRevision
+// writes the closing event only for a non-blocking rework, so the other three
+// rows of the design's §3 table — blocking rework, reject, and error (whose
+// result carries no findings at all, hence no blocking ones) — all keep the
+// re-arm-and-re-review loop and have to keep being told so.
 func questionGateReview(q *op.Op, ctx map[string]any) {
 	g, _ := ctx["gate"].(string)
+	verdict, _ := ctx["verdict"].(string)
+	blocking, _ := ctx["blocking"].(bool)
 	q.Narration = g + " review asked for rework"
 	q.Question = fmt.Sprintf(
 		"The %s review verdict is %v: %v. How do you want to proceed?",
 		g, ctx["verdict"], ctx["summary"],
 	)
+	revise := op.Option{
+		Choice: "revise",
+		Label:  "Revise and re-review (Recommended)",
+		Description: fmt.Sprintf(
+			"Edit the %s with the findings in reviews/%s.md; the gate re-arms on the new hash.", g, g,
+		),
+	}
+	if g == specGate && verdict == verdictRework && !blocking {
+		revise.Label = "Revise (Recommended)"
+		revise.Description = "Edit spec.md with the findings in reviews/spec.md; " +
+			"the gate closes on the edit — no second review."
+	}
 	q.Options = []op.Option{
-		{
-			Choice: "revise",
-			Label:  "Revise and re-review (Recommended)",
-			Description: fmt.Sprintf(
-				"Edit the %s with the findings in reviews/%s.md; the gate re-arms on the new hash.", g, g,
-			),
-		},
+		revise,
 		{
 			Choice:      "accept",
 			Label:       "Accept as is",
-			Description: "Record an override with a reason (`--reason`) and proceed.",
+			Description: "Record an override with a reason (`--reason`); the findings are carried to the retro.",
+		},
+		{Choice: choiceStop, Label: labelStop, Description: "Keep the gate open and end the turn."},
+	}
+}
+
+// questionGateReviewCapped fills the "gate_review_capped" gate: the spec
+// review has taken maxAgentAttempts passes without the gate closing
+// (fixed-point design §8). Gate review is the one loop that cannot
+// self-limit, so this is where it stops and asks.
+func questionGateReviewCapped(q *op.Op, ctx map[string]any) {
+	g, _ := ctx["gate"].(string)
+	q.Narration = fmt.Sprintf("the %s review has taken %v passes", g, ctx[ctxAttempts])
+	q.Question = fmt.Sprintf(
+		"The %s review has run %v times without closing the gate (findings in reviews/%s.md). "+
+			"How do you want to proceed?",
+		g, ctx[ctxAttempts], g,
+	)
+	q.Options = []op.Option{
+		{
+			Choice:      "accept",
+			Label:       "Accept as is (Recommended)",
+			Description: "Record an override with a reason (`--reason`); the findings are carried to the retro.",
+		},
+		{
+			Choice:      choiceRetry,
+			Label:       "One more pass",
+			Description: "Reset the round count and review once more.",
 		},
 		{Choice: choiceStop, Label: labelStop, Description: "Keep the gate open and end the turn."},
 	}

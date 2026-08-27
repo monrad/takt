@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
 )
 
@@ -207,6 +208,27 @@ func (d *driver) playToFinish(maxSteps int) map[string]any {
 		}
 	}
 	d.t.Fatalf("loop did not reach finish in %d steps: %v", maxSteps, d.ops)
+	return nil
+}
+
+// driveToSpecGate drives the loop, executing every op via step, until `next`
+// asks the gate_review gate for the spec gate, then returns that ask op
+// without acting on it — Task 9's two tests each answer and edit spec.md
+// differently (a non-blocking rework closes on the edit alone; a blocking
+// one needs a second, scripted pass), so this stops at the one point their
+// shapes diverge and leaves the rest to the caller.
+func (d *driver) driveToSpecGate(maxSteps int) map[string]any {
+	d.t.Helper()
+	for range maxSteps {
+		o := d.nextOp()
+		if o["op"] == "ask" && o["gate"] == "gate_review" {
+			return o
+		}
+		if reason, stopped := d.step(o); stopped {
+			d.t.Fatalf("loop stopped (%s) before reaching the spec gate: %v", reason, d.ops)
+		}
+	}
+	d.t.Fatalf("loop did not reach the spec gate in %d steps: %v", maxSteps, d.ops)
 	return nil
 }
 
@@ -653,6 +675,108 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 		}
 	}
 	t.Logf("ops: %s", joined)
+}
+
+// TestSpecGateSpendsOneReviewOnANonBlockingRework is the fixed point, end to
+// end: a reviewer that asks for rework over two minors must cost exactly one
+// backend call at the spec gate. Before the fixed-point change this looped —
+// revise moved the hash, the hash re-armed the gate, and the next pass found
+// new things in the new text.
+func TestSpecGateSpendsOneReviewOnANonBlockingRework(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	const rework = `{"verdict":"rework","summary":"two minors","findings":[` +
+		`{"severity":"minor","file":"spec.md","line":1,"title":"wording","detail":"ambiguous"},` +
+		`{"severity":"nit","file":"spec.md","line":2,"title":"typo","detail":"polish"}]}`
+	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{
+		"TAKT_SESSION": "S", "TAKT_FAKE_REVIEW": rework,
+	}}
+
+	// Drive until the spec gate is behind us: answer gate_review with revise
+	// and edit spec.md, exactly as a session would.
+	o := d.driveToSpecGate(20)
+	d.answer(o) // "revise" is the first, recommended option (decide/questions.go)
+	writeAt(t, filepath.Join(bdir, "spec.md"),
+		"# spec\n\nWording tightened per review; typo fixed.\n\n"+
+			"## Assumptions & Open Decisions\n| q | d | r | s |\n")
+	// The edit is what closes a non-blocking spec gate (fixed-point design
+	// §4): one more `next` re-hashes spec.md, sees the revise was accepted
+	// at the old (now stale) hash, and is satisfied without a second
+	// backend call.
+	d.nextOp()
+
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := gate.Rounds(events, gate.Spec); n != 1 {
+		t.Fatalf("spec review calls = %d, want exactly 1", n)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Phase == bundle.PhaseBrainstorm {
+		t.Fatal("the run must leave brainstorm: a non-blocking rework closes on the revise")
+	}
+}
+
+// TestSpecGateSpendsASecondScopedReviewOnABlockingRework is the other half:
+// a blocking finding does buy one more pass, and that pass is the scoped one.
+func TestSpecGateSpendsASecondScopedReviewOnABlockingRework(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	const blocking = `{"verdict":"rework","summary":"one blocking","findings":[` +
+		`{"severity":"blocking","file":"spec.md","line":1,"title":"wrong claim",` +
+		`"detail":"executeRun does not set ActiveWave"}]}`
+	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{
+		"TAKT_SESSION": "S", "TAKT_FAKE_REVIEW": blocking,
+	}}
+	// Drive to the spec gate, answer revise, edit spec.md, then let the loop
+	// take its second pass. Switch d.env["TAKT_FAKE_REVIEW"] to an approve
+	// result before that second pass so the run can proceed.
+	o := d.driveToSpecGate(20)
+	d.answer(o) // "revise" is recommended even when the rework is blocking
+	writeAt(t, filepath.Join(bdir, "spec.md"),
+		"# spec\n\nexecuteRun now sets ActiveWave; see task 4 for the fix.\n\n"+
+			"## Assumptions & Open Decisions\n| q | d | r | s |\n")
+	// A blocking rework does not get the edit-closes-the-gate fast path:
+	// acceptRevision (cmd_answer.go) writes nothing when the receipt it read
+	// carried a blocking finding, so the edit only re-arms the gate. The next
+	// pass is a real, scoped backend call (rendered from
+	// review-spec-followup.md) — let it approve so the run can proceed.
+	d.env["TAKT_FAKE_REVIEW"] = `{"verdict":"approve","summary":"blocking finding addressed"}`
+	for range 5 {
+		o2 := d.nextOp()
+		if o2["op"] == "dispatch" {
+			break // the spec gate is satisfied; the loop moved on to planning
+		}
+		if _, stopped := d.step(o2); stopped {
+			t.Fatalf("loop stopped before the second pass closed the gate: %v", d.ops)
+		}
+	}
+
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := gate.Rounds(events, gate.Spec); n != 2 {
+		t.Fatalf("spec review calls = %d, want 2 (one blocking pass, one scoped confirmation)", n)
+	}
+	logs, err := os.ReadDir(filepath.Join(bdir, "logs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scoped bool
+	for _, e := range logs {
+		b, rerr := os.ReadFile(filepath.Join(bdir, "logs", e.Name()))
+		if rerr == nil && strings.Contains(string(b), "Do NOT raise new findings") {
+			scoped = true
+		}
+	}
+	if !scoped {
+		t.Fatal("the second pass must be rendered from the scoped rubric")
+	}
 }
 
 // TestOpLoopFinishSurvivesRestart is spec §5.4 inside the finish phase: the

@@ -29,6 +29,22 @@ const (
 	VerdictRework  = "rework"
 	VerdictReject  = "reject"
 	VerdictError   = "error"
+	// VerdictRevised is not a reviewer's word: it is the status Compute
+	// reports when a revise answer has been completed by an edit (fixed-point
+	// design §4). No receipt ever carries it.
+	VerdictRevised = "revised"
+)
+
+// Event types this package reads out of events.jsonl.
+const (
+	// EvRevisionAccepted records that the user answered `revise` on a spec
+	// review that found nothing blocking, at the hash they were shown.
+	EvRevisionAccepted = "gate_revision_accepted"
+	// EvRoundsReset restarts the review round count for one more pass.
+	EvRoundsReset = "gate_rounds_reset"
+	// EvReviewed is written once per review call; Rounds counts these.
+	EvReviewed   = "gate_reviewed"
+	evOverridden = "gate_overridden"
 )
 
 // Reviewer records who produced a receipt.
@@ -45,13 +61,19 @@ type Skipped struct {
 
 // Receipt is gates/<gate>.json.
 type Receipt struct {
-	Gate     string    `json:"gate"`
-	Hash     string    `json:"hash"`
-	Verdict  string    `json:"verdict"`
-	Reviewer Reviewer  `json:"reviewer"`
-	Findings string    `json:"findings"`
-	TS       time.Time `json:"ts"`
-	Skipped  *Skipped  `json:"skipped"`
+	Gate     string   `json:"gate"`
+	Hash     string   `json:"hash"`
+	Verdict  string   `json:"verdict"`
+	Reviewer Reviewer `json:"reviewer"`
+	Findings string   `json:"findings"`
+	// Severities tallies the review's findings by severity. Counts only, not
+	// the findings themselves, so a gate decision never has to open a second
+	// file. Absent on receipts written before this field existed, which read
+	// as zero of everything — the safe default, since zero blocking is the
+	// path that closes on revise rather than the one that loops.
+	Severities map[string]int `json:"severities,omitempty"`
+	TS         time.Time      `json:"ts"`
+	Skipped    *Skipped       `json:"skipped"`
 }
 
 // Status is the computed state of a gate.
@@ -59,6 +81,11 @@ type Status struct {
 	Satisfied bool
 	Verdict   string
 	Hash      string
+	// Blocking is whether the receipt at the current hash tallied at least
+	// one blocking finding. It decides whether a revise answer closes the
+	// spec gate or re-arms it for a scoped confirming pass, and it decides
+	// which of the two revise option texts the user is shown.
+	Blocking bool
 }
 
 // Artifacts lists the files a gate hashes, in order.
@@ -110,6 +137,27 @@ func Hash(gate, bundleDir string) (string, []string, error) {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), present, nil
 }
 
+// Rounds counts the review passes taken at gate since the newest
+// gate_rounds_reset for it. A `takt review --force` re-run writes another
+// gate_reviewed event and so counts as another round, which is exactly what
+// the cap is there to bound.
+func Rounds(events []bundle.Event, gate string) int {
+	n := 0
+	for _, e := range events {
+		g, ok := eventString(e, "gate")
+		if !ok || g != gate {
+			continue
+		}
+		switch e.Type {
+		case EvReviewed:
+			n++
+		case EvRoundsReset:
+			n = 0
+		}
+	}
+	return n
+}
+
 func receiptPath(bundleDir, gate string) string {
 	return filepath.Join(bundleDir, "gates", gate+".json")
 }
@@ -149,8 +197,9 @@ func eventString(e bundle.Event, key string) (string, bool) {
 	return s, ok
 }
 
-// Compute derives the gate's status from the current hash, the receipt and
-// any gate_overridden event (spec §9).
+// Compute derives the gate's status from the current hash, the receipt, any
+// gate_overridden event, and — for a gate whose revise answer was recorded —
+// any gate_revision_accepted event (spec §9, fixed-point design §4).
 func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	cur, _, err := Hash(gate, bundleDir)
 	if err != nil {
@@ -160,24 +209,70 @@ func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	for _, e := range events {
 		g, gok := eventString(e, "gate")
 		hh, hok := eventString(e, "hash")
-		if e.Type == "gate_overridden" && gok && g == gate && hok && hh == cur {
+		if e.Type == evOverridden && gok && g == gate && hok && hh == cur {
 			return Status{Satisfied: true, Verdict: "overridden", Hash: cur}, nil
 		}
 	}
 	r, err := ReadReceipt(bundleDir, gate)
-	if err != nil || r == nil {
+	if err != nil {
 		return st, err
 	}
-	if r.Hash != cur {
-		return st, nil // stale receipt: the artifact was edited
+	if r != nil && r.Hash == cur {
+		st.Blocking = r.Severities["blocking"] > 0
+		switch {
+		case r.Skipped != nil:
+			st.Satisfied, st.Verdict = true, "skipped"
+		case r.Verdict == VerdictApprove:
+			st.Satisfied, st.Verdict = true, r.Verdict
+		default:
+			st.Verdict = r.Verdict
+		}
+		return st, nil
 	}
-	switch {
-	case r.Skipped != nil:
-		st.Satisfied, st.Verdict = true, "skipped"
-	case r.Verdict == VerdictApprove:
-		st.Satisfied, st.Verdict = true, r.Verdict
-	default:
-		st.Verdict = r.Verdict
+	// No receipt answers at the current hash. A revise answer recorded at an
+	// earlier hash satisfies the gate once the artifacts have actually moved:
+	// the session was told what to change and changed something. Binding to
+	// "not that hash" is what makes it self-enforcing — answering revise and
+	// editing nothing leaves the hash where it was and the gate open. The
+	// receipt branch above outranks this, so a deliberate `takt review
+	// --force` after revising still governs.
+	if revised(events, gate, cur) {
+		return Status{Satisfied: true, Verdict: VerdictRevised, Hash: cur}, nil
 	}
 	return st, nil
+}
+
+// revised reports whether the newest gate_revision_accepted event for gate
+// is still pending — not answered by a later review — and was taken at a
+// hash the artifacts have since moved away from.
+//
+// A gate_reviewed event for the same gate clears the pending revision,
+// because a later review answers it: the reviewer has now judged the text
+// the revision produced. Without that, the first non-blocking revise a run
+// took would satisfy the gate forever — every later verdict, a reject or a
+// blocking rework included, could be dismissed by answering revise and
+// editing anything, and the scoped confirming pass a blocking finding is
+// supposed to buy would never run.
+//
+// Neither designed flow changes. The ordinary one records gate_reviewed
+// before gate_revision_accepted, so the review clears nothing and the
+// revision is still pending at the next hash; a blocking rework writes no
+// revision event at all, so there is nothing to clear.
+func revised(events []bundle.Event, gate, cur string) bool {
+	at, found := "", false
+	for _, e := range events {
+		g, gok := eventString(e, "gate")
+		if !gok || g != gate {
+			continue
+		}
+		switch e.Type {
+		case EvRevisionAccepted:
+			if h, hok := eventString(e, "hash"); hok {
+				at, found = h, true
+			}
+		case EvReviewed:
+			at, found = "", false
+		}
+	}
+	return found && at != cur
 }

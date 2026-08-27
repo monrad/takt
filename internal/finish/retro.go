@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
 )
@@ -23,6 +24,10 @@ type RetroInputs struct {
 	WaveTimings    []WaveTiming   `json:"wave_timings"`
 	Verify         *VerifyRecord  `json:"verify,omitempty"`
 	Goals          *GoalsRecord   `json:"goals,omitempty"`
+	// FollowUps are review findings that closed with their gate instead of
+	// being acted on — an approving pass's minors, or a verdict the user
+	// overrode. The retro lists them so they reach a human (#29).
+	FollowUps []gate.FollowUp `json:"follow_ups,omitempty"`
 }
 
 // RetroRetry is a task that needed more than one attempt.
@@ -62,13 +67,14 @@ const (
 // same file and re-emitting the retro op is free (spec §5.4).
 func BuildRetroInputs(
 	st *bundle.State, idx plan.Index, events []bundle.Event,
-	closes []wave.CloseResult, v *VerifyRecord, g *GoalsRecord,
+	closes []wave.CloseResult, v *VerifyRecord, g *GoalsRecord, followUps []gate.FollowUp,
 ) RetroInputs {
 	in := RetroInputs{
 		Slug: st.Slug, Topic: st.Topic, Tasks: len(idx.Tasks),
 		Retries: []RetroRetry{}, Failures: []RetroFailure{}, WaveTimings: []WaveTiming{},
 		Verify: v, Goals: g,
 	}
+	in.FollowUps = followUps
 	waves := map[int]bool{}
 	reasons := lastReasons(closes)
 	for _, t := range st.Tasks {

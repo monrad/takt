@@ -9,9 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/cli"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
 )
 
@@ -396,6 +398,139 @@ func TestReviewReworkOpensGateAndOverrideClearsIt(t *testing.T) {
 	}
 }
 
+// TestApproveVerdictCarriesFindingsToFollowUps covers the first of the two
+// call sites the carry rule lives at (#29 fix round 1, finding 1): an
+// approving pass closes the gate without asking anyone to act on its
+// findings, so runReview must carry them into follow-ups.json itself. If
+// the carryFindings call were ever deleted from runReview's approve branch,
+// this test would still see the review succeed — nothing about the review
+// command's own output would change — but follow-ups.json would come back
+// empty, which is exactly what this asserts against.
+func TestApproveVerdictCarriesFindingsToFollowUps(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"approve","summary":"looks fine",` +
+		`"findings":[{"severity":"minor","file":"spec.md","line":7,"title":"wording","detail":"ambiguous"}]}`}
+	if c, r, e := runIn(t, root, env, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "approve" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	got, err := gate.ReadFollowUps(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 1 {
+		t.Fatalf("an approving pass's finding must be carried, got %d follow-ups", len(got.Items))
+	}
+	if got.Items[0].Source != gate.SourceApprove || got.Items[0].Gate != gate.Spec {
+		t.Fatalf("provenance must survive: %+v", got.Items[0])
+	}
+	if got.Items[0].Severity != "minor" || got.Items[0].Title != "wording" {
+		t.Fatalf("finding detail must survive: %+v", got.Items[0])
+	}
+}
+
+// TestReviseDoesNotCarryFindings covers the negative half of the carry
+// rule (#29 fix round 1, finding 1c): a rework verdict's findings are the
+// instruction for the revise, not something nobody acted on, so answering
+// gate_review with "revise" must leave follow-ups.json empty. This is the
+// branch most likely to regress by addition — if a carry call were ever
+// added to acceptRevision, this test would start failing where it
+// currently passes.
+func TestReviseDoesNotCarryFindings(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"too vague",` +
+		`"findings":[{"severity":"major","file":"spec.md","line":1,"title":"vague","detail":"say more"}]}`}
+	if c, r, e := runIn(t, root, env, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "rework" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	if _, o, _ := next(t, root, nil); o["op"] != "ask" || o["gate"] != "gate_review" {
+		t.Fatalf("%v", o)
+	}
+	if c, _, e := runIn(t, root, nil,
+		"answer", "--gate", "gate_review", "--choice", "revise", "--slug", "demo"); c != 0 {
+		t.Fatal(e)
+	}
+	got, err := gate.ReadFollowUps(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 0 {
+		t.Fatalf("a revise answers the findings, they must not also be carried: %+v", got.Items)
+	}
+}
+
+// TestAnErroredPassKeepsThePreviousFindings covers the referent the scoped
+// confirming pass depends on. A backend failure is not a Go error here: it
+// comes back as a result whose verdict is "error", so an errored pass used to
+// overwrite reviews/spec.json with {"verdict":"error","findings":null} and
+// take the blocking findings the previous pass earned with it. One transient
+// failure was then enough to replace the scoped rubric with the full one and
+// put the run back in the unbounded re-review loop the fixed point exists to
+// end.
+func TestAnErroredPassKeepsThePreviousFindings(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+
+	blocking := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"one blocking",` +
+		`"findings":[{"severity":"blocking","file":"spec.md","line":1,"title":"wrong claim",` +
+		`"detail":"executeRun does not set ActiveWave"}]}`}
+	if c, r, e := runIn(t, root, blocking, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "rework" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+
+	// The session revised, so the edit re-armed the gate and the next pass is
+	// the scoped one — but the backend falls over on it.
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec v2\n")
+	broken := map[string]string{"TAKT_FAKE_REVIEW": "not json at all"}
+	if c, r, e := runIn(t, root, broken, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "error" {
+		t.Fatalf("the fake backend must report an error verdict: %d %v %s", c, r, e)
+	}
+
+	b, err := os.ReadFile(filepath.Join(bdir, "reviews", "spec.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got backend.ReviewResult
+	if err = json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 1 || got.Findings[0].Severity != "blocking" ||
+		got.Findings[0].Title != "wrong claim" ||
+		got.Findings[0].Detail != "executeRun does not set ActiveWave" {
+		t.Fatalf("an errored pass must not erase the findings the next pass is scoped to: %+v", got.Findings)
+	}
+	if got.Verdict != "rework" {
+		t.Fatalf("reviews/spec.json must still describe the last real pass, got verdict %q", got.Verdict)
+	}
+	md, err := os.ReadFile(filepath.Join(bdir, "reviews", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(md), "executeRun does not set ActiveWave") {
+		t.Fatalf("the human rendering must survive an errored pass too:\n%s", md)
+	}
+	rc, err := gate.ReadReceipt(bdir, gate.Spec)
+	if err != nil || rc == nil {
+		t.Fatalf("the errored pass must still leave a receipt: %v %v", rc, err)
+	}
+	if rc.Verdict != gate.VerdictError {
+		t.Fatalf("the run has to see the failure on the receipt: %+v", rc)
+	}
+}
+
 func TestReviewIsIdempotentAtAHash(t *testing.T) {
 	t.Parallel()
 	root, bdir := setupRun(t)
@@ -464,6 +599,94 @@ func TestReviewIsIdempotentAtAHash(t *testing.T) {
 	); c != 0 || r["cached"] != nil ||
 		r["verdict"] != "rework" {
 		t.Fatalf("review after edit: %d %v %s", c, r, e)
+	}
+}
+
+// TestPlanGateNeverRendersTheScopedSpecFollowupTemplate covers task 8 fix
+// round 1: the `g == gate.Spec` guard in runReview is what keeps the scoped
+// confirming pass to the spec gate only — the plan gate must always render
+// review-plan, never review-spec-followup, no matter what the spec gate's
+// own records say. priorFindingsForScopedPass itself has no way to know which
+// gate is being reviewed (it always reads the spec gate's own records), so
+// the guard in runReview is the only thing standing between a blocking
+// spec-gate rework and a plan-gate review being scoped by mistake.
+//
+// It drives a real plan-gate review through runReview (not
+// priorFindingsForScopedPass directly) while the spec gate's records sit on
+// disk answering rework/blocking — exactly the state a re-armed spec gate
+// leaves behind — then inspects the prompt the fake reviewer
+// actually received (logged verbatim by logPrompt, internal/backend/fake.go)
+// to confirm it is the plan rubric, not the scoped one.
+func TestPlanGateNeverRendersTheScopedSpecFollowupTemplate(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+	if c, r, e := runIn(t, root, nil, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "approve" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("expected dispatch planner, got %v", o)
+	}
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# plan\n")
+	specH := specHash(t, bdir)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", strings.Replace(validIndex, "%s", specH, 1))
+	if c, r, e := runIn(
+		t,
+		root,
+		nil,
+		"record",
+		"--agent",
+		"planner",
+		"--from",
+		"/dev/null",
+		"--slug",
+		"demo",
+	); c != 0 ||
+		r["valid"] != true {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+
+	// Overwrite the spec gate's stored findings — and its receipt, for
+	// realism — to look exactly like a re-armed gate: rework, one blocking
+	// finding, the receipt at a deliberately stale hash (the one from before
+	// the edit that re-armed it). reviews/spec.json is what
+	// priorFindingsForScopedPass reads.
+	testutil.WriteFile(t, root, "docs/takt/demo/reviews/spec.json",
+		`{"verdict":"rework","summary":"one blocking","findings":[`+
+			`{"severity":"blocking","file":"spec.md","line":1,"title":"wrong claim","detail":"executeRun does not set ActiveWave"}]}`)
+	if err := gate.WriteReceipt(bdir, gate.Receipt{
+		Gate: gate.Spec, Hash: "sha256:stale", Verdict: gate.VerdictRework,
+		Severities: map[string]int{"blocking": 1}, TS: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"approve","summary":"fine","findings":[]}`}
+	if c, r, e := runIn(t, root, env, "review", "plan", "--slug", "demo"); c != 0 || r["verdict"] != "approve" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(bdir, "logs", "review-plan-*.prompt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("want exactly one logged plan-gate prompt, got %v", matches)
+	}
+	b, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := string(b)
+	if !strings.Contains(prompt, "Judge the plan against the spec") {
+		t.Fatalf("plan-gate review must render the plan rubric (review-plan.md):\n%s", prompt)
+	}
+	if strings.Contains(prompt, "Do NOT raise new findings") {
+		t.Fatal("a plan-gate review must never render the spec-only scoped follow-up template, " +
+			"even with a blocking spec-gate rework receipt on disk")
 	}
 }
 

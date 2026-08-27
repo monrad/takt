@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -124,8 +126,15 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	for _, name := range present {
 		files[name] = readArtifact(tgt.bdir, name)
 	}
-	prompt, err := brief.Render("review-"+g, brief.ReviewData{
-		Gate: g, Title: tgt.slug + " " + g, Token: tok, Schema: backend.ResultSchema, Files: files,
+	tmpl, prior := "review-"+g, []brief.PriorFinding(nil)
+	if g == gate.Spec {
+		if prior = priorFindingsForScopedPass(tgt.bdir); len(prior) > 0 {
+			tmpl = "review-spec-followup"
+		}
+	}
+	prompt, err := brief.Render(tmpl, brief.ReviewData{
+		Gate: g, Title: tgt.slug + " " + g, Token: tok, Schema: backend.ResultSchema,
+		Files: files, PriorFindings: prior,
 	})
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
@@ -140,16 +149,23 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	if err = writeFindings(filepath.Join(tgt.bdir, "reviews", g+".md"), g, res); err != nil {
+	if err = storeFindings(tgt.bdir, g, res); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	rc := gate.Receipt{
 		Gate: g, Hash: hash, Verdict: res.Verdict,
 		Reviewer: gate.Reviewer{Provider: res.Provider, Model: res.Model},
-		Findings: "reviews/" + g + ".md", TS: timeNow(),
+		Findings: "reviews/" + g + ".md", Severities: res.SeverityCounts(), TS: timeNow(),
 	}
 	if err = gate.WriteReceipt(tgt.bdir, rc); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	// An approving pass closes the gate without asking anyone for anything,
+	// so its findings would otherwise die in reviews/<gate>.md (#29).
+	if res.Verdict == gate.VerdictApprove {
+		if err = carryFindings(tgt.bdir, g, res.Findings, gate.SourceApprove); err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
 	}
 	_ = bundle.AppendEvent(tgt.bdir, "gate_reviewed", map[string]any{
 		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, keyProvider: res.Provider, keyFindings: len(res.Findings),
@@ -219,6 +235,30 @@ func preserveEvidence(bdir, g, src string) (string, error) {
 	return rel, nil
 }
 
+// storeFindings records a pass's findings in both shapes: reviews/<gate>.md
+// for a human and reviews/<gate>.json for the code that has to read a
+// finding as data.
+//
+// An `error` verdict records neither. It is the backend failing, not a
+// reviewer's answer — the same reason cachedReceipt refuses to let one
+// short-circuit a re-run — and the stored findings are a live referent
+// rather than a log: priorFindingsForScopedPass reads the .json to scope the
+// confirming pass, and the carry-forward reads it on accept. Overwriting
+// them with an errored result's empty findings would let one transient
+// backend failure delete the blocking findings a previous pass earned and
+// drop the run back into the unscoped re-review loop the spec gate's fixed
+// point exists to end. The receipt is still written by the caller, so the
+// run sees the failure; only the findings survive it.
+func storeFindings(bdir, g string, res backend.ReviewResult) error {
+	if res.Verdict == gate.VerdictError {
+		return nil
+	}
+	if err := writeFindings(filepath.Join(bdir, "reviews", g+".md"), g, res); err != nil {
+		return err
+	}
+	return writeResultJSON(filepath.Join(bdir, "reviews", g+".json"), res)
+}
+
 // writeFindings renders a reviewer result as markdown for humans.
 func writeFindings(path, title string, res backend.ReviewResult) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -234,4 +274,87 @@ func writeFindings(path, title string, res backend.ReviewResult) error {
 	}
 	fmt.Fprintf(&b, "\n_%s / %s_\n", res.Provider, res.Model)
 	return os.WriteFile(path, []byte(b.String()), 0o600)
+}
+
+// writeResultJSON stores the reviewer's structured result beside the human
+// rendering. writeFindings renders severities into a markdown bullet and the
+// structure is lost, so nothing downstream can read a finding as data: the
+// scoped follow-up pass needs the prior findings to quote, and the
+// carry-forward needs them to record. Written for both gates because
+// runReview is shared and the cost is one file; only the spec gate reads it.
+func writeResultJSON(path string, res backend.ReviewResult) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	return bundle.WriteJSONAtomic(path, res)
+}
+
+// priorFindingsForScopedPass returns the previous spec pass's findings when
+// that pass asked for rework over something blocking — the one case a second
+// review call is spent on (fixed-point design §5). The pass that follows is
+// scoped to these, which is what gives it a finite referent and lets it
+// terminate; "is this spec unambiguous?" never could. It returns the whole
+// finding list, not just the blocking ones: the blocking finding is what
+// buys the pass, and the pass then confirms everything the previous one said.
+//
+// Both halves of the judgement — the verdict, and whether anything was
+// blocking — come from reviews/<gate>.json rather than from the receipt,
+// because the two artifacts have different jobs. The receipt records the
+// gate's state *including* its failures, which is why an errored pass still
+// writes one; the findings file records the content of the last pass a
+// reviewer actually answered, which is why storeFindings leaves it alone on
+// an error verdict. Scoping is a content question, so an errored pass is
+// transparent to it: a transient backend failure between a blocking rework
+// and its confirming pass must not silently widen that pass back to the
+// whole document, which is exactly what reading the receipt did. Taking both
+// halves from one artifact also makes the decision self-consistent — the
+// findings file carries no hash and no pass identity, so pairing it with the
+// receipt was convention, not a checkable invariant.
+func priorFindingsForScopedPass(bdir string) []brief.PriorFinding {
+	res, err := readReviewResult(bdir, gate.Spec)
+	if err != nil || res.Verdict != backend.VerdictRework || res.SeverityCounts()["blocking"] == 0 {
+		return nil
+	}
+	out := make([]brief.PriorFinding, 0, len(res.Findings))
+	for _, f := range res.Findings {
+		out = append(out, brief.PriorFinding{
+			Severity: f.Severity, File: f.File, Line: f.Line, Title: f.Title, Detail: f.Detail,
+		})
+	}
+	return out
+}
+
+// readReviewResult reads reviews/<gate>.json, the structured result
+// runReview stored beside the human rendering. An absent file means no
+// findings: a run whose reviews predate the file carries nothing forward
+// rather than failing.
+func readReviewResult(bdir, g string) (backend.ReviewResult, error) {
+	b, err := os.ReadFile(filepath.Join(bdir, "reviews", g+".json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return backend.ReviewResult{}, nil
+	}
+	if err != nil {
+		return backend.ReviewResult{}, err
+	}
+	var r backend.ReviewResult
+	if uerr := json.Unmarshal(b, &r); uerr != nil {
+		return backend.ReviewResult{}, fmt.Errorf("reviews/%s.json: %w", g, uerr)
+	}
+	return r, nil
+}
+
+// carryFindings records findings nobody was asked to act on as follow-ups
+// (fixed-point design §6). An approving pass's minors and the findings a
+// user overrode both reach the retro this way instead of being frozen in
+// reviews/<gate>.md. Findings that were the instruction for a revise are not
+// carried — the session was asked to act on those.
+func carryFindings(bdir, g string, fs []backend.Finding, source string) error {
+	items := make([]gate.FollowUp, 0, len(fs))
+	for _, f := range fs {
+		items = append(items, gate.FollowUp{
+			Gate: g, Severity: f.Severity, File: f.File, Line: f.Line,
+			Title: f.Title, Detail: f.Detail, Source: source, TS: timeNow(),
+		})
+	}
+	return gate.AppendFollowUps(bdir, items...)
 }

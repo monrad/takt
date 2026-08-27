@@ -772,7 +772,11 @@ func (r *nextRun) writeRetroInputs() error {
 	if err != nil {
 		return err
 	}
-	return finish.WriteRetroInputs(r.bdir, finish.BuildRetroInputs(r.st, idx, events, closes, v, g))
+	fu, err := gate.ReadFollowUps(r.bdir)
+	if err != nil {
+		return err
+	}
+	return finish.WriteRetroInputs(r.bdir, finish.BuildRetroInputs(r.st, idx, events, closes, v, g, fu.Items))
 }
 
 // readCloses collects every slice record of every wave the run has tasks in,

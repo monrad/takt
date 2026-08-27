@@ -657,3 +657,139 @@ func TestAgentInvalidQuestionOffersSkipOnlyForTheAuditor(t *testing.T) {
 		t.Fatalf("assessor choices: %s", choices(q))
 	}
 }
+
+// TestGateReviewTellsTheUserWhatReviseWillActuallyDo: the revise option's
+// text has to match what revising does, not what it did before the
+// fixed-point design. Only a non-blocking *rework* on the spec gate gets the
+// new wording — every other row of the design's §3 table keeps promising the
+// re-review it still performs, because acceptRevision writes the closing
+// event for none of them. reject and error are the two the severity alone
+// cannot tell apart: an error result carries no findings, so it reads as
+// "nothing blocking" while still taking the old loop.
+func TestGateReviewTellsTheUserWhatReviseWillActuallyDo(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		gate     string
+		verdict  string
+		blocking bool
+		want     string
+	}{
+		{"spec rework, nothing blocking", "spec", "rework", false, "closes on the edit"},
+		{"spec rework, blocking", "spec", "rework", true, "re-arms"},
+		{"spec reject, nothing blocking", "spec", "reject", false, "re-arms"},
+		{"spec error carries no findings", "spec", "error", false, "re-arms"},
+		{"plan is unchanged", "plan", "rework", false, "re-arms"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			q := decide.Question("gate_review", map[string]any{
+				"slug": "demo", "gate": c.gate, "verdict": c.verdict,
+				"summary": "see reviews/" + c.gate + ".md", "blocking": c.blocking,
+			})
+			var revise string
+			for _, o := range q.Options {
+				if o.Choice == "revise" {
+					revise = o.Description
+				}
+			}
+			if revise == "" {
+				t.Fatal("gate_review must always offer revise")
+			}
+			if !strings.Contains(revise, c.want) {
+				t.Fatalf("revise says %q, want it to mention %q", revise, c.want)
+			}
+		})
+	}
+}
+
+// TestBrainstormPassesBlockingToTheGateReviewQuestion: decideBrainstorm must
+// forward GateStatus.Blocking into the gate_review ask context, or the
+// question has no way to tell a fixed-point revise from a re-review one.
+func TestBrainstormPassesBlockingToTheGateReviewQuestion(t *testing.T) {
+	t.Parallel()
+	st := state(bundle.PhaseBrainstorm)
+	f := decide.Facts{HasSpec: true, HasGoals: true, GoalsFrozen: true}
+	f.SpecGate = decide.GateStatus{Verdict: "rework", Blocking: true}
+	d, err := decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActAsk || d.Op.Gate != "gate_review" {
+		t.Fatalf("%+v", d)
+	}
+	if d.Op.Context["blocking"] != true {
+		t.Fatalf("the question must carry blocking: %+v", d.Op.Context)
+	}
+}
+
+func TestSpecReviewRoundsAreCapped(t *testing.T) {
+	t.Parallel()
+	base := func() (*bundle.State, decide.Facts) {
+		return state(bundle.PhaseBrainstorm),
+			decide.Facts{HasSpec: true, HasGoals: true, GoalsFrozen: true}
+	}
+	st, f := base()
+	f.SpecRounds = 2
+	d, err := decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActExec {
+		t.Fatalf("under the cap the run must still review: %+v", d)
+	}
+
+	st, f = base()
+	f.SpecRounds = 3
+	d, err = decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActAsk || d.Op.Gate != "gate_review_capped" {
+		t.Fatalf("at the cap the run must ask instead of reviewing a fourth time: %+v", d)
+	}
+	if d.Op.Context["attempts"] != 3 || d.Op.Context["gate"] != "spec" {
+		t.Fatalf("the question must name the gate and the round count: %+v", d.Op.Context)
+	}
+	var choices []string
+	for _, o := range d.Op.Options {
+		choices = append(choices, o.Choice)
+	}
+	if len(choices) != 3 {
+		t.Fatalf("choices = %v, want accept/retry/stop", choices)
+	}
+}
+
+// TestPendingReworkVerdictOutranksTheRoundCap pins the load-bearing order in
+// decideBrainstorm: a rework verdict waiting to be answered must win even
+// when the round count has also reached the cap. Immediately after a third
+// consecutive rework verdict with no intervening edit, both conditions are
+// true at once — needsRework(f.SpecGate) and f.SpecRounds >= maxAgentAttempts
+// — and the user must still be shown gate_review (there is a verdict to
+// answer), never gate_review_capped. If the two checks in decideBrainstorm
+// were ever swapped, this test would fail where
+// TestSpecReviewRoundsAreCapped could not: that test never sets
+// f.SpecGate.Verdict, so needsRework is false throughout and it cannot tell
+// the checks apart.
+func TestPendingReworkVerdictOutranksTheRoundCap(t *testing.T) {
+	t.Parallel()
+	st := state(bundle.PhaseBrainstorm)
+	f := decide.Facts{HasSpec: true, HasGoals: true, GoalsFrozen: true}
+	f.SpecGate = decide.GateStatus{Satisfied: false, Verdict: "rework"}
+	f.SpecRounds = 3
+	d, err := decide.Decide(st, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActAsk || d.Op.Gate != "gate_review" {
+		t.Fatalf("a verdict waiting to be answered must outrank the round cap: %+v", d)
+	}
+}
+
+func TestCappedGateIsInTheVocabulary(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(decide.Vocab().Gates, "gate_review_capped") {
+		t.Fatal("every gate Decide can emit must be in Vocab so the prompt parity tests see it")
+	}
+}

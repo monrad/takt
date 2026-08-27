@@ -126,3 +126,20 @@ func TestSelectFirstHealthy(t *testing.T) {
 		t.Fatal("unknown backend must error")
 	}
 }
+
+func TestSeverityCountsTalliesBySeverity(t *testing.T) {
+	t.Parallel()
+	r := backend.ReviewResult{Findings: []backend.Finding{
+		{Severity: "blocking"}, {Severity: "minor"}, {Severity: "minor"},
+	}}
+	got := r.SeverityCounts()
+	if got["blocking"] != 1 || got["minor"] != 2 {
+		t.Fatalf("SeverityCounts() = %v", got)
+	}
+	if got["nit"] != 0 {
+		t.Fatalf("an absent severity must tally to zero, got %d", got["nit"])
+	}
+	if none := (backend.ReviewResult{}).SeverityCounts(); none != nil {
+		t.Fatalf("no findings must tally to nil, got %v", none)
+	}
+}

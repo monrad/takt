@@ -15,6 +15,13 @@ import (
 	"github.com/monrad/takt/internal/op"
 )
 
+// Choice values shared by more than one gate handler in this file — named
+// so goconst does not flag the repeated literals.
+const (
+	choiceRetry = "retry"
+	choiceStop  = "stop"
+)
+
 // cmdAnswer resolves a pending gate: it records the choice, applies it, and
 // clears the gate. Answering a gate that is no longer pending is a no-op
 // (spec §5.4).
@@ -71,10 +78,12 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 	switch g {
 	case "gate_review":
 		return answerGateReview(tgt.bdir, tgt.st, choice, reason)
+	case "gate_review_capped":
+		return answerGateReviewCapped(tgt.bdir, tgt.st, choice, reason)
 	case "alignment_confirm":
 		return answerAlignment(tgt.bdir, tgt.st, choice, file)
 	case "plan_invalid":
-		if choice == "retry" {
+		if choice == choiceRetry {
 			return false, bundle.AppendEvent(tgt.bdir, "plan_attempts_reset", nil)
 		}
 		return true, nil
@@ -95,32 +104,108 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 }
 
 // answerGateReview applies a spec/plan review gate's choice: revise leaves
-// the gate to re-arm on the edited artifact's new hash, accept records an
-// evidenced override at the current hash (spec §9).
+// the session to edit — recording an accepted revision first when the spec
+// review found nothing blocking, so the edit closes the gate rather than
+// re-arming it — and accept records an evidenced override at the current
+// hash (spec §9, fixed-point design §4).
 func answerGateReview(bdir string, st *bundle.State, choice, reason string) (bool, error) {
+	which := pendingGateName(st)
+	switch choice {
+	case "revise":
+		return false, acceptRevision(bdir, which)
+	case "accept":
+		return false, overrideGate(bdir, which, reason)
+	case choiceStop:
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for gate_review", choice)
+}
+
+// answerGateReviewCapped applies the round-cap gate's choice: accept records
+// an override at the current hash, retry restarts the round count for one
+// more pass, stop leaves the gate open (fixed-point design §8).
+func answerGateReviewCapped(bdir string, st *bundle.State, choice, reason string) (bool, error) {
+	which := pendingGateName(st)
+	switch choice {
+	case "accept":
+		return false, overrideGate(bdir, which, reason)
+	case choiceRetry:
+		return false, bundle.AppendEvent(bdir, gate.EvRoundsReset, map[string]any{keyGate: which})
+	case choiceStop:
+		return true, nil
+	}
+	return false, errorf("unknown choice %q for gate_review_capped", choice)
+}
+
+// pendingGateName reads the gate id ("spec" or "plan") out of the pending
+// gate's stored context; every review gate carries it under "gate".
+func pendingGateName(st *bundle.State) string {
 	var payload struct {
 		Context map[string]any `json:"context"`
 	}
 	_ = json.Unmarshal(st.PendingGate.Payload, &payload)
 	which, _ := payload.Context["gate"].(string)
-	switch choice {
-	case "revise":
-		return false, nil // the session edits; the hash re-arms the gate
-	case "accept":
-		if strings.TrimSpace(reason) == "" {
-			return false, errorf("accepting a %s review verdict needs --reason", which)
-		}
-		hash, _, err := gate.Hash(which, bdir)
-		if err != nil {
-			return false, err
-		}
-		return false, bundle.AppendEvent(bdir, "gate_overridden", map[string]any{
-			keyGate: which, keyHash: hash, keyReason: reason,
-		})
-	case "stop":
-		return true, nil
+	return which
+}
+
+// acceptRevision records that the user was shown a spec review asking for
+// rework over nothing blocking, and chose to revise. gate.Compute turns that
+// into a satisfied gate as soon as spec.md moves (fixed-point design §4).
+//
+// It writes nothing for the plan gate, for a blocking rework, or for
+// reject/error: those keep the re-arm-and-re-review loop. It also writes
+// nothing when there is no receipt at all — the gate has never been
+// reviewed, so there is no verdict to accept — or when the receipt does not
+// answer at the current hash, since then the user is not looking at the
+// verdict the receipt records.
+func acceptRevision(bdir, which string) error {
+	if which != gate.Spec {
+		return nil
 	}
-	return false, errorf("unknown choice %q for gate_review", choice)
+	hash, _, err := gate.Hash(which, bdir)
+	if err != nil {
+		return err
+	}
+	r, err := gate.ReadReceipt(bdir, which)
+	if err != nil || r == nil || r.Hash != hash ||
+		r.Verdict != gate.VerdictRework || r.Severities["blocking"] > 0 {
+		return err
+	}
+	return bundle.AppendEvent(bdir, gate.EvRevisionAccepted, map[string]any{
+		keyGate: which, keyHash: hash,
+	})
+}
+
+// overrideGate records an evidenced override at the gate's current hash
+// (spec §9). The user declined to act on the verdict's findings, so — like
+// an approving pass — they must not vanish with the override; carryFindings
+// records them.
+//
+// The event is appended before the findings are carried, deliberately: if
+// the write dies between the two, a retry re-appends gate_overridden, and a
+// duplicate of that event is inert — gate.Compute stops at the first one
+// that matches the current hash. Carrying findings a second time is not
+// inert, since follow-ups.json has no de-duplication and a repeat would
+// show up as noise in the retro. Ordering it this way fails toward the
+// harmless duplicate.
+func overrideGate(bdir, which, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		return errorf("accepting a %s review verdict needs --reason", which)
+	}
+	hash, _, err := gate.Hash(which, bdir)
+	if err != nil {
+		return err
+	}
+	if err = bundle.AppendEvent(bdir, "gate_overridden", map[string]any{
+		keyGate: which, keyHash: hash, keyReason: reason,
+	}); err != nil {
+		return err
+	}
+	res, err := readReviewResult(bdir, which)
+	if err != nil {
+		return err
+	}
+	return carryFindings(bdir, which, res.Findings, gate.SourceOverride)
 }
 
 // answerAlignment confirms, corrects or skips the auditor's clause list.
@@ -162,7 +247,7 @@ func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, err
 	_ = json.Unmarshal(st.PendingGate.Payload, &payload)
 	agent, _ := payload.Context["agent"].(string)
 	switch choice {
-	case "retry":
+	case choiceRetry:
 		reset := map[string]string{
 			op.AgentAlignmentAuditor: evAlignmentReset,
 			op.AgentGoalAssessor:     evGoalsReset,
@@ -176,7 +261,7 @@ func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, err
 			return false, errorf("skip answers only the alignment-auditor, not the %s", agent)
 		}
 		return false, skipAlignment(bdir, st)
-	case "stop":
+	case choiceStop:
 		return true, nil
 	}
 	return false, errorf("unknown choice %q for agent_invalid", choice)

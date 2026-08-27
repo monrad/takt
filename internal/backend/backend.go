@@ -65,6 +65,22 @@ type ReviewResult struct {
 	Raw      string        `json:"-"`
 }
 
+// SeverityCounts tallies a result's findings by severity. The gate decision
+// reads this off the receipt rather than re-opening the findings file, so
+// neither gate.Compute nor Decide has to parse a review to learn whether it
+// found anything blocking. Nil when there are no findings, so an empty tally
+// and a receipt written before severities existed read alike.
+func (r ReviewResult) SeverityCounts() map[string]int {
+	if len(r.Findings) == 0 {
+		return nil
+	}
+	m := make(map[string]int, len(r.Findings))
+	for _, f := range r.Findings {
+		m[f.Severity]++
+	}
+	return m
+}
+
 // ResultSchema is handed to `claude --json-schema` and quoted in prompts.
 const ResultSchema = `{"type":"object","required":["verdict","summary"],"properties":{"verdict":{"type":"string","enum":["approve","rework","reject"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","required":["severity","title"],"properties":{"severity":{"type":"string","enum":["blocking","major","minor","nit"]},"file":{"type":"string"},"line":{"type":"integer"},"title":{"type":"string"},"detail":{"type":"string"}}}}}}`
 

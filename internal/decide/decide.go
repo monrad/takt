@@ -21,6 +21,7 @@ import (
 // callers reference them (they still describe the JSON key in op.Op.Context).
 const (
 	ctxSlug      = "slug"
+	ctxGate      = "gate"
 	ctxWave      = "wave"
 	ctxCount     = "count"
 	ctxFailed    = "failed"
@@ -31,6 +32,19 @@ const (
 	ctxAttempts  = "attempts"
 	ctxProblems  = "problems"
 )
+
+// Gate artifact ids, spelled once because they travel in ask contexts and
+// goconst flags the repeated literals.
+const (
+	specGate = "spec"
+	planGate = "plan"
+)
+
+// verdictRework is gate.VerdictRework spelled here rather than imported:
+// decide performs no I/O and must not depend on internal/gate, so the one
+// verdict whose meaning this package has to branch on travels as the same
+// string literal the ask context already carries.
+const verdictRework = "rework"
 
 // ids normalises a nil id list to an empty one. A gate's context is
 // persisted as the pending gate's payload and re-rendered from it verbatim
@@ -65,7 +79,12 @@ const (
 // GateStatus summarises a gate receipt (spec §9).
 type GateStatus struct {
 	Satisfied bool
-	Verdict   string // "", approve, rework, reject, error, skipped, overridden
+	Verdict   string // "", approve, rework, reject, error, skipped, overridden, revised
+	// Blocking is whether the receipt at the current hash tallied a blocking
+	// finding. On the spec gate it is the difference between a revise that
+	// closes the gate and one that buys a scoped confirming pass — so the
+	// question has to say which the user is getting.
+	Blocking bool
 }
 
 // AlignmentFacts summarises alignment.json. ClauseCount is how many clauses
@@ -115,6 +134,11 @@ type Facts struct {
 	AlignmentProblems []string // problems of the newest of those events
 	GoalsAttempts     int      // goals_invalid events since the last goals_attempts_reset
 	GoalsProblems     []string // problems of the newest of those events
+
+	// SpecRounds is how many spec reviews have run since the newest
+	// gate_rounds_reset. Gate review is the one loop that cannot self-limit,
+	// so it is the one that needs a cap most (fixed-point design §8).
+	SpecRounds int
 
 	SpecGate  GateStatus
 	PlanGate  GateStatus
@@ -216,12 +240,18 @@ func decideBrainstorm(st *bundle.State, f Facts) Decision {
 			return ask(
 				gateReview,
 				map[string]any{
-					ctxSlug:   st.Slug,
-					"gate":    "spec",
-					"verdict": f.SpecGate.Verdict,
-					"summary": "see reviews/spec.md",
+					ctxSlug:    st.Slug,
+					ctxGate:    specGate,
+					"verdict":  f.SpecGate.Verdict,
+					"summary":  "see reviews/spec.md",
+					"blocking": f.SpecGate.Blocking,
 				},
 			)
+		}
+		if f.SpecRounds >= maxAgentAttempts {
+			return ask(gateReviewCapped, map[string]any{
+				ctxSlug: st.Slug, ctxGate: specGate, ctxAttempts: f.SpecRounds,
+			})
 		}
 		return exec("review the spec", "takt review spec --slug "+st.Slug, reviewTimeoutS)
 	}
@@ -247,10 +277,11 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 			return ask(
 				gateReview,
 				map[string]any{
-					ctxSlug:   st.Slug,
-					"gate":    "plan",
-					"verdict": f.PlanGate.Verdict,
-					"summary": "see reviews/plan.md",
+					ctxSlug:    st.Slug,
+					ctxGate:    planGate,
+					"verdict":  f.PlanGate.Verdict,
+					"summary":  "see reviews/plan.md",
+					"blocking": f.PlanGate.Blocking,
 				},
 			)
 		}
