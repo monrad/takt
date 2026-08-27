@@ -12,12 +12,42 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 )
 
 //go:embed templates/*.md
 var files embed.FS
+
+//go:embed lenses/*.md
+var lensFiles embed.FS
+
+// Lenses lists the shipped lens names, sorted — the registry config
+// validation and the dispatch fan-out both read (design §7.2, §10). The
+// embedded directory is the single source: adding a lens is dropping a file
+// here and naming it in config.
+func Lenses() []string {
+	entries, err := lensFiles.ReadDir("lenses")
+	if err != nil {
+		return nil // embed cannot fail at runtime; nil keeps the contract total
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, strings.TrimSuffix(e.Name(), ".md"))
+	}
+	slices.Sort(names)
+	return names
+}
+
+// LensRubric returns the rubric body for one lens.
+func LensRubric(name string) (string, error) {
+	b, err := lensFiles.ReadFile("lenses/" + name + ".md")
+	if err != nil {
+		return "", fmt.Errorf("brief: unknown lens %q", name)
+	}
+	return string(b), nil
+}
 
 //nolint:gosec // G101 false positive: not a credential, a public delimiter-token prefix embedded in every rendered brief
 const tokenPrefix = "UNTRUSTED-ARTIFACT-"
