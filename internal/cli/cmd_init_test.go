@@ -470,6 +470,42 @@ func TestInitRollsBackEvenWhenTheDeadlineCausedTheFailure(t *testing.T) {
 	}
 }
 
+// TestInitFreezesLensesAndNoReviewLensesEmptiesThem covers the two-layers
+// design's internal review lenses (two-layers design §10): by default init
+// freezes the configured six-lens set into state.json, and
+// --no-review-lenses freezes an empty list for this run only, without
+// touching the config file.
+func TestInitFreezesLensesAndNoReviewLensesEmptiesThem(t *testing.T) {
+	t.Parallel()
+	// First run: defaults freeze the six lenses.
+	root1 := testutil.NewRepo(t)
+	code, _, errb := runIn(t, root1, nil, "init", "--slug", "demo", "topic one")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	st, err := bundle.LoadState(filepath.Join(root1, "docs", "takt", "demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Config.Review.Lenses) != 6 {
+		t.Fatalf("frozen lenses = %v, want 6", st.Config.Review.Lenses)
+	}
+
+	// Second run in a fresh repo: --no-review-lenses freezes an empty list.
+	root2 := testutil.NewRepo(t)
+	code, _, errb = runIn(t, root2, nil, "init", "--slug", "demo", "--no-review-lenses", "topic two")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	st, err = bundle.LoadState(filepath.Join(root2, "docs", "takt", "demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Config.Review.Lenses) != 0 {
+		t.Fatalf("frozen lenses = %v, want empty", st.Config.Review.Lenses)
+	}
+}
+
 // TestInitRefusesTheRepoRootAsBundleDir covers review finding I3: `--dir .`
 // is refused, and refused before any branch or file exists, because takt
 // cannot tell its own writes from the work tree when the two are the same

@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/monrad/takt/internal/brief"
 )
 
 // Duration is a [time.Duration] that (un)marshals as a Go duration string.
@@ -53,11 +55,14 @@ func shortDuration(d time.Duration) string {
 	return s
 }
 
-// Review toggles the three review gates.
+// Review toggles the three review gates and names the internal lenses.
 type Review struct {
 	Spec  bool `json:"spec"`
 	Plan  bool `json:"plan"`
 	Tasks bool `json:"tasks"`
+	// Lenses are the internal reviewer lenses dispatched on every wave
+	// slice (two-layers design §10). Empty disables the internal layer.
+	Lenses []string `json:"lenses"`
 }
 
 // Backend configures one headless CLI backend.
@@ -92,6 +97,7 @@ type Agents struct {
 	Planner          Agent       `json:"planner"`
 	GoalAssessor     Agent       `json:"goal-assessor"`
 	AlignmentAuditor Agent       `json:"alignment-auditor"`
+	Reviewer         Agent       `json:"reviewer"`
 }
 
 // Config is the merged configuration.
@@ -113,12 +119,17 @@ type Config struct {
 }
 
 // TaskClasses is the closed set of plan task classes (spec §7.3).
-var TaskClasses = []string{"mechanical", "bounded", "implement", "test", "docs"}
+var TaskClasses = []string{"mechanical", "bounded", "implement", "test", taskClassDocs}
 
 // modelSonnet names the model used by several default agent/class pins
-// below; named to satisfy goconst (it recurs 5×) without changing the
+// below; named to satisfy goconst (it recurs 6×) without changing the
 // shipped value.
 const modelSonnet = "sonnet"
+
+// taskClassDocs names the "docs" task class (spec §7.3); it happens to share
+// a spelling with the "docs" review lens below, but the two are unrelated —
+// named only to satisfy goconst (the literal recurs 3×).
+const taskClassDocs = "docs"
 
 // Shipped default values (spec §12), named to satisfy mnd.
 const (
@@ -133,9 +144,10 @@ const (
 // Defaults returns the shipped defaults (spec §12).
 func Defaults() Config {
 	return Config{
-		Dir:             "docs/takt",
-		Autonomy:        "auto",
-		Review:          Review{Spec: true, Plan: true, Tasks: true},
+		Dir:      "docs/takt",
+		Autonomy: "auto",
+		Review: Review{Spec: true, Plan: true, Tasks: true,
+			Lenses: []string{"correctness", "intent", "tests", "simplicity", "consistency", "docs"}},
 		Goals:           true,
 		Alignment:       true,
 		MaxParallel:     defaultMaxParallel,
@@ -153,16 +165,17 @@ func Defaults() Config {
 			Implementer: Implementer{
 				Model: "opus",
 				ByClass: map[string]string{
-					"mechanical": "haiku",
-					"bounded":    modelSonnet,
-					"test":       modelSonnet,
-					"docs":       modelSonnet,
+					"mechanical":  "haiku",
+					"bounded":     modelSonnet,
+					"test":        modelSonnet,
+					taskClassDocs: modelSonnet,
 				},
 				EscalateOnRetry: true,
 			},
 			Planner:          Agent{Model: "fable"},
 			GoalAssessor:     Agent{Model: modelSonnet},
 			AlignmentAuditor: Agent{Model: modelSonnet},
+			Reviewer:         Agent{Model: modelSonnet},
 		},
 	}
 }
@@ -215,6 +228,17 @@ func (c Config) Validate() error {
 		if !IsTaskClass(class) {
 			return fmt.Errorf("agents.implementer.by_class: unknown task class %q", class)
 		}
+	}
+	known := brief.Lenses()
+	seenLens := map[string]bool{}
+	for _, l := range c.Review.Lenses {
+		if !slices.Contains(known, l) {
+			return fmt.Errorf("review.lenses: unknown lens %q (known: %s)", l, strings.Join(known, ", "))
+		}
+		if seenLens[l] {
+			return fmt.Errorf("review.lenses: duplicate lens %q", l)
+		}
+		seenLens[l] = true
 	}
 	if c.MaxParallel < 1 || c.MaxRework < 0 || c.MaxFilesPerTask < 1 {
 		return errors.New("max_parallel and max_files_per_task must be ≥ 1, max_rework ≥ 0")

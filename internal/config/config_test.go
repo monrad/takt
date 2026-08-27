@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,35 @@ func TestValidateRejectsNonPositiveDurations(t *testing.T) {
 		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), field) {
 			t.Fatalf("%s = 0 must be rejected by name: %v", field, err)
 		}
+	}
+}
+
+func TestDefaultsIncludeTheSixLensesAndTheReviewerModel(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	want := []string{"correctness", "intent", "tests", "simplicity", "consistency", "docs"}
+	if !slices.Equal(cfg.Review.Lenses, want) {
+		t.Fatalf("Review.Lenses = %v, want %v", cfg.Review.Lenses, want)
+	}
+	if cfg.Agents.Reviewer.Model != "sonnet" {
+		t.Fatalf("Agents.Reviewer.Model = %q, want sonnet", cfg.Agents.Reviewer.Model)
+	}
+}
+
+func TestValidateRejectsUnknownAndDuplicateLenses(t *testing.T) {
+	t.Parallel()
+	cfg := config.Defaults()
+	cfg.Review.Lenses = []string{"correctness", "nope"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Fatalf("unknown lens not rejected: %v", err)
+	}
+	cfg.Review.Lenses = []string{"correctness", "correctness"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "correctness") {
+		t.Fatalf("duplicate lens not rejected: %v", err)
+	}
+	cfg.Review.Lenses = nil // empty means the internal layer is off — valid
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("empty lens list must be valid: %v", err)
 	}
 }
 
