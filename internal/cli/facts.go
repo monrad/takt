@@ -23,10 +23,18 @@ const (
 	evAlignmentReset   = "alignment_attempts_reset"
 	evGoalsInvalid     = "goals_invalid"
 	evGoalsReset       = "goals_attempts_reset"
+	evReviewerInvalid  = "reviewer_invalid"
+	evReviewerReset    = "reviewer_attempts_reset"
 
 	// reasonRecorded marks the reset a usable reply appends, as against the
 	// one `agent_invalid`'s retry appends — which carries the problems.
 	reasonRecorded = "recorded"
+
+	// reasonStaleAttempt is why a digest or reviewer reply for an attempt the
+	// active wave has moved past is ignored rather than acted on — spelled
+	// once so goconst sees one definition instead of the same literal
+	// repeated across recordTask and recordReviewer.
+	reasonStaleAttempt = "not the active wave attempt"
 )
 
 // fileNonEmpty reports whether p exists and holds something.

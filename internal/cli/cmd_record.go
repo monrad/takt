@@ -27,8 +27,8 @@ func cmdRecord(env Env) int {
 	fs.SetOutput(io.Discard)
 	dirFlag := addDirFlag(fs)
 	slugFlag := fs.String("slug", "", "run")
-	agent := fs.String("agent", "", "planner | alignment-auditor | goal-assessor")
-	mode := fs.String("mode", "", "alignment-auditor: clauses | verdicts")
+	agent := fs.String("agent", "", "planner | alignment-auditor | goal-assessor | reviewer")
+	mode := fs.String("mode", "", "alignment-auditor: clauses | verdicts; reviewer: <lens> | verify")
 	from := fs.String("from", "", "file holding the agent's final message")
 	task := fs.Int("task", 0, "task id (implementer digest)")
 	attempt := fs.Int("attempt", 0, "attempt the digest belongs to")
@@ -57,9 +57,11 @@ func cmdRecord(env Env) int {
 		return recordAlignment(env, tgt.bdir, tgt.st, *mode, *from)
 	case op.AgentGoalAssessor:
 		return recordGoals(ctx, env, tgt, *from)
+	case op.AgentReviewer:
+		return recordReviewer(env, tgt, *mode, *attempt, *from)
 	}
 	return fail(env.Stderr, exitUsage,
-		"record needs --task N or --agent planner|alignment-auditor|goal-assessor", "")
+		"record needs --task N or --agent planner|alignment-auditor|goal-assessor|reviewer", "")
 }
 
 // recordPlanner validates what the planner wrote and reports the problems
@@ -525,7 +527,7 @@ func recordTask(env Env, ws *workspace, bdir string, st *bundle.State, in digest
 	}
 	if aw.Attempt != in.attempt {
 		_ = bundle.AppendEvent(bdir, "digest_ignored", map[string]any{keyTask: in.task, keyAttempt: in.attempt})
-		return printJSON(env, map[string]any{keyIgnored: true, keyReason: "not the active wave attempt"})
+		return printJSON(env, map[string]any{keyIgnored: true, keyReason: reasonStaleAttempt})
 	}
 	if code := writeDigest(env, ws, bdir, aw.N, t, in); code != 0 {
 		return code
