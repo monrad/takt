@@ -352,6 +352,8 @@ func (d *driver) dispatch(o map[string]any) {
 			d.playImplementer(o, ag)
 		case "goal-assessor":
 			d.playAssessor(ag)
+		case "reviewer":
+			d.playReviewer(o, ag)
 		default:
 			d.t.Fatalf("unknown agent %v", ag["agent"])
 		}
@@ -467,6 +469,44 @@ func (d *driver) playAssessor(ag map[string]any) {
 	}
 	if out["all_achieved"] != true {
 		d.t.Fatalf("record goal-assessor: %v", out)
+	}
+}
+
+// playReviewer answers one dispatch of the internal review layer — a lens,
+// or the verifier — the way the scripted walk exercises it: a lens reports
+// no findings, so the merged candidate list stays empty and the verifier is
+// never dispatched (decide.InternalFacts.Done, two-layers design §4.2); on
+// the rare path where the verifier is dispatched anyway, every candidate the
+// brief quotes comes back false_positive, its id read from the brief rather
+// than assumed (candidateID is shared with execute_test.go's drainReview).
+func (d *driver) playReviewer(o, ag map[string]any) {
+	d.t.Helper()
+	mode, ok := ag["mode"].(string)
+	if !ok {
+		d.t.Fatalf("reviewer dispatch without a mode: %v", ag)
+	}
+	var body string
+	if mode == "verify" {
+		b, err := os.ReadFile(ag["brief"].(string))
+		if err != nil {
+			d.t.Fatal(err)
+		}
+		ids := slices.Compact(slices.Sorted(slices.Values(candidateID.FindAllString(string(b), -1))))
+		verdicts := make([]string, 0, len(ids))
+		for _, id := range ids {
+			verdicts = append(verdicts, fmt.Sprintf(
+				`{"id":%q,"verdict":"false_positive","evidence":"scripted: no defect found"}`, id))
+		}
+		body = "```json\n{\"mode\":\"verify\",\"verdicts\":[" + strings.Join(verdicts, ",") + "]}\n```\n"
+	} else {
+		body = fmt.Sprintf("```json\n{\"lens\":%q,\"findings\":[]}\n```\n", mode)
+	}
+	msg := d.message(body)
+	attempt := strconv.Itoa(int(o["attempt"].(float64)))
+	code, out, errb := d.cmd("record", "--agent", "reviewer", "--mode", mode,
+		"--attempt", attempt, "--from", msg, "--slug", "demo")
+	if code != 0 || out["valid"] != true {
+		d.t.Fatalf("record reviewer %s: %d %v %s", mode, code, out, errb)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/monrad/takt/internal/cli"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
+	"github.com/monrad/takt/internal/wave"
 )
 
 const fakeCfg = `{"backends":{"reviewer":["fake"]}}`
@@ -1476,5 +1477,225 @@ func TestNextRestoresADeletedLogsIgnore(t *testing.T) {
 		files, "logs/session.json",
 	) {
 		t.Fatalf("the lock must never reach a commit:\n%s", files)
+	}
+}
+
+// lensFixture builds a bundle in phase execute with an active wave 0 slice 1
+// attempt 1 whose only task, 3, has reported done, and freezes the lens set
+// to ["correctness","intent"] — small enough that the fan-out this file's
+// tests exercise stays easy to read (two-layers design §4.1, §4.2). The
+// task's declared file, a.go, is left uncommitted so the slice diff has
+// something in it: taskDiff quotes an uncommitted file's whole content under
+// a "new file" heading (cmd_close_wave.go).
+func lensFixture(t *testing.T) (string, string) {
+	t.Helper()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", `{"schema":1,"spec_hash":"x","tasks":[`+
+		`{"id":3,"title":"c","description":"add c.go","files":["a.go"],"verify":["true"],`+
+		`"depends_on":[],"goals":[],"class":"implement"}]}`)
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Phase = bundle.PhaseExecute
+	st.Config.Review.Lenses = []string{"correctness", "intent"}
+	st.Tasks = []bundle.Task{{ID: 3, Wave: 0, Status: bundle.StatusDone, Files: []string{"a.go"}, Class: "implement"}}
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Slice: 1, Attempt: 1, Tasks: []int{3}, StartedAt: time.Now()}
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Commit(t, root, "lens fixture")
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	record(t, root, 3, 1, "done", "wrote a.go")
+	return root, bdir
+}
+
+// writeEmptyLensRecord writes a lens record that found nothing — the
+// fixtures below use it for whichever lens is not the one under test.
+func writeEmptyLensRecord(t *testing.T, bdir, lens string) {
+	t.Helper()
+	if err := wave.WriteLensRecord(bdir, wave.LensRecord{
+		Lens: lens, Wave: 0, Slice: 1, Attempt: 1, Model: "sonnet",
+		RecordedAt: time.Now(), Findings: []wave.LensFinding{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestNextDispatchesOnlyTheUnrecordedLenses covers row 15a (two-layers
+// design §3.2, §4.2): with correctness already recorded, the fan-out must
+// name intent alone, over a brief that quotes the diff path and the rubric.
+func TestNextDispatchesOnlyTheUnrecordedLenses(t *testing.T) {
+	t.Parallel()
+	root, bdir := lensFixture(t)
+	writeEmptyLensRecord(t, bdir, "correctness")
+
+	_, o, errb := next(t, root, nil)
+	if o["op"] != "dispatch" {
+		t.Fatalf("%v %s", o, errb)
+	}
+	agents := agentsOf(t, o)
+	if len(agents) != 1 || agents[0]["agent"] != "reviewer" || agents[0]["mode"] != "intent" ||
+		agents[0]["model"] != "sonnet" {
+		t.Fatalf("agents = %v", agents)
+	}
+	want := "takt record --agent reviewer --mode <mode> --attempt 1 --from <file> --slug demo"
+	if o["record"] != want {
+		t.Fatalf("record = %v, want %q", o["record"], want)
+	}
+	briefFile := filepath.Join(bdir, "waves", "0", "lens-intent.s1.a1.md")
+	b, err := os.ReadFile(briefFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diffFile := filepath.Join(bdir, "logs", "wave-0.s1.a1.diff")
+	rubric, err := brief.LensRubric("intent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstLine, _, _ := strings.Cut(rubric, "\n")
+	if !strings.Contains(string(b), diffFile) {
+		t.Fatalf("lens brief must quote the diff path %q:\n%s", diffFile, b)
+	}
+	if !strings.Contains(string(b), firstLine) {
+		t.Fatalf("lens brief must quote the intent rubric's first line %q:\n%s", firstLine, b)
+	}
+	diff, err := os.ReadFile(diffFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(diff), "a.go") {
+		t.Fatalf("the slice diff must name the task's file:\n%s", diff)
+	}
+}
+
+// writeCorrectnessFinding writes a correctness lens record holding one
+// finding — a major on a.go:4 attributed to task 3 — which MergeCandidates
+// turns into candidate c1 (internal/wave/lens.go).
+func writeCorrectnessFinding(t *testing.T, bdir string) {
+	t.Helper()
+	if err := wave.WriteLensRecord(bdir, wave.LensRecord{
+		Lens: "correctness", Wave: 0, Slice: 1, Attempt: 1, Model: "sonnet", RecordedAt: time.Now(),
+		Findings: []wave.LensFinding{{
+			Finding: backend.Finding{Severity: "major", File: "a.go", Line: 4, Title: "t1", Detail: "looks wrong"},
+			Task:    3,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestNextDispatchesTheVerifierWithTheCandidates covers row 15b: once every
+// lens is recorded and the merge yields at least one candidate, the fan-out
+// gives way to a single verifier dispatch whose brief quotes the merged
+// candidate (two-layers design §3.3, §5.2).
+func TestNextDispatchesTheVerifierWithTheCandidates(t *testing.T) {
+	t.Parallel()
+	root, bdir := lensFixture(t)
+	writeCorrectnessFinding(t, bdir)
+	writeEmptyLensRecord(t, bdir, "intent")
+
+	_, o, errb := next(t, root, nil)
+	if o["op"] != "dispatch" {
+		t.Fatalf("%v %s", o, errb)
+	}
+	agents := agentsOf(t, o)
+	if len(agents) != 1 || agents[0]["agent"] != "reviewer" || agents[0]["mode"] != "verify" {
+		t.Fatalf("agents = %v", agents)
+	}
+	recordLine, _ := o["record"].(string)
+	if !strings.Contains(recordLine, "--mode verify --attempt 1") {
+		t.Fatalf("record = %q", recordLine)
+	}
+	b, err := os.ReadFile(filepath.Join(bdir, "waves", "0", "verify.s1.a1.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "c1 major a.go:4 — t1") {
+		t.Fatalf("verify brief must quote the merged candidate:\n%s", b)
+	}
+}
+
+// TestNextClosesTheWaveWhenInternalIsDone covers decide.InternalFacts.Done:
+// once the verifier's own record is on disk, the internal review layer has
+// nothing further and `next` falls through to `exec close-wave` — and with
+// the lens set frozen empty, it does so without ever touching the layer at
+// all (two-layers design §4.2, "empty disables the internal layer").
+func TestNextClosesTheWaveWhenInternalIsDone(t *testing.T) {
+	t.Parallel()
+	root, bdir := lensFixture(t)
+	writeCorrectnessFinding(t, bdir)
+	writeEmptyLensRecord(t, bdir, "intent")
+	if err := wave.WriteInternalRecord(bdir, wave.InternalRecord{
+		Wave: 0, Slice: 1, Attempt: 1, Model: "sonnet", RecordedAt: time.Now(),
+		Lenses: []string{"correctness", "intent"},
+		Candidates: []wave.Candidate{{
+			Finding: backend.Finding{Severity: "major", File: "a.go", Line: 4, Title: "t1", Detail: "looks wrong"},
+			ID:      "c1", Task: 3, Lenses: []string{"correctness"},
+		}},
+		Verdicts:  []wave.CandidateVerdict{{ID: "c1", Verdict: wave.VerdictFalsePositive, Evidence: "no defect"}},
+		Confirmed: []string{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, o, errb := next(t, root, nil)
+	if o["op"] != "exec" || !strings.HasPrefix(o["command"].(string), "takt close-wave") {
+		t.Fatalf("a fully verified internal review must fall through to close-wave: %v %s", o, errb)
+	}
+
+	root2, bdir2 := lensFixture(t)
+	st, err := bundle.LoadState(bdir2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Config.Review.Lenses = nil
+	if err = bundle.SaveState(bdir2, st); err != nil {
+		t.Fatal(err)
+	}
+	_, o2, errb2 := next(t, root2, nil)
+	if o2["op"] != "exec" || !strings.HasPrefix(o2["command"].(string), "takt close-wave") {
+		t.Fatalf("an empty lens set must skip the internal layer entirely: %v %s", o2, errb2)
+	}
+}
+
+// TestLensBriefIsStableAcrossReplays covers spec §5.4 for the new brief and
+// diff files: a replayed `next` must leave both byte-identical, reusing the
+// lens brief's delimiter token through writeStableBriefAt exactly as
+// writeStableBrief does for the planner and auditor briefs.
+func TestLensBriefIsStableAcrossReplays(t *testing.T) {
+	t.Parallel()
+	root, bdir := lensFixture(t)
+	writeEmptyLensRecord(t, bdir, "correctness")
+
+	if _, o, errb := next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("%v %s", o, errb)
+	}
+	briefFile := filepath.Join(bdir, "waves", "0", "lens-intent.s1.a1.md")
+	diffFile := filepath.Join(bdir, "logs", "wave-0.s1.a1.diff")
+	firstBrief, err := os.ReadFile(briefFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDiff, err := os.ReadFile(diffFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, o, errb := next(t, root, nil); o["op"] != "dispatch" {
+		t.Fatalf("replay: %v %s", o, errb)
+	}
+	secondBrief, err := os.ReadFile(briefFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondDiff, err := os.ReadFile(diffFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(firstBrief, secondBrief) {
+		t.Fatalf("the lens brief must be byte-stable across replays:\n%s\n%s", firstBrief, secondBrief)
+	}
+	if !bytes.Equal(firstDiff, secondDiff) {
+		t.Fatalf("the slice diff must be byte-stable across replays:\n%s\n%s", firstDiff, secondDiff)
 	}
 }

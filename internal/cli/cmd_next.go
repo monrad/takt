@@ -203,6 +203,8 @@ func (r *nextRun) loop(ctx context.Context) int {
 			return recoverWave(ctx, r, d)
 		case decide.ActDispatch:
 			return r.dispatchAgent(ctx, d)
+		case decide.ActDispatchLenses:
+			return r.dispatchLenses(ctx, d)
 		case decide.ActAsk:
 			return r.ask(*d.Op)
 		case decide.ActRun:
@@ -512,7 +514,8 @@ func (r *nextRun) materialiseTasks(idx plan.Index, waves map[int]int) int {
 	return maxWave
 }
 
-// dispatchAgent renders the planner / auditor brief and prints the op.
+// dispatchAgent renders the planner / auditor / reviewer brief and prints
+// the op.
 func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	ag := *d.Agent
 	ag.Cwd = r.ws.Repo.Root
@@ -524,10 +527,27 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 			return r.auditorBrief(&ag, tok)
 		case op.AgentGoalAssessor:
 			return r.assessorBrief(ctx, &ag, tok)
+		case op.AgentReviewer:
+			return r.verifyBrief(ctx, &ag, tok)
 		}
 		return "", "", errors.New("unknown agent " + ag.Agent)
 	}
-	p, err := writeStableBrief(r.bdir, render)
+	// The verifier's brief is wave-scoped — it lives under waves/<n>/, not
+	// briefs/, the way the lens briefs do (two-layers design §3.2, §3.3) — so
+	// its destination is spelled out here rather than left to
+	// writeStableBrief's name-from-render convention.
+	dest := ""
+	if ag.Agent == op.AgentReviewer {
+		aw := r.st.ActiveWave
+		dest = filepath.Join(waveDir(r.bdir, aw.N), fmt.Sprintf("verify.s%d.a%d.md", sliceOf(aw), aw.Attempt))
+	}
+	var p string
+	var err error
+	if dest != "" {
+		p, err = writeStableBriefAt(dest, render)
+	} else {
+		p, err = writeStableBrief(r.bdir, render)
+	}
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
@@ -535,6 +555,9 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	record := fmt.Sprintf("takt record --agent %s --from <file> --slug %s", ag.Agent, r.slug)
 	if ag.Mode != "" {
 		record += " --mode " + ag.Mode
+	}
+	if ag.Agent == op.AgentReviewer {
+		record += fmt.Sprintf(" --attempt %d", r.st.ActiveWave.Attempt)
 	}
 	return printOp(r.env, op.Op{Op: op.Dispatch, Narration: ag.Label, Agents: []op.Agent{ag}, Record: record})
 }
@@ -551,11 +574,25 @@ func writeStableBrief(bdir string, render func(tok string) (text, name string, e
 	if err != nil {
 		return "", err
 	}
-	text, name, err := render(fresh)
+	_, name, err := render(fresh)
 	if err != nil {
 		return "", err
 	}
-	p := briefPath(bdir, name)
+	return writeStableBriefAt(briefPath(bdir, name), render)
+}
+
+// writeStableBriefAt is writeStableBrief with the destination spelled by
+// the caller — wave-scoped reviewer briefs live under waves/<n>/, not
+// briefs/ (two-layers design §3.2).
+func writeStableBriefAt(p string, render func(tok string) (text, name string, err error)) (string, error) {
+	fresh, err := brief.Token()
+	if err != nil {
+		return "", err
+	}
+	text, _, err := render(fresh)
+	if err != nil {
+		return "", err
+	}
 	reused, unchanged := reuseBriefToken(p, render)
 	if unchanged {
 		return p, nil
@@ -592,6 +629,97 @@ func reuseBriefToken(p string, render func(tok string) (text, name string, err e
 		return "", false
 	}
 	return same, same == string(old)
+}
+
+// sliceDiffPath is the untracked diff file the lens and verify briefs point
+// at (two-layers design §3.1); logs/ never rides into a commit.
+func sliceDiffPath(bdir string, waveN, slice, attempt int) string {
+	return filepath.Join(bdir, "logs", fmt.Sprintf("wave-%d.s%d.a%d.diff", waveN, slice, attempt))
+}
+
+// ensureSliceDiff writes the slice's diff — the done tasks' declared files,
+// rendered exactly as taskDiff renders one task's — and returns its path.
+// A replay rewrites the same bytes.
+func (r *nextRun) ensureSliceDiff(ctx context.Context) (string, error) {
+	aw := r.st.ActiveWave
+	var files []string
+	for _, id := range aw.Tasks {
+		d, _, err := latestDigest(r.bdir, aw.N, id, aw.Attempt)
+		if err != nil {
+			return "", err
+		}
+		if d == nil || d.Status != bundle.StatusDone {
+			continue
+		}
+		if t := r.st.Task(id); t != nil {
+			files = append(files, t.Files...)
+		}
+	}
+	p := sliceDiffPath(r.bdir, aw.N, sliceOf(aw), aw.Attempt)
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return "", err
+	}
+	return p, os.WriteFile(p, []byte(taskDiff(ctx, r.ws, files)), 0o600)
+}
+
+// dispatchLenses emits row 15a: one reviewer agent per unrecorded lens over
+// the slice's diff, all in one op so the session runs them in parallel
+// (two-layers design §3.2).
+func (r *nextRun) dispatchLenses(ctx context.Context, d decide.Decision) int {
+	aw := r.st.ActiveWave
+	diffPath, err := r.ensureSliceDiff(ctx)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	idx, err := readIndex(r.bdir)
+	if err != nil {
+		return fail(r.env.Stderr, exitError, err.Error(), "")
+	}
+	tasks := lensTasks(r.st, idx, aw)
+	agents := make([]op.Agent, 0, len(d.Lenses))
+	for _, lens := range d.Lenses {
+		rubric, rerr := brief.LensRubric(lens)
+		if rerr != nil {
+			return fail(r.env.Stderr, exitError, rerr.Error(), "")
+		}
+		p := filepath.Join(waveDir(r.bdir, aw.N),
+			fmt.Sprintf("lens-%s.s%d.a%d.md", lens, sliceOf(aw), aw.Attempt))
+		p, err = writeStableBriefAt(p, func(tok string) (string, string, error) {
+			text, terr := brief.Render("review-lens", brief.LensData{
+				Slug: r.slug, Wave: aw.N, Slice: sliceOf(aw), Attempt: aw.Attempt,
+				Lens: lens, Rubric: rubric, DiffPath: diffPath, Tasks: tasks, Token: tok,
+			})
+			return text, "", terr
+		})
+		if err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
+		agents = append(agents, op.Agent{
+			Agent: op.AgentReviewer, Mode: lens, Model: r.ws.Cfg.Agents.Reviewer.Model,
+			Brief: p, Cwd: r.ws.Repo.Root, Label: "lens: " + lens,
+		})
+	}
+	return printOp(r.env, op.Op{
+		Op:        op.Dispatch,
+		Narration: fmt.Sprintf("wave %d: internal review, %d lenses", aw.N, len(agents)),
+		Wave:      new(aw.N), Attempt: aw.Attempt, Agents: agents,
+		Record: fmt.Sprintf("takt record --agent reviewer --mode <mode> --attempt %d --from <file> --slug %s",
+			aw.Attempt, r.slug),
+	})
+}
+
+// lensTasks is the slice's tasks as the lens brief quotes them. The first
+// parameter is *bundle.State to match the shape of every other brief-data
+// builder in this file, even though only the index and the active wave are
+// read here.
+func lensTasks(_ *bundle.State, idx plan.Index, aw *bundle.ActiveWave) []brief.LensTask {
+	out := make([]brief.LensTask, 0, len(aw.Tasks))
+	for _, id := range aw.Tasks {
+		if pt := idx.Task(id); pt != nil {
+			out = append(out, brief.LensTask{ID: id, Title: pt.Title, Description: pt.Description, Files: pt.Files})
+		}
+	}
+	return out
 }
 
 // plannerBrief pins the planner's model and renders its brief, appending the
@@ -667,6 +795,38 @@ func (r *nextRun) assessorBrief(ctx context.Context, ag *op.Agent, tok string) (
 		Problems: lastProblemsIn(r.bdir, evGoalsInvalid, evGoalsReset),
 	})
 	return text, "goal-assessor.md", err
+}
+
+// verifyBrief renders the verifier's brief over the recomputed candidates
+// (two-layers design §3.3, §7.3).
+func (r *nextRun) verifyBrief(ctx context.Context, ag *op.Agent, tok string) (string, string, error) {
+	aw := r.st.ActiveWave
+	ag.Model = r.ws.Cfg.Agents.Reviewer.Model
+	diffPath, err := r.ensureSliceDiff(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	lenses := r.st.Config.Review.Lenses
+	records := map[string]*wave.LensRecord{}
+	for _, l := range lenses {
+		rec, rerr := wave.ReadLensRecord(r.bdir, aw.N, sliceOf(aw), aw.Attempt, l)
+		if rerr != nil {
+			return "", "", rerr
+		}
+		records[l] = rec
+	}
+	cands := wave.MergeCandidates(lenses, records)
+	vc := make([]brief.VerifyCandidate, 0, len(cands))
+	for _, c := range cands {
+		vc = append(vc, brief.VerifyCandidate{
+			ID: c.ID, Severity: c.Severity, File: c.File, Line: c.Line, Title: c.Title, Detail: c.Detail,
+		})
+	}
+	text, err := brief.Render("review-verify", brief.VerifyData{
+		Slug: r.slug, Wave: aw.N, Slice: sliceOf(aw), Attempt: aw.Attempt,
+		DiffPath: diffPath, Token: tok, Candidates: vc,
+	})
+	return text, "", err
 }
 
 // lastProblemsIn reads the bundle's events for lastProblems; an unreadable
