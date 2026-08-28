@@ -241,6 +241,7 @@
   "disposition": {
     "choice": "pr",
     "at": "2026-08-28T14:41:24.031334637Z",
+    "pr_url": "https://github.com/monrad/takt/pull/52",
     "applied": false
   }
 }
