@@ -162,34 +162,52 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 	if err = bundle.WriteSession(r.bdir, next); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
-	// Every takeover of a session that could have been driving is recorded:
-	// an expired heartbeat, an explicit --force, and the silent takeover of
-	// a holder that recorded generated=true and can therefore never come
-	// back. The last one is invisible to the user by design, which is
-	// exactly why it belongs in the log — spec §4.6 has takt record recovery
-	// as an event rather than repairing state silently (review M7).
+	// A lock_taken records a takeover, so every arm below is gated on one
+	// having happened. Acquire returns `acquired` when there was no holder
+	// at all and `held-by-self` when the caller already holds the run, and
+	// a --force passed in either situation takes the run from nobody:
+	// grading on the flag would write an event for a takeover that never
+	// happened — a false audit line, and churn in the tracked events.jsonl
+	// on every forced `takt next` against a free lock.
 	//
-	// With one exception: when the *acquirer's* id is generated too, nobody
-	// could have been driving — neither id was ever handed to a second
-	// process — so there is no takeover to report, and appending one would
-	// rewrite events.jsonl, a tracked file, on every single `takt next` a
-	// session without CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes. A named
-	// session taking over a generated holder still logs it.
+	// Every takeover of a session that could have been driving is
+	// recorded: an expired heartbeat, an explicit --force, and the silent
+	// takeover of a holder that recorded generated=true and can therefore
+	// never come back. The last one is invisible to the user by design,
+	// which is exactly why it belongs in the log — spec §4.6 has takt
+	// record recovery as an event rather than repairing state silently
+	// (review M7).
+	//
+	// With one exception, and only when the takeover was not asked for:
+	// when the *acquirer's* id is generated too, nobody could have been
+	// driving — neither id was ever handed to a second process — so there
+	// is no takeover to report, and appending one would rewrite
+	// events.jsonl, a tracked file, on every single `takt next` a session
+	// without CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes. A named session
+	// taking over a generated holder still logs it, and so does an
+	// explicit --force: r.force is set from the command line and nowhere
+	// else, so the churn argument that justifies the exemption never
+	// reaches it, and a takeover a user asked for is recorded whatever the
+	// holder's kind.
 	//
 	// The exception is decided on the holder's record, not on Acquire's
-	// outcome, and so is graded first. Acquire grades an expired heartbeat
-	// ahead of force, so a generated holder that has simply been idle longer
-	// than lock_ttl comes back as `stolen` rather than `forced` — reading
-	// the outcome instead put a lock_taken line in the tracked events.jsonl
-	// after every pause, which is exactly the dirty tree this exemption
-	// exists to prevent.
+	// outcome, and so is graded ahead of the outcome arms. Acquire grades
+	// an expired heartbeat ahead of force, so a generated holder that has
+	// simply been idle longer than lock_ttl comes back as `stolen` rather
+	// than `forced` — reading the outcome instead put a lock_taken line in
+	// the tracked events.jsonl after every pause, which is exactly the
+	// dirty tree this exemption exists to prevent. The event carries
+	// whatever Acquire graded, so a forced takeover of a long-idle holder
+	// still reads `stolen`.
+	takeover := outcome == bundle.LockStolen || outcome == bundle.LockForced
 	switch {
-	case orphaned && r.genID: // nobody could have been driving; nothing to report
+	case !takeover: // the run was taken from nobody; there is nothing to record
+	case orphaned && r.genID && !r.force: // nobody could have been driving
 	case orphaned:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome), keyReason: "orphaned",
 		})
-	case outcome == bundle.LockStolen, outcome == bundle.LockForced && r.force:
+	default:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome),
 		})

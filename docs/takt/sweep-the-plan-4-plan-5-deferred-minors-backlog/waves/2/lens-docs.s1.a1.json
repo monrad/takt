@@ -1,0 +1,18 @@
+{
+  "lens": "docs",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T13:26:35.4047435Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 316,
+      "title": "Rewritten §4.6 lock_taken paragraph omits one of the three firing conditions",
+      "detail": "The new text says a lock_taken is appended 'when a **named** session takes over, and whenever a takeover was **explicitly forced** ..., whatever the holder's kind', with the only silent case being a generated acquirer over a generated holder. But per internal/cli/cmd_next.go's switch (lines ~202-214), the event also fires whenever the *holder* is not generated, regardless of whether the acquirer is named or generated and regardless of --force — e.g. a session with no CLAUDE_CODE_SESSION_ID/TAKT_SESSION set (r.genID=true) recovering a stale lock left by a named session (heartbeat merely expired, no --force) still appends a lock_taken (falls into the `default` arm, since `orphaned` is false when held.Generated is false). Neither of the doc's two enumerated conditions ('named session takes over' / 'explicitly forced') covers this case, so a reader would wrongly conclude it's silent. The adjacent code comment in cmd_next.go (lines 165-201) states this correctly (an expired heartbeat of 'a session that could have been driving' is always recorded, independent of the acquirer's kind); the spec prose lost that nuance when it was condensed into two clauses.",
+      "task": 3
+    }
+  ]
+}

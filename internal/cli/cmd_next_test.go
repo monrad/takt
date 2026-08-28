@@ -1451,6 +1451,88 @@ func TestNextWithAGeneratedIdIgnoresAStaleGeneratedHolder(t *testing.T) {
 	}
 }
 
+// TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken is the other
+// half of that rule. The exemption above exists to keep the tracked
+// events.jsonl from being rewritten on every `takt next` a session without
+// CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes, and --force is set from the
+// command line and nowhere else — no host prompt passes it, only the owner
+// gate's `takeover` choice tells a user to — so that argument never reaches
+// it. A takeover a user asked for is recorded whatever the holder's kind,
+// carrying the outcome Acquire graded (spec §4.6).
+func TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken(t *testing.T) {
+	t.Parallel()
+	// Acquire grades an expired heartbeat ahead of force, so the forced
+	// takeover of a long-idle generated holder still reads `stolen`; what
+	// this fixes is that it is recorded at all.
+	root, bdir := setupRun(t)
+	idle := &bundle.Session{
+		ID: "takt-old", Host: "elsewhere",
+		Heartbeat: time.Now().UTC().Add(-time.Hour), Generated: true,
+	}
+	if err := bundle.WriteSession(bdir, idle); err != nil {
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root, nil, "--force"); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	taken := eventsOfType(t, bdir, "lock_taken")
+	if len(taken) != 1 || taken[0].Data[keyReasonJSON] != "orphaned" {
+		t.Fatalf("an explicit --force that takes the run records it once, as one: %+v", taken)
+	}
+	if taken[0].Data["outcome"] != string(bundle.LockStolen) {
+		t.Fatalf("the event carries the outcome Acquire graded: %+v", taken[0].Data)
+	}
+
+	// A generated holder whose heartbeat is still young is the same
+	// takeover, graded `forced` because it is the flag that took it.
+	root2, bdir2 := setupRun(t)
+	live := &bundle.Session{
+		ID: "takt-live", Host: "elsewhere",
+		Heartbeat: time.Now().UTC().Add(-time.Minute), Generated: true,
+	}
+	if err := bundle.WriteSession(bdir2, live); err != nil {
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root2, nil, "--force"); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	forced := eventsOfType(t, bdir2, "lock_taken")
+	if len(forced) != 1 || forced[0].Data["outcome"] != string(bundle.LockForced) {
+		t.Fatalf("a forced takeover of a live generated holder is recorded once, as `forced`: %+v", forced)
+	}
+}
+
+// TestNextForceWithoutATakeoverAppendsNothing is the guard on that rule:
+// --force is not by itself a takeover. [bundle.Acquire] returns `acquired`
+// when there is no holder at all and `held-by-self` when the caller already
+// holds the run, and a --force passed in either situation takes the run from
+// nobody. Recording one would be a false audit event, and would rewrite
+// events.jsonl — a tracked file — on every forced `takt next` against a free
+// lock (spec §4.6).
+func TestNextForceWithoutATakeoverAppendsNothing(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	env := map[string]string{"TAKT_SESSION": "S"}
+	if err := os.Remove(bundle.SessionPath(bdir)); err != nil { // as `takt unlock` leaves it
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root, env, "--force"); c != 0 || o["op"] != "run" {
+		t.Fatalf("--force on a free lock: %d %v %s", c, o, e)
+	}
+	if taken := eventsOfType(t, bdir, "lock_taken"); len(taken) != 0 {
+		t.Fatalf("a free lock is taken from nobody: %+v", taken)
+	}
+	if c, o, e := next(t, root, env, "--force"); c != 0 || o["op"] != "run" {
+		t.Fatalf("--force on the caller's own lock: %d %v %s", c, o, e)
+	}
+	if taken := eventsOfType(t, bdir, "lock_taken"); len(taken) != 0 {
+		t.Fatalf("the caller cannot take the run from itself: %+v", taken)
+	}
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("a forced next that took nothing must leave the tracked bundle alone:\n%s", out)
+	}
+}
+
 // TestNextRestoresADeletedLogsIgnore covers a bundle that predates the
 // ignore rule: commitBundle stages the bundle directory wholesale, so a lock
 // written into a logs/ with no .gitignore would ride into the next takt

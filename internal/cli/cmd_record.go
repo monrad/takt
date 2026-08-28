@@ -171,8 +171,10 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 	} else if err = finish.WriteGoals(tgt.bdir, rec); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	endAttemptStreak(tgt.bdir, evGoalsInvalid, evGoalsReset, map[string]any{keyReason: reasonRecorded})
-	return printJSON(env, map[string]any{keySHA: head, "all_achieved": len(unmet) == 0, "unmet": unmetList(unmet)})
+	lost := endAttemptStreak(tgt.bdir, evGoalsInvalid, evGoalsReset, map[string]any{keyReason: reasonRecorded})
+	return printJSON(env, warnStreakLoss(map[string]any{
+		keySHA: head, "all_achieved": len(unmet) == 0, "unmet": unmetList(unmet),
+	}, lost))
 }
 
 // readVerdicts pulls the JSON block out of the assessor's message and
@@ -258,9 +260,9 @@ func recordAlignment(env Env, bdir string, st *bundle.State, mode, from string) 
 	if err = writeAlignment(bdir, *a); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	endAttemptStreak(bdir, evAlignmentInvalid, evAlignmentReset,
+	lost := endAttemptStreak(bdir, evAlignmentInvalid, evAlignmentReset,
 		map[string]any{keyReason: reasonRecorded, keyMode: mode})
-	return printJSON(env, map[string]any{keyMode: mode, "ok": true})
+	return printJSON(env, warnStreakLoss(map[string]any{keyMode: mode, "ok": true}, lost))
 }
 
 // The two things the alignment auditor is ever asked for (spec §7.3).

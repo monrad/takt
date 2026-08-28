@@ -1,0 +1,190 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "tasks": [
+    {
+      "task": 3,
+      "status": "done",
+      "files_changed": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "internal/cli/cmd_next.go",
+        "internal/cli/cmd_next_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q '#9 is already fixed' docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/spec.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'eleven code-and-doc fixes' docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/goals.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'explicitly forced' docs/superpowers/specs/2026-08-24-takt-design.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken' internal/cli/cmd_next_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestNext|TestLock' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.447s",
+          "elapsed_ms": 1664
+        },
+        {
+          "command": "go test -race ./...",
+          "exit": 0,
+          "passed": true,
+          "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t(cached)\nok  \tgithub.com/monrad/takt/internal/brief\t(cached)\nok  \tgithub.com/monrad/takt/internal/bundle\t(cached)\nok  \tgithub.com/monrad/takt/internal/cli\t(cached)\nok  \tgithub.com/monrad/takt/internal/config\t(cached)\nok  \tgithub.com/monrad/takt/internal/decide\t(cached)\nok  \tgithub.com/monrad/takt/internal/doctor\t(cached)\nok  \tgithub.com/monrad/takt/internal/finish\t(cached)\nok  \tgithub.com/monrad/takt/internal/gate\t(cached)\nok  \tgithub.com/monrad/takt/internal/gitx\t(cached)\nok  \tgithub.com/monrad/takt/internal/goals\t(cached)\nok  \tgithub.com/monrad/takt/internal/hosts\t(cached)\nok  \tgithub.com/monrad/takt/internal/op\t(cached)\nok  \tgithub.com/monrad/takt/internal/plan\t(cached)\nok  \tgithub.com/monrad/takt/internal/prompt\t(cached)\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t(cached)\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t(cached)\nok  \tgithub.com/monrad/takt/internal/version\t(cached)\nok  \tgithub.com/monrad/takt/internal/wave\t(cached)",
+          "elapsed_ms": 2443
+        },
+        {
+          "command": "golangci-lint run ./...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 417
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The takeover gate, explicit-force exception handling, documentation, and regression tests match the task requirements without introducing correctness issues.",
+        "findings": null,
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "major",
+          "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+          "line": 316,
+          "title": "Rewritten §4.6 sentence omits the generated-acquirer/named-holder case",
+          "detail": "The new sentence enumerates recording as 'when a named session takes over' or 'whenever a takeover was explicitly forced', plus the generated-over-generated exemption and the no-takeover case. It does not mention the (unchanged, pre-existing) case where a *generated* acquirer takes over a *stale named* holder without --force: since `orphaned` is false there (the holder isn't `Generated`), the code's default arm in internal/cli/cmd_next.go still appends lock_taken (outcome LockStolen) regardless of the acquirer's own kind or the force flag. A reader could infer from 'recorded when a named session takes over' that a generated acquirer's takeover of a stale named holder goes unrecorded, which is not true. The code is correct and unchanged in this respect; only the doc's new three-part framing leaves this combination unstated.",
+          "lenses": [
+            "intent",
+            "docs"
+          ]
+        },
+        {
+          "severity": "minor",
+          "file": "internal/cli/cmd_next.go",
+          "line": 204,
+          "title": "New default: arm of the lock_taken switch has no test asserting its event shape",
+          "detail": "Task-3 rewrote the last switch arm from an explicit outcome check (`case outcome == bundle.LockStolen, outcome == bundle.LockForced \u0026\u0026 r.force:`) to a bare `default:` (cmd_next.go:207-210), which only the not-orphaned path reaches (a named/non-generated holder being stolen or forced). The new `case !takeover:` guard that makes this safe is well covered by TestNextForceWithoutATakeoverAppendsNothing (cmd_next_test.go:1512), and the exemption change is covered by TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (cmd_next_test.go:1462) — but that test only exercises generated holders, which are always `orphaned` regardless of heartbeat freshness (orphaned only checks held.Generated + ID mismatch, not staleness), so both its idle and live scenarios land in `case orphaned:`, not `default:`. The only code path that actually reaches `default:` is a named-holder takeover, exercised behaviorally by the pre-existing TestNextSessionLock (cmd_next_test.go:881-899), but that test never inspects the appended lock_taken event's fields (outcome value, absence of a `reason` key). No test in the diff (or found in the file) asserts `eventsOfType(...)[0].Data` for a forced/stolen takeover of a non-generated holder, so a regression in this specific arm (e.g., an accidental `reason` key, or a wrong outcome value) would not be caught.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    },
+    {
+      "task": 8,
+      "status": "done",
+      "files_changed": [
+        "internal/cli/cmd_record.go",
+        "internal/cli/cmd_record_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/record_reviewer.go",
+        "internal/cli/record_reviewer_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -Eq 'func endAttemptStreak\\(.+\\) error' internal/cli/facts.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c '_ = endAttemptStreak' internal/cli/cmd_record.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c '_ = endAttemptStreak' internal/cli/record_reviewer.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t6.306s",
+          "elapsed_ms": 6528
+        },
+        {
+          "command": "go test -race ./...",
+          "exit": 0,
+          "passed": true,
+          "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t(cached)\nok  \tgithub.com/monrad/takt/internal/brief\t(cached)\nok  \tgithub.com/monrad/takt/internal/bundle\t(cached)\nok  \tgithub.com/monrad/takt/internal/cli\t(cached)\nok  \tgithub.com/monrad/takt/internal/config\t(cached)\nok  \tgithub.com/monrad/takt/internal/decide\t(cached)\nok  \tgithub.com/monrad/takt/internal/doctor\t(cached)\nok  \tgithub.com/monrad/takt/internal/finish\t(cached)\nok  \tgithub.com/monrad/takt/internal/gate\t(cached)\nok  \tgithub.com/monrad/takt/internal/gitx\t(cached)\nok  \tgithub.com/monrad/takt/internal/goals\t(cached)\nok  \tgithub.com/monrad/takt/internal/hosts\t(cached)\nok  \tgithub.com/monrad/takt/internal/op\t(cached)\nok  \tgithub.com/monrad/takt/internal/plan\t(cached)\nok  \tgithub.com/monrad/takt/internal/prompt\t(cached)\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t(cached)\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t(cached)\nok  \tgithub.com/monrad/takt/internal/version\t(cached)\nok  \tgithub.com/monrad/takt/internal/wave\t(cached)",
+          "elapsed_ms": 2523
+        },
+        {
+          "command": "golangci-lint run ./...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 397
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "All four callers report read and append losses as warnings while preserving exit 0 and existing JSON keys. Tests distinctly cover both failure seams and clean records; no actionable findings.",
+        "findings": null,
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "internal/cli/cmd_record_test.go",
+          "line": 338,
+          "title": "Fault-injection test helpers duplicated verbatim across two test files",
+          "detail": "readOnlyEventLog/directoryEventLog (internal/cli/cmd_record_test.go:338-368) and breakEventAppend/breakEventRead (internal/cli/record_reviewer_test.go:549-579) are byte-for-byte identical implementations (same os.Chmod(0o400)/OpenFile probe/os.Remove+os.Mkdir dance), differing only in name. They live in different Go packages (cli vs cli_test) so they can't call each other directly, but internal/testutil (a package already imported by both, e.g. testutil.NewRepo/testutil.Git) is the natural home for a single testutil.BreakEventAppend(t, bdir)/testutil.BreakEventRead(t, bdir) pair — confirmed via grep that os.Chmod(p, 0o400) and Mkdir(p, 0o750) each appear in exactly these two new locations and nowhere pre-existing in the tree. Not blocking, but ~30 duplicated lines that a shared helper would remove.",
+          "lenses": [
+            "simplicity",
+            "consistency"
+          ]
+        },
+        {
+          "severity": "nit",
+          "file": "internal/cli/facts.go",
+          "line": 281,
+          "title": "warnStreakLoss inlines its warning string instead of following the local excludeWarning(err) helper convention",
+          "detail": "cmd_init.go's excludeWarning(err) (internal/cli/cmd_init.go:425-427) is a small named function returning \"info/exclude not written: \" + err.Error(), used by both cmd_init.go and cmd_next.go for the same warnings-contract pattern this task extends. warnStreakLoss instead builds \"attempt-streak reset not recorded: \"+err.Error() inline inside the append call. Not wrong, but it departs from the one-sentence-per-named-function shape the warnings contract otherwise uses for its two other producers.",
+          "lenses": [
+            "consistency"
+          ]
+        }
+      ]
+    }
+  ],
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "closed_at": "2026-08-28T13:31:56.564428908Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

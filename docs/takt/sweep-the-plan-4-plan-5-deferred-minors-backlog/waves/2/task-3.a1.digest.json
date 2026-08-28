@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 1,
+  "status": "done",
+  "summary": "lock_taken` is now gated on an actual takeover and an explicit `--force` no longer earns the generated-over-generated exemption, with two new tests pinning both halves and §4.6 rewritten to state the full rule.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T13:11:53.45932435Z"
+}

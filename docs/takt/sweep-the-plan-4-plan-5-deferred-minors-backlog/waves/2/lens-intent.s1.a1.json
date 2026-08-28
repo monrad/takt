@@ -1,0 +1,18 @@
+{
+  "lens": "intent",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T13:22:05.727536954Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 316,
+      "title": "Rewritten §4.6 sentence omits the generated-acquirer/named-holder case",
+      "detail": "The new sentence enumerates recording as 'when a named session takes over' or 'whenever a takeover was explicitly forced', plus the generated-over-generated exemption and the no-takeover case. It does not mention the (unchanged, pre-existing) case where a *generated* acquirer takes over a *stale named* holder without --force: since `orphaned` is false there (the holder isn't `Generated`), the code's default arm in internal/cli/cmd_next.go still appends lock_taken (outcome LockStolen) regardless of the acquirer's own kind or the force flag. A reader could infer from 'recorded when a named session takes over' that a generated acquirer's takeover of a stale named holder goes unrecorded, which is not true. The code is correct and unchanged in this respect; only the doc's new three-part framing leaves this combination unstated.",
+      "task": 3
+    }
+  ]
+}

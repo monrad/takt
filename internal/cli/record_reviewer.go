@@ -131,9 +131,11 @@ func recordLens(env Env, tgt *runTarget, lens, msg string) int {
 		keyWave: aw.N, keySlice: rec.Slice, keyAttempt: rec.Attempt, keyMode: lens,
 		keyFindings: len(rec.Findings), keyDropped: len(rec.Dropped),
 	})
-	endAttemptStreak(tgt.bdir, evReviewerInvalid, evReviewerReset,
+	lost := endAttemptStreak(tgt.bdir, evReviewerInvalid, evReviewerReset,
 		map[string]any{keyReason: reasonRecorded, keyMode: lens})
-	return printJSON(env, map[string]any{keyValid: true, keyMode: lens, keyFindings: len(rec.Findings)})
+	return printJSON(env, warnStreakLoss(map[string]any{
+		keyValid: true, keyMode: lens, keyFindings: len(rec.Findings),
+	}, lost))
 }
 
 // severities is the closed severity set a lens finding must use.
@@ -255,11 +257,11 @@ func recordVerify(env Env, tgt *runTarget, msg string) int {
 	if code := carryUnattributed(env, tgt, &rec); code != 0 {
 		return code
 	}
-	endAttemptStreak(tgt.bdir, evReviewerInvalid, evReviewerReset,
+	lost := endAttemptStreak(tgt.bdir, evReviewerInvalid, evReviewerReset,
 		map[string]any{keyReason: reasonRecorded, keyMode: reviewerModeVerify})
-	return printJSON(env, map[string]any{
+	return printJSON(env, warnStreakLoss(map[string]any{
 		keyValid: true, keyCandidates: len(candidates), keyConfirmed: len(rec.Confirmed),
-	})
+	}, lost))
 }
 
 // parseVerifyReply validates exactly one verdict per candidate id and the

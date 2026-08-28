@@ -86,14 +86,23 @@
     {
       "id": 3,
       "wave": 2,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/cmd_next.go",
         "internal/cli/cmd_next_test.go",
         "docs/superpowers/specs/2026-08-24-takt-design.md"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "lock_taken` is now gated on an actual takeover and an explicit `--force` no longer earns the generated-over-generated exemption, with two new tests pinning both halves and §4.6 rewritten to state the full rule.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T13:11:53.45932435Z"
+      }
     },
     {
       "id": 4,
@@ -183,7 +192,7 @@
     {
       "id": 8,
       "wave": 2,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/facts.go",
         "internal/cli/cmd_record.go",
@@ -192,7 +201,16 @@
         "internal/cli/record_reviewer_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 8,
+        "attempt": 1,
+        "status": "done",
+        "summary": "endAttemptStreak` returns its read and append errors, all four record call sites fold a loss into the `warnings` array of the JSON they already print at exit 0, and ten new tests cover both losses at each site plus the absent-key clean case.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T13:16:56.035779393Z"
+      }
     },
     {
       "id": 9,
@@ -217,13 +235,14 @@
     }
   ],
   "active_wave": {
-    "n": 1,
+    "n": 2,
     "slice": 1,
     "attempt": 1,
-    "started_at": "2026-08-28T12:28:28.166616006Z",
+    "started_at": "2026-08-28T13:03:32.349701331Z",
     "session_id": "5f195b71-8dc9-4fad-b3a9-3b05335b2dc9",
     "tasks": [
-      2
+      3,
+      8
     ],
     "baseline": []
   },
