@@ -50,28 +50,42 @@ call sites an agent is handed a file from: `writeStableBriefAt` (cmd_next.go:616
 and `ensureSliceDiff` (cmd_next.go:672), `renderTaskBrief` (launch.go:304), and
 `writeLogsIgnore` (cmd_init.go:351). (3) A gitignore-pattern escaper in
 `internal/gitx`, backslash first, then `*` `?` `[`, leading `#`/`!`, trailing
-space; `excludeLogsDir` builds both rules through it while `EnsureExclude`'s
-written-exactly-as-given contract is unchanged. The escaper gets a unit test, and
-`init` gets cli-level cases for *both* shapes the spec names — a `--dir` holding a
-glob metacharacter (`docs/[takt]`) and one holding a literal backslash — since
-only those prove path handling and rule construction together, which is the
-pairing the whole fix exists for. (4) Degradation: `excludeLogsDir`
+space. The ordering inside `excludeLogsDir` is the subtle part: the escaper runs on
+the repo-relative bundle *path only*, and the syntax is composed around the escaped
+result. Passing a whole composed rule through it would escape the negation rule's
+leading `!` and the first rule's trailing `*` — both required syntax — turning two
+working rules into literals that match nothing. `EnsureExclude`'s
+written-exactly-as-given contract is unchanged. The escaper gets a unit test, `init`
+gets cli-level cases for *both* shapes the spec names — a `--dir` holding a glob
+metacharacter (`docs/[takt]`) and one holding a literal backslash — and a
+behavioural test proves the composed rules still ignore a log payload while
+re-including `logs/.gitignore`, which is the property the escaping must not break. (4) Degradation: `excludeLogsDir`
 failure stops failing `init` (no rollback) and `next`; both report it as a
 `warnings` entry and carry on, because the tracked `logs/.gitignore` is what
-protects commits and clones. The writeLogsIgnore already-present test closes
-that slice of #15. Twelve files — at the cap, which is the argument for not
-splitting further: any split would put two wave-1 tasks in the same file.
+protects commits and clones. `next` must carry the warning onto *every* op it can
+print after the lock is taken: `nextRun.archive` builds its own stop op in
+`archive.go`, so routing all post-lock output through one warning-aware helper is
+what stops the loss vanishing on that path — and is why `archive.go` is in scope. The writeLogsIgnore already-present test closes
+that slice of #15. Ten files, after the `warnings` contract moved to T9 to make room for
+`archive.go`.
 
-### Bookkeeping outside the task graph
+### T9 — the `warnings` contract (#6's and #16's carrier, G4) — `bounded`
 
-Two acts in this run are not tasks and produce no diff, because closing a GitHub
-issue is outward-facing and does not belong in an implementer's commit: issue #19
-(fixed by PR #22, never closed) and issue #9 (fixed by `config.Validate` and
-pinned by `TestValidateRejectsNonPositiveDurations`) are closed by the driving
-session. G12 — the anchor's fourteen listed issues resolving to eleven fixes, two
-rulings and one closure — is evidenced by spec.md's "#9 is already fixed" section
-and its Scope list, both already in the bundle. No task edits them, and T3 carries
-the goal only as its recorded owner.
+Split out of T2 once `archive.go` had to join it: T2 would otherwise be thirteen
+files, over the cap. Having one task own the definition is better anyway — T2 and
+T8 are two independent consumers of a wire contract that should be written once.
+`Warnings []string` with `json:"warnings,omitempty"` on `op.Op`, a `keyWarnings`
+constant in `cli.go`, and a test that a clean op's JSON has no `warnings` key. The
+`omitempty` is the load-bearing part: every `takt next` prints an op, so without it
+a clean run's output would change shape.
+
+### G12 is an evidence goal, not an action
+
+G12 — the anchor's fourteen listed issues resolving to eleven fixes, two rulings
+and one closure — is satisfied by artifacts already in the bundle: spec.md's
+"#9 is already fixed" section and its Scope list. No task edits them; T3 greps them
+so the goal fails loudly if that evidence ever leaves the spec. Closing the GitHub
+issue itself is not part of this plan and no task performs it.
 
 ### T3 — `lock_taken` on an explicit `--force` (#4, #2, G12) — `implement`
 

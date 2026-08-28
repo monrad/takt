@@ -18,3 +18,4 @@
 {"ts":"2026-08-28T10:24:35.678074166Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-28T10:26:44.718558536Z","type":"gate_reviewed","data":{"findings":5,"gate":"plan","hash":"sha256:961ba0f87267898570d6c077345663c838d064c010a0b0e1c780d1d431442d10","provider":"copilot","verdict":"rework"}}
 {"ts":"2026-08-28T10:31:06.765257213Z","type":"gate_reviewed","data":{"findings":5,"gate":"plan","hash":"sha256:0db6d2073af1b8153692ce9f1b8b76f1a7412b9967d934a45fff36a5b4af2f28","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-28T10:35:08.390902898Z","type":"gate_reviewed","data":{"findings":4,"gate":"plan","hash":"sha256:5e84a4363502fe17eecc8ad70506e851506ad479ef311b4490c40bd702219429","provider":"copilot","verdict":"rework"}}

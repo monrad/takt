@@ -1,41 +1,34 @@
 {
   "verdict": "rework",
-  "summary": "The plan is close, but it has an incomplete warning propagation path, contradictory T8 coverage, and unmapped/out-of-scope bookkeeping.",
+  "summary": "The executable tasks cover the code changes, but the plan is internally stale, omits #9’s required bookkeeping closure, and lacks a reliable post-join verification gate.",
   "findings": [
     {
-      "severity": "blocking",
+      "severity": "major",
       "file": "plan.md",
-      "line": 0,
-      "title": "T2 drops next warnings on the archive path",
-      "detail": "T2 propagates warnings only through cmd_next.go and launch.go, but a post-lock next can call nextRun.archive, whose stop op is constructed in archive.go. archive.go is absent from T2's scope, so an info/exclude failure can still disappear from successful next JSON. Include and test this path or centralize all post-lock op output through a warning-aware helper."
+      "line": 5,
+      "title": "Task count, ownership, and waves contradict plan.index.json",
+      "detail": "The narrative declares eight tasks and puts T2 in wave 1, while the index has nine tasks and T2 depends on T9. The actual graph is wave 1: T1/T4/T5/T6/T7/T9; wave 2: T2; wave 3: T3/T8. Lines 43-46 also assign the warnings contract to T2 before lines 69-80 assign it to T9. Update the narrative, risks, and class accounting to match the executable graph."
     },
     {
       "severity": "major",
       "file": "plan.md",
-      "line": 0,
-      "title": "T8 has contradictory and insufficient caller coverage",
-      "detail": "T8 first requires coverage of only one caller per file, then says all four callers need individual tests. The lint and grep checks prove only that an error result is syntactically consumed, not that each command emits warnings. Require warning-output tests for all four callers. Also, replacing events.jsonl with a directory exercises ReadEvents failure, not the specified AppendEvent failure; use a deterministic append-failure setup or seam."
+      "line": 87,
+      "title": "The required #9 bookkeeping closure is explicitly dropped",
+      "detail": "Spec.md says #9 is closed as part of this run’s bookkeeping, but the plan states that closing the GitHub issue is not performed. T3’s grep only proves local prose exists; it cannot perform or verify the closure. Add an explicit bookkeeping task or reconcile the specification before execution."
     },
     {
       "severity": "major",
       "file": "plan.md",
-      "line": 0,
-      "title": "T3 claims G12 without performing the required #9 bookkeeping",
-      "detail": "The spec says issue #9 is closed as part of this run, but the plan leaves that action outside the task graph. T3 merely declares G12 and has no action or verification for closure, so every task can pass while the requirement remains undone."
+      "line": 16,
+      "title": "Concurrent repo-wide gates do not prove the assembled result",
+      "detail": "T3 and T8 can execute concurrently in the final wave. Each may run its full tests and lint before the other task’s edits are complete, so neither command necessarily validates the final combined tree. The accepted-risk claim at lines 184-189 is therefore unsound. Add a dependent final verification task or another post-wave gate that runs after both T3 and T8."
     },
     {
-      "severity": "major",
+      "severity": "nit",
       "file": "plan.md",
-      "line": 0,
-      "title": "The plan widens scope to issue #19",
-      "detail": "The bookkeeping section and T3 introduce closing issue #19, which is absent from the spec's in-scope list. This outward-facing action must be removed from this plan."
-    },
-    {
-      "severity": "minor",
-      "file": "plan.md",
-      "line": 0,
-      "title": "T2 leaves gitignore negation escaping ambiguous",
-      "detail": "T2 says the escaper must escape a leading ! and that both rules pass through it, but the second rule's leading ! is required negation syntax. Specify that the literal relative path is escaped before the syntactic ! prefix is added, and behaviorally verify that log payloads are ignored while logs/.gitignore is re-included."
+      "line": 190,
+      "title": "T2 file-count risk is stale",
+      "detail": "The risk says T2 has twelve files, while line 69 and plan.index.json declare ten. Correct the count and avoid claiming that all four subchanges share the same call sites."
     }
   ],
   "provider": "copilot",
