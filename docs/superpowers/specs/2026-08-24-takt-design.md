@@ -3,7 +3,7 @@
 **Status:** draft for review · **Date:** 2026-08-24 · **Repo:** `github.com/monrad/takt`
 
 takt runs long, multi-step coding work as a resumable **brainstorm → plan → execute → finish** loop on a
-durable run bundle. It is a Claude Code plugin (a command prompt plus four agent definitions) and a Go
+durable run bundle. It is a Claude Code plugin (a command prompt plus five agent definitions) and a Go
 binary. Claude Code drives every phase; the binary decides and records; subagents implement; headless
 reviewers judge. It replaces `rasatpetabit/masterplan` for its author's use — keeping the ideas that
 worked in masterplan v8.1.0 and none of the private-fleet coupling that arrived after v9.3.
@@ -1022,7 +1022,9 @@ as instructions to act on (§5.2).
 
 ### 10.1 Compared with masterplan
 
-masterplan v9.9.1 ships eight agents; takt ships four. What happened to each:
+masterplan v9.9.1 ships eight agents; takt ships five — four inherited from masterplan, mapped below, and
+`takt:reviewer`, added natively for the two-review-layers change with no masterplan predecessor. What
+happened to each of masterplan's eight:
 
 | masterplan agent | takt | why |
 |---|---|---|
