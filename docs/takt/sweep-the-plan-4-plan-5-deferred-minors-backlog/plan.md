@@ -2,20 +2,26 @@
 
 ## Approach
 
-Eight tasks, grouped by file rather than by issue, exactly as the spec lays them
+Nine tasks, grouped by file rather than by issue, exactly as the spec lays them
 out: `internal/cli/cmd_next.go` and `internal/cli/cmd_init.go` are each wanted by
 three separate issues, so a per-issue split would serialise the whole sweep on
-two files. Wave 1 runs six file-disjoint tasks (T1, T2, T4, T5, T6, T7); wave 2
-runs the two that must wait — T3 shares `cmd_next.go` with T2, and T8 uses the
-`warnings` contract T2 defines. Waves are computed by takt from `depends_on`;
-the file sets of tasks without an ordering edge are disjoint, which is takt's own
-`plan-disjoint` rule.
+two files. Waves are computed by takt from `depends_on`; the file sets of tasks
+without an ordering edge are disjoint, which is takt's own `plan-disjoint` rule.
+The graph gives three:
+
+- **Wave 1** — T1, T4, T5, T6, T7, T9. Six independent tasks, no shared files.
+- **Wave 2** — T2 alone. It waits on T9 for the `warnings` contract and for
+  `cli.go`'s `keyWarnings`.
+- **Wave 3** — T3 and T8. T3 shares `cmd_next.go` with T2; T8 consumes the
+  contract and is file-disjoint from both.
 
 Every task carries a cheap tripwire verify (a `grep` for a symbol, test name or
 string the task introduces) that fails on the current tree, plus the package
-tests the spec names. The two wave-2 tasks additionally carry the repo-wide
-gates — `go test -race ./...` and `golangci-lint run ./...` — so the assembled
-branch is proven green by the last tasks to touch Go (G13).
+tests the spec names. T3 and T8 also carry the repo-wide gates as fast feedback,
+but what actually proves G13 is `takt verify` at finish: it runs the union of
+every task's verify commands at HEAD (spec §7.5 step 1), on the assembled tree,
+after the last wave has committed. A concurrent pair in the final wave could not
+prove that between themselves, and does not have to.
 
 All fixes were verified against the tree at `bd221d9` during planning: line
 numbers cited in task descriptions are where the code stands today.
@@ -40,10 +46,10 @@ wording, and the tests to add — there is no open design decision.
 
 The largest task, and deliberately so: it owns every file the degradation,
 atomicity and escaping fixes touch, so no other wave-1 task can collide with it.
-Four things land together because they share those files. (1) The `warnings`
-contract: `Warnings []string \`json:"warnings,omitempty"\`` on `op.Op`, a
-`keyWarnings` constant in `cli.go`, and a `warnings` key on `init`'s output map —
-absent when empty, never an error channel, no exit-code change. (2)
+Three things land together because they share those files; the `warnings`
+contract they report through is T9's, which is why this task waits on it. (1)
+`init` and `next` gain a `warnings` key on the output they already print, using
+T9's `keyWarnings`. (2)
 `bundle.WriteFileAtomic(path string, data []byte) error` beside
 `WriteJSONAtomic`, same temp-then-rename shape and permissions, used at the four
 call sites an agent is handed a file from: `writeStableBriefAt` (cmd_next.go:616)
@@ -71,6 +77,9 @@ that slice of #15. Ten files, after the `warnings` contract moved to T9 to make 
 
 ### T9 — the `warnings` contract (#6's and #16's carrier, G4) — `bounded`
 
+*Runs in wave 1, before T2 above and T8 below, both of which consume it. It is
+numbered last because it was split out of T2 after the rest were numbered.*
+
 Split out of T2 once `archive.go` had to join it: T2 would otherwise be thirteen
 files, over the cap. Having one task own the definition is better anyway — T2 and
 T8 are two independent consumers of a wire contract that should be written once.
@@ -79,13 +88,21 @@ constant in `cli.go`, and a test that a clean op's JSON has no `warnings` key. T
 `omitempty` is the load-bearing part: every `takt next` prints an op, so without it
 a clean run's output would change shape.
 
-### G12 is an evidence goal, not an action
+### G12, and where #9's closure happened
 
 G12 — the anchor's fourteen listed issues resolving to eleven fixes, two rulings
 and one closure — is satisfied by artifacts already in the bundle: spec.md's
 "#9 is already fixed" section and its Scope list. No task edits them; T3 greps them
-so the goal fails loudly if that evidence ever leaves the spec. Closing the GitHub
-issue itself is not part of this plan and no task performs it.
+so the goal fails loudly if that evidence ever leaves the spec.
+
+The closure itself is the other half, and it is done. spec.md says #9 "is closed
+as part of this run's bookkeeping, not implemented" — bookkeeping meaning the
+driving session, not the task graph, and the session closed it during planning
+with a comment citing `config.Validate` and
+`TestValidateRejectsNonPositiveDurations`. It is recorded here so the plan does
+not read as though the spec's sentence went unhonoured; no task performs or
+re-performs it, because closing a GitHub issue is outward-facing and does not
+belong in an implementer's diff.
 
 ### T3 — `lock_taken` on an explicit `--force` (#4, #2, G12) — `implement`
 
@@ -186,11 +203,14 @@ fail, and asserts exit 0, intact keys and the named loss.
   a task's verify can transiently observe another task's half-written edit. The
   cost is a spurious verify failure that takt re-attempts; it cannot grade a
   wrong result, because the wave is graded on the committed tree. This is the
-  spec's accepted residual risk, adopted rather than re-mitigated.
-- **T2's size.** Twelve files is the cap. The mitigation is that its four
-  sub-changes are mechanically related (they share the same call sites) and each
-  has its own tripwire verify, so a partial landing is caught by the verify set
-  rather than by review alone.
+  spec's accepted residual risk, adopted rather than re-mitigated. It applies to
+  a task's *own* verify only: the branch-level judgment is `takt verify`'s, which
+  runs after every wave has committed and cannot observe a partial edit.
+- **T2's size.** Ten files, after the `warnings` contract moved to T9 to make
+  room for `archive.go`. Its three sub-changes are not one mechanism — they are
+  grouped because they touch the same files, which is the whole reason for the
+  grouping — so each carries its own tripwire verify and a partial landing is
+  caught by the verify set rather than by review alone.
 - **`task build` in T6's verify.** The verify needs `go-task` on PATH; it is in
   the repository's devShell and `Taskfile.yml` is the repo's own entry point, and
   the spec fixes this verify by a user-confirmed decision. The handshake half is
@@ -204,9 +224,10 @@ fail, and asserts exit 0, intact keys and the named loss.
 
 ## Class justifications (below `implement`)
 
-- **T1, T4, T5, T6 `bounded`** — each is small, confined to files the spec
+- **T1, T4, T5, T6, T9 `bounded`** — each is small, confined to files the spec
   names, and fully specified down to the failure wording (T1), the template
-  line (T4), the signature and caller (T5) and the exact ldflags string (T6);
-  the tests to add are named in the spec or the goals' evidence.
+  line (T4), the signature and caller (T5), the exact ldflags string (T6) and
+  the struct field with its json tag (T9); the tests to add are named in the
+  spec or the goals' evidence.
 - **T7 `test`** — tests against existing code only; the single code change is
   to a helper that itself lives in a `_test.go` file.

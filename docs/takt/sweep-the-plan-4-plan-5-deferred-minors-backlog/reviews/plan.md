@@ -1,10 +1,8 @@
-# Review: plan — rework
+# Review: plan — approve
 
-The executable tasks cover the code changes, but the plan is internally stale, omits #9’s required bookkeeping closure, and lacks a reliable post-join verification gate.
+The plan covers every in-scope requirement with plausible scopes and meaningful verification. Two stale dependency/concurrency statements should be cleaned up but do not block execution.
 
-- **major** plan.md:5 — Task count, ownership, and waves contradict plan.index.json: The narrative declares eight tasks and puts T2 in wave 1, while the index has nine tasks and T2 depends on T9. The actual graph is wave 1: T1/T4/T5/T6/T7/T9; wave 2: T2; wave 3: T3/T8. Lines 43-46 also assign the warnings contract to T2 before lines 69-80 assign it to T9. Update the narrative, risks, and class accounting to match the executable graph.
-- **major** plan.md:87 — The required #9 bookkeeping closure is explicitly dropped: Spec.md says #9 is closed as part of this run’s bookkeeping, but the plan states that closing the GitHub issue is not performed. T3’s grep only proves local prose exists; it cannot perform or verify the closure. Add an explicit bookkeeping task or reconcile the specification before execution.
-- **major** plan.md:16 — Concurrent repo-wide gates do not prove the assembled result: T3 and T8 can execute concurrently in the final wave. Each may run its full tests and lint before the other task’s edits are complete, so neither command necessarily validates the final combined tree. The accepted-risk claim at lines 184-189 is therefore unsound. Add a dependent final verification task or another post-wave gate that runs after both T3 and T8.
-- **nit** plan.md:190 — T2 file-count risk is stale: The risk says T2 has twelve files, while line 69 and plan.index.json declare ten. Correct the count and avoid claiming that all four subchanges share the same call sites.
+- **minor** plan.md:190 — T8 attributes the warnings contract to the wrong task: After splitting the contract into T9, T8 still says it depends on T2 for that contract, and its index dependencies include both T2 and T9. T8 only needs T9; the T2 edge unnecessarily delays it and contradicts T9's ownership.
+- **nit** plan.md:204 — Risk analysis uses the superseded wave layout: The risk names T2 as concurrent with T1 and T7 in wave 1, while the revised graph places T2 alone in wave 2. Update this paragraph to describe the actual concurrency.
 
 _copilot / gpt-5.6-sol_

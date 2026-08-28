@@ -9,6 +9,26 @@
       "detail": "The anchor still says fourteen fixes plus two rulings rather than eleven fixes, two rulings, and one already-fixed closure. G12 explains but does not correct the anchor.",
       "source": "override",
       "ts": "2026-08-28T10:10:31.987380867Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "minor",
+      "file": "plan.md",
+      "line": 190,
+      "title": "T8 attributes the warnings contract to the wrong task",
+      "detail": "After splitting the contract into T9, T8 still says it depends on T2 for that contract, and its index dependencies include both T2 and T9. T8 only needs T9; the T2 edge unnecessarily delays it and contradicts T9's ownership.",
+      "source": "approve",
+      "ts": "2026-08-28T11:34:13.032565056Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "nit",
+      "file": "plan.md",
+      "line": 204,
+      "title": "Risk analysis uses the superseded wave layout",
+      "detail": "The risk names T2 as concurrent with T1 and T7 in wave 1, while the revised graph places T2 alone in wave 2. Update this paragraph to describe the actual concurrency.",
+      "source": "approve",
+      "ts": "2026-08-28T11:34:13.032566301Z"
     }
   ]
 }
