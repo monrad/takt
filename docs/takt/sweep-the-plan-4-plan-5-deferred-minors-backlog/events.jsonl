@@ -76,3 +76,7 @@
 {"ts":"2026-08-28T13:26:17.988232197Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":3,"mode":"consistency","slice":1,"wave":2}}
 {"ts":"2026-08-28T13:26:35.405311974Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":1,"mode":"docs","slice":1,"wave":2}}
 {"ts":"2026-08-28T13:31:50.982404577Z","type":"internal_review_recorded","data":{"attempt":1,"candidates":5,"confirmed":4,"slice":1,"wave":2}}
+{"ts":"2026-08-28T13:36:53.49902198Z","type":"wave_committed","data":{"attempt":1,"sha":"177b2482747b27c62d9c7ede94ec32aedd3193c3","slice":1,"tasks":[3,8],"wave":2}}
+{"ts":"2026-08-28T13:36:53.499052299Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[],"sha":"177b2482747b27c62d9c7ede94ec32aedd3193c3","wave":2}}
+{"ts":"2026-08-28T13:37:03.839609314Z","type":"wave_cleared","data":{"wave":2}}
+{"ts":"2026-08-28T13:37:03.842809821Z","type":"phase","data":{"from":"execute","to":"finish"}}
