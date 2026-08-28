@@ -1,20 +1,13 @@
 {
   "verdict": "rework",
-  "summary": "Two prior findings remain unresolved because revised text retains contradictory or incorrect statements.",
+  "summary": "The blocking `--force` contradiction is resolved, but the anchor miscount remains unchanged.",
   "findings": [
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 0,
-      "title": "`--force` would log non-takeovers",
-      "detail": "The ruling and T3 correctly require a stolen/forced outcome, but the Assumptions table still says to log whenever `r.force` is set. That contradiction could still prescribe false events for free or self-held locks."
-    },
     {
       "severity": "minor",
       "file": "goals.md",
       "line": 5,
       "title": "Anchor miscounts fixes and rulings",
-      "detail": "The anchor still describes fourteen fixes plus two rulings instead of eleven code/doc fixes, two rulings, and one already-fixed closure. G12 explains the arithmetic elsewhere but does not correct the anchor."
+      "detail": "The anchor still says fourteen fixes plus two rulings rather than eleven fixes, two rulings, and one already-fixed closure. G12 explains but does not correct the anchor."
     }
   ],
   "provider": "copilot",
