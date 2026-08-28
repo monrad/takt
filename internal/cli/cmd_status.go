@@ -15,6 +15,7 @@ import (
 	"github.com/monrad/takt/internal/finish"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/goals"
+	"github.com/monrad/takt/internal/wave"
 )
 
 // statusGoal is one goal as shown in status output (spec §11).
@@ -45,6 +46,16 @@ type alignmentDigest struct {
 	Counts      map[string]int `json:"counts"`
 	Contraction []string       `json:"contraction"`
 	Creep       []string       `json:"creep"`
+}
+
+// internalStatus is the wave's internal-review line (two-layers design §5.7).
+type internalStatus struct {
+	LensesRecorded int  `json:"lenses_recorded"`
+	LensesTotal    int  `json:"lenses_total"`
+	Candidates     int  `json:"candidates"`
+	Confirmed      int  `json:"confirmed"`
+	VerifyPending  bool `json:"verify_pending"`
+	Skipped        bool `json:"skipped"`
 }
 
 // finishStatus is the finish-phase block of status (spec §11).
@@ -82,6 +93,7 @@ type statusInfo struct {
 	GoalsFrozen   bool
 	Alignment     *alignmentDigest
 	Finish        *finishStatus
+	Internal      *internalStatus
 }
 
 func cmdStatus(env Env) int {
@@ -139,6 +151,9 @@ func statusDoc(bdir string, st *bundle.State) statusInfo {
 	if st.Phase == bundle.PhaseFinish || st.Phase == bundle.PhaseArchived {
 		info.Finish = statusFinish(bdir, st)
 	}
+	if st.ActiveWave != nil && len(st.Config.Review.Lenses) > 0 {
+		info.Internal = statusInternal(bdir, st)
+	}
 	b, err := os.ReadFile(filepath.Join(bdir, "goals.md"))
 	if err != nil {
 		return info
@@ -190,6 +205,48 @@ func goalVerdicts(g *finish.GoalsRecord) map[string]string {
 		out[v.ID] = v.Verdict
 	}
 	return out
+}
+
+// statusInternal reads the internal review's state for the active dispatch —
+// the same reads gatherInternalFacts does (facts.go) — but read-only and
+// error-tolerant: any read error yields nil, since `takt status` must stay
+// read-only and keep working even on a bundle it cannot fully parse
+// (two-layers design §5.7).
+func statusInternal(bdir string, st *bundle.State) *internalStatus {
+	aw := st.ActiveWave
+	lenses := st.Config.Review.Lenses
+	in := &internalStatus{LensesTotal: len(lenses)}
+	records := map[string]*wave.LensRecord{}
+	for _, l := range lenses {
+		r, err := wave.ReadLensRecord(bdir, aw.N, sliceOf(aw), aw.Attempt, l)
+		if err != nil {
+			return nil
+		}
+		if r != nil {
+			in.LensesRecorded++
+			records[l] = r
+		}
+	}
+	allRecorded := in.LensesRecorded == in.LensesTotal
+	if allRecorded {
+		in.Candidates = len(wave.MergeCandidates(lenses, records))
+	}
+	rec, err := wave.ReadInternalRecord(bdir, aw.N, sliceOf(aw), aw.Attempt)
+	if err != nil {
+		return nil
+	}
+	switch {
+	case rec != nil:
+		in.Confirmed = len(rec.Confirmed)
+	case allRecorded:
+		in.VerifyPending = true
+	}
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		return nil
+	}
+	in.Skipped = internalSkipped(events, aw.N, sliceOf(aw), aw.Attempt)
+	return in
 }
 
 // taskCounts tallies tasks by status (spec §4.3's closed status set).
@@ -334,6 +391,9 @@ func statusJSON(info statusInfo) map[string]any {
 	if info.Finish != nil {
 		doc["finish"] = info.Finish
 	}
+	if info.Internal != nil {
+		doc["internal_review"] = info.Internal
+	}
 	return doc
 }
 
@@ -361,6 +421,9 @@ func renderStatus(info statusInfo) string {
 	if info.ActiveWave != nil {
 		fmt.Fprintf(&b, "active wave: %d (attempt %d, since %s)\n",
 			info.ActiveWave.N, info.ActiveWave.Attempt, info.ActiveWave.StartedAt.Format("15:04:05"))
+	}
+	if info.Internal != nil {
+		fmt.Fprintf(&b, "internal review: %s\n", internalLine(info.Internal))
 	}
 	if info.PendingGate != nil {
 		fmt.Fprintf(&b, "open gate: %s\n", info.PendingGate.ID)
@@ -493,4 +556,20 @@ func alignmentLine(a *alignmentDigest) string {
 		line += fmt.Sprintf(" (creep: %s)", strings.Join(a.Creep, ", "))
 	}
 	return line
+}
+
+// internalLine renders the internal review's one-line state: skipped, still
+// waiting on lenses, waiting on the verifier, or the verified counts
+// (two-layers design §5.7).
+func internalLine(in *internalStatus) string {
+	switch {
+	case in.Skipped:
+		return gateSkipped
+	case in.LensesRecorded < in.LensesTotal:
+		return fmt.Sprintf("%d/%d lenses recorded", in.LensesRecorded, in.LensesTotal)
+	case in.VerifyPending:
+		return fmt.Sprintf("verify pending (%d candidates)", in.Candidates)
+	default:
+		return fmt.Sprintf("%d candidates, %d confirmed", in.Candidates, in.Confirmed)
+	}
 }

@@ -946,7 +946,30 @@ func (r *nextRun) writeRetroInputs() error {
 	if err != nil {
 		return err
 	}
-	return finish.WriteRetroInputs(r.bdir, finish.BuildRetroInputs(r.st, idx, events, closes, v, g, fu.Items))
+	var internals []wave.InternalRecord
+	for _, n := range waveNumbers(r.st.Tasks) {
+		recs, ierr := wave.AllInternalRecords(r.bdir, n)
+		if ierr != nil {
+			return ierr
+		}
+		internals = append(internals, recs...)
+	}
+	return finish.WriteRetroInputs(r.bdir,
+		finish.BuildRetroInputs(r.st, idx, events, closes, v, g, fu.Items, internals))
+}
+
+// waveNumbers is every wave number the run has tasks in, ascending and
+// deduplicated — the wave list readCloses and writeRetroInputs's internal
+// review gathering both walk.
+func waveNumbers(tasks []bundle.Task) []int {
+	var waves []int
+	for _, t := range tasks {
+		if !slices.Contains(waves, t.Wave) {
+			waves = append(waves, t.Wave)
+		}
+	}
+	slices.Sort(waves)
+	return waves
 }
 
 // readCloses collects every slice record of every wave the run has tasks in,
@@ -955,15 +978,8 @@ func (r *nextRun) writeRetroInputs() error {
 // all waived. A sliced wave contributes one record per slice, and the retro
 // wants all of them: each slice graded different tasks.
 func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
-	var waves []int
-	for _, t := range tasks {
-		if !slices.Contains(waves, t.Wave) {
-			waves = append(waves, t.Wave)
-		}
-	}
-	slices.Sort(waves)
-	out := make([]wave.CloseResult, 0, len(waves))
-	for _, n := range waves {
+	out := make([]wave.CloseResult, 0, len(tasks))
+	for _, n := range waveNumbers(tasks) {
 		all, err := wave.AllCloses(bdir, n)
 		if err != nil {
 			return nil, err
