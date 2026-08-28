@@ -248,8 +248,64 @@ func TestRetroInputsInstrumentTheInternalReview(t *testing.T) {
 	if ir.ScopedPasses != 1 || ir.ScopedChanged != 1 {
 		t.Fatalf("scoped = %+v", ir)
 	}
-	if ir.Overlap != 1 { // a.go:4 internal vs a.go:5 backend — within 3 lines
-		t.Fatalf("overlap = %d", ir.Overlap)
+	// The blind pass approved with no findings; the scoped pass that
+	// followed found a.go:5, near the confirmed a.go:4 internal finding —
+	// but the scoped pass graded the very claim being measured, so its
+	// agreement must not count as overlap (two-layers design §9).
+	if ir.Overlap != 0 {
+		t.Fatalf("overlap = %d, want 0 (the blind pass raised nothing)", ir.Overlap)
+	}
+}
+
+// TestRetroInputsOverlapCountsTheBlindPassOwnFinding covers the other
+// direction TestRetroInputsInstrumentTheInternalReview does not: a blind
+// pass that itself raised a finding near a confirmed internal one counts as
+// overlap, even though a scoped pass followed it and landed a finding
+// elsewhere. Together the two tests pin overlapCount to tr.BlindReview, not
+// tr.Review, whenever a scoped pass ran (two-layers design §9).
+func TestRetroInputsOverlapCountsTheBlindPassOwnFinding(t *testing.T) {
+	t.Parallel()
+	st := &bundle.State{Slug: "demo", Topic: "Add a greeting"}
+	idx := plan.Index{}
+	internals := []wave.InternalRecord{{
+		Wave: 0, Slice: 1, Attempt: 1, Lenses: []string{"correctness"},
+		Candidates: []wave.Candidate{
+			{
+				ID:      "c1",
+				Finding: backend.Finding{Severity: "blocking", File: "a.go", Line: 4, Title: "x"},
+				Task:    3,
+				Lenses:  []string{"correctness"},
+			},
+		},
+		Confirmed: []string{"c1"},
+	}}
+	closes := []wave.CloseResult{{Wave: 0, Slice: 1, Attempt: 1, Tasks: []wave.TaskResult{
+		{
+			Task:   3,
+			Status: "done",
+			// Within 3 lines of the confirmed a.go:4 finding.
+			BlindReview: &backend.ReviewResult{Verdict: "approve",
+				Findings: []backend.Finding{{Severity: "major", File: "a.go", Line: 6, Title: "nearby"}}},
+			// The scoped pass's own finding is nowhere near a.go:4 — if
+			// overlapCount read tr.Review instead of tr.BlindReview, this
+			// case would wrongly report 0.
+			Review: &backend.ReviewResult{Verdict: "rework",
+				Findings: []backend.Finding{{Severity: "minor", File: "b.go", Line: 1, Title: "unrelated"}}},
+			Internal: []wave.InternalFinding{
+				{
+					Finding: backend.Finding{Severity: "blocking", File: "a.go", Line: 4, Title: "x"},
+					Lenses:  []string{"correctness"},
+				},
+			},
+		},
+	}}}
+	in := finish.BuildRetroInputs(st, idx, nil, closes, nil, nil, nil, internals)
+	if in.Internal == nil {
+		t.Fatal("no internal review block")
+	}
+	if in.Internal.Overlap != 1 {
+		t.Fatalf("overlap = %d, want 1 (the blind pass's own a.go:6 is within tolerance of a.go:4)",
+			in.Internal.Overlap)
 	}
 }
 

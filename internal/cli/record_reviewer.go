@@ -243,6 +243,15 @@ func recordVerify(env Env, tgt *runTarget, msg string) int {
 		keyWave: aw.N, keySlice: rec.Slice, keyAttempt: rec.Attempt,
 		keyCandidates: len(candidates), keyConfirmed: len(rec.Confirmed),
 	})
+	// Deliberate ordering: the record is written before the unattributed
+	// findings are carried, so a crash in between drops that carry on
+	// replay — the `existing != nil` short-circuit above sees the record and
+	// returns before carryUnattributed runs again. The reverse order would
+	// instead double-carry on replay, which is worse: a dropped carry is a
+	// silent loss recoverable only by noticing it's missing, but a duplicate
+	// follow-up is loud without the run rerunning being reason enough to
+	// review it twice. The clean resolution is follow-up de-duplication
+	// (#44), not an ordering that avoids the crash window entirely.
 	if code := carryUnattributed(env, tgt, &rec); code != 0 {
 		return code
 	}

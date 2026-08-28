@@ -340,3 +340,28 @@ func TestStatusInternalReviewSkipped(t *testing.T) {
 		t.Fatalf("skipped:\n%s", out)
 	}
 }
+
+// TestStatusInternalReviewZeroCandidatesNotVerifyPending covers the state
+// where every lens is recorded but merged to zero candidates: no verifier
+// will ever be dispatched for this attempt (recordVerify refuses "no
+// candidates to verify"), so status must not claim one is pending.
+func TestStatusInternalReviewZeroCandidatesNotVerifyPending(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	writeLensRecord(t, bdir, "correctness", nil)
+	writeLensRecord(t, bdir, "intent", nil)
+	code, got, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	ir, ok := got["internal_review"].(map[string]any)
+	if !ok {
+		t.Fatalf("no internal_review block: %v", got)
+	}
+	if ir["candidates"] != float64(0) || ir["verify_pending"] != false {
+		t.Fatalf("internal_review = %v", ir)
+	}
+	if out := statusText(t, root); !strings.Contains(out, "internal review: 0 candidates, 0 confirmed") {
+		t.Fatalf("zero candidates must not say verify pending:\n%s", out)
+	}
+}

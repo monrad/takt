@@ -379,8 +379,8 @@ type InternalFinding struct {
 
 ### 5.6 Events
 
-Added to base §4.4: `lens_recorded {wave, slice, attempt, lens, findings, dropped}`,
-`lens_ignored {wave, slice, attempt, lens, reason}`, `reviewer_invalid {mode, problems}`,
+Added to base §4.4: `lens_recorded {wave, slice, attempt, mode, findings, dropped}`,
+`lens_ignored {wave, slice, attempt, mode, reason}`, `reviewer_invalid {mode, problems}`,
 `reviewer_attempts_reset`,
 `internal_review_recorded {wave, slice, attempt, candidates, confirmed}`,
 `internal_review_skipped {wave, slice, attempt, reason}`, `review_scoped {wave, task, blind_verdict,

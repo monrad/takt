@@ -59,9 +59,12 @@ type InternalReview struct {
 	// ScopedChanged is how many of those scoped passes landed a different
 	// verdict than the blind pass that preceded them.
 	ScopedChanged int `json:"scoped_changed_verdict"`
-	// Overlap is how many confirmed internal findings the backend's own
-	// grading pass also raised — same file, within a few lines (a
-	// heuristic: overlapLineTolerance).
+	// Overlap is how many confirmed internal findings the backend's blind
+	// pass — the one that never saw the lens candidates — also raised on its
+	// own: same file, within a few lines (a heuristic: overlapLineTolerance).
+	// The scoped pass that can follow it is graded on those very candidates,
+	// so its agreement would be an echo, not independent overlap (two-layers
+	// design §9).
 	Overlap int `json:"overlap"`
 	// Skipped is how many dispatches ran with no internal review at all
 	// (internal_review_skipped events).
@@ -210,14 +213,22 @@ func tallyScopedPass(ir *InternalReview, tr wave.TaskResult) {
 }
 
 // overlapCount is the confirmed internal findings of one task the backend's
-// grading pass also found: same file, within overlapLineTolerance lines.
+// blind pass also found on its own: same file, within overlapLineTolerance
+// lines. When no scoped pass ran, tr.Review is the blind pass; when one did,
+// tr.BlindReview holds it aside and tr.Review became the scoped pass — the
+// backend's adjudication of the very candidates being measured here, so it
+// must not be the one read (two-layers design §9).
 func overlapCount(tr wave.TaskResult) int {
-	if tr.Review == nil {
+	blind := tr.Review
+	if tr.BlindReview != nil {
+		blind = tr.BlindReview
+	}
+	if blind == nil {
 		return 0
 	}
 	n := 0
 	for _, f := range tr.Internal {
-		for _, b := range tr.Review.Findings {
+		for _, b := range blind.Findings {
 			if b.File == f.File && abs(b.Line-f.Line) <= overlapLineTolerance {
 				n++
 				break

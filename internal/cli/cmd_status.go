@@ -238,7 +238,11 @@ func statusInternal(bdir string, st *bundle.State) *internalStatus {
 	switch {
 	case rec != nil:
 		in.Confirmed = len(rec.Confirmed)
-	case allRecorded:
+	case allRecorded && in.Candidates > 0:
+		// Zero merged candidates means `takt next` completes the internal
+		// review without ever dispatching a verifier (record_reviewer.go's
+		// recordVerify refuses "no candidates to verify") — so this must not
+		// claim a verify is pending when none will ever be.
 		in.VerifyPending = true
 	}
 	events, err := bundle.ReadEvents(bdir)
