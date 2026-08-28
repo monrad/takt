@@ -132,7 +132,7 @@
     {
       "id": 5,
       "wave": 0,
-      "status": "pending",
+      "status": "waived",
       "files": [
         "internal/finish/goals.go",
         "internal/finish/goals_test.go",

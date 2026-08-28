@@ -68,3 +68,4 @@
 {"ts":"2026-08-28T20:10:20.21799557Z","type":"wave_closed","data":{"attempt":2,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[4,5,8],"sha":"","wave":0}}
 {"ts":"2026-08-28T20:10:29.22438295Z","type":"gate_opened","data":{"gate":"wave_failures"}}
 {"ts":"2026-08-28T20:13:01.077916451Z","type":"gate_answered","data":{"choice":"waive","gate":"wave_failures"}}
+{"ts":"2026-08-28T20:13:01.102499413Z","type":"task_waived","data":{"reason":"The brief's //nolint:gosec G304 directive is unsatisfiable: gosec does not fire on the resolved path at goals.go:284, and nolintlint (require-explanation, no allow-unused) fails the build on the directive in both placements — verified by the session. Citation validation, tests and lint are green; the reviewer's remaining finding was minor.","task":5}}
