@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "sweep-the-open-issue-backlog-fix-the",
   "topic": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run — #53 (follow-ups.json omitempty drops wave 0), #44 (follow-ups identity/de-dup), #43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json), #23 (retro-inputs review_findings spans gate reviews and every attempt), #25 (wave_timings per dispatched attempt), #33 (status during the plan phase says planned/not materialised and confirmed clauses), #8 (unlock/status --slug hint when the bundle lives on another branch), #24 (goal-assessor citations validated as path:line inside a real file), #36 (PR title and body from the spec and goals rather than --fill), #26 (branch_finish does not recommend a merge it has disabled), #45 and #51 (the two polish checklists, minus the user-directory lens override), #54 (design §4.6 lock_taken wording by holder), #37 (skill invariant: absolute paths, never cd into the bundle), #35 (retro path in the plan doc), #18 (README macOS quarantine note), #49 item 1 (copilot --no-custom-instructions, if the CLI supports it). #34, #27 and #7 are already fixed in commit 4c5026d on this branch.",
-  "phase": "plan",
+  "phase": "execute",
   "created_at": "2026-08-28T14:57:42.802120617Z",
   "branch": "monrad/more-fixes",
   "branch_adopted": true,
@@ -31,10 +31,210 @@
   },
   "goals_hash": "sha256:1f58344cb7fa49aea53663b4c72a2a667efc81d27ae3e6f19439a3f676468f53",
   "gates": {
-    "plan": "pending",
+    "plan": "ok",
     "spec": "ok"
   },
-  "tasks": [],
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/gate/followup.go",
+        "internal/gate/followup_test.go",
+        "internal/cli/record_reviewer.go",
+        "internal/cli/cmd_close_wave.go",
+        "internal/cli/cmd_review.go",
+        "internal/cli/close_internal_test.go",
+        "internal/cli/record_reviewer_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 2,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/gate/gate.go",
+        "internal/decide/decide.go",
+        "internal/decide/questions.go",
+        "internal/decide/decide_test.go",
+        "internal/decide/finish_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/cmd_answer.go",
+        "internal/cli/cmd_answer_retry_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 3,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/doctor/review_record.go",
+        "internal/doctor/doctor.go",
+        "internal/doctor/doctor_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/cli/cmd_status.go",
+        "internal/cli/select.go",
+        "internal/cli/cmd_status_test.go",
+        "internal/cli/cmd_unlock_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 5,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/finish/goals.go",
+        "internal/finish/goals_test.go",
+        "internal/cli/cmd_record.go",
+        "internal/cli/citations_test.go",
+        "internal/brief/templates/goal-assessor.md"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 6,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/brief/brief.go",
+        "internal/brief/brief_test.go",
+        "internal/brief/templates/implementer.md",
+        "internal/brief/templates/review-spec-followup.md",
+        "internal/cli/launch.go",
+        "internal/cli/task_brief_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 7,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/backend/copilot.go",
+        "internal/backend/cli_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 8,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "docs/superpowers/plans/2026-08-26-takt-hardening.md",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+        "README.md"
+      ],
+      "class": "docs",
+      "attempt": 0
+    },
+    {
+      "id": 9,
+      "wave": 2,
+      "status": "pending",
+      "files": [
+        "commands/takt.md",
+        "hosts/copilot/skills/takt/SKILL.md",
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "internal/prompt/prompt_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 10,
+      "wave": 1,
+      "status": "pending",
+      "files": [
+        "internal/gate/gate.go",
+        "internal/cli/cmd_review.go",
+        "internal/cli/cmd_answer.go",
+        "internal/cli/cmd_review_test.go",
+        "internal/cli/cmd_review_failure_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 11,
+      "wave": 1,
+      "status": "pending",
+      "files": [
+        "internal/wave/close.go",
+        "internal/cli/cmd_close_wave.go",
+        "internal/finish/retro.go",
+        "internal/finish/retro_test.go",
+        "internal/brief/templates/run-retro.md",
+        "internal/cli/close_events_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 12,
+      "wave": 1,
+      "status": "pending",
+      "files": [
+        "internal/finish/pr.go",
+        "internal/finish/pr_test.go",
+        "internal/brief/brief.go",
+        "internal/brief/brief_test.go",
+        "internal/brief/templates/run-push_pr.md",
+        "internal/decide/questions.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go",
+        "internal/cli/brief_stable_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 13,
+      "wave": 1,
+      "status": "pending",
+      "files": [
+        "internal/backend/fake.go",
+        "internal/gate/gate_test.go",
+        "internal/cli/oploop_test.go",
+        "internal/cli/close_internal_test.go",
+        "internal/cli/record_reviewer_test.go",
+        "internal/cli/cmd_answer_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 14,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "agents/goal-assessor.md",
+        "agents/implementer.md",
+        "hosts/copilot/agents/takt-goal-assessor.agent.md",
+        "hosts/copilot/agents/takt-implementer.agent.md"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    }
+  ],
   "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
