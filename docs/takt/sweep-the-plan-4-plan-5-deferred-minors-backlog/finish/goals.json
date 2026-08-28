@@ -1,0 +1,136 @@
+{
+  "sha": "944f47b5036970692ea7560d89104388632a36ea",
+  "verdicts": [
+    {
+      "id": "G1",
+      "verdict": "achieved",
+      "evidence": "cmd_version.go detects a literal-empty --expect via fs.Visit and fails with 'the host's handshake names no version' rather than passing; manifestFailure computes ManifestMatches exactly once (single call site, line 142) and is shared by both versionExpect (subject='skill') and versionExpectManifest (subject='plugin'), producing 'does not match skill version' / 'does not match plugin version'. Ran `go test -race -count=1 -run 'TestVersion|TestManifest' ./internal/cli/` — all pass including TestVersionExpectEmptyFailsTheHandshake, TestVersionExpectRefusesAVersionlessExpectation.",
+      "citations": [
+        "internal/cli/cmd_version.go:26-33",
+        "internal/cli/cmd_version.go:75-79",
+        "internal/cli/cmd_version.go:142-149"
+      ]
+    },
+    {
+      "id": "G2",
+      "verdict": "achieved",
+      "evidence": "grep confirms zero os.WriteFile occurrences and bundle.WriteFileAtomic calls at all four sites: cmd_next.go:671,724 (stable brief + slice diff), launch.go:301 (renderTaskBrief), cmd_init.go:364 (writeLogsIgnore). bundle/write.go's WriteFileAtomic writes to a temp file, syncs, closes, then renames. Ran `go test -race -count=1 ./internal/bundle/... ./internal/cli/...` — all pass.",
+      "citations": [
+        "internal/cli/cmd_next.go:671",
+        "internal/cli/cmd_next.go:724",
+        "internal/cli/launch.go:301",
+        "internal/cli/cmd_init.go:364",
+        "internal/bundle/write.go:20-46"
+      ]
+    },
+    {
+      "id": "G3",
+      "verdict": "achieved",
+      "evidence": "internal/gitx/git.go EscapeIgnorePattern escapes backslash first (before *,?,[), matching the doc comment reasoning; EnsureExclude writes rules as given, with the caller (excludeLogsDir) responsible for escaping. Tests TestInitEscapesABackslashBearingBundleDir and TestInitEscapesAGlobBearingBundleDir/TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile cover a docs/[takt] dir and a backslash-bearing dir. Ran `go test -race -count=1 ./internal/cli/... -run 'TestInitEscapesABackslashBearingBundleDir|TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile'` — both pass.",
+      "citations": [
+        "internal/gitx/git.go:372-401",
+        "internal/cli/cmd_init_test.go:644-712"
+      ]
+    },
+    {
+      "id": "G4",
+      "verdict": "achieved",
+      "evidence": "op.Op carries `Warnings []string json:\"warnings,omitempty\"` (internal/op/op.go:89). cmd_init.go and cmd_next.go both append excludeWarning(err) to a `warnings` slice instead of failing, printed under keyWarnings; the rollback path (failInit) is never invoked for the exclude failure. Ran `go test -race -count=1 ./internal/cli/... -run 'TestInitReportsALostExcludeAndRollsNothingBack|TestInitPrintsNoWarningsKeyOnACleanRun|TestNextReportsALostExcludeOnTheOpItPrints|TestNextCarriesALostExcludeOntoTheArchiveStopOp'` — all four pass, confirming exit 0, warning present, rollback unrun, and clean run's op has no warnings key.",
+      "citations": [
+        "internal/op/op.go:83-89",
+        "internal/cli/cmd_init.go:322-328",
+        "internal/cli/cmd_next.go:155-160",
+        "internal/cli/cmd_init_test.go:593-621"
+      ]
+    },
+    {
+      "id": "G5",
+      "verdict": "achieved",
+      "evidence": "cmd_next.go's takeover switch: `case orphaned \u0026\u0026 r.genID \u0026\u0026 !r.force:` records nothing (silent generated-over-generated), while an explicit --force (r.force set only from the CLI flag) always falls into the recorded arms regardless of holder kind. Ran `go test -race -count=1 ./internal/cli/ -run 'TestNext|TestLock'` — TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (forced sibling, records lock_taken with outcome stolen/forced) and TestNextForceWithoutATakeoverAppendsNothing (unforced/no-takeover sibling, appends nothing) both pass.",
+      "citations": [
+        "internal/cli/cmd_next.go:200-211",
+        "internal/cli/cmd_next_test.go:1454-1500",
+        "internal/cli/cmd_next_test.go:1503-1533"
+      ]
+    },
+    {
+      "id": "G6",
+      "verdict": "achieved",
+      "evidence": "Read docs/superpowers/specs/2026-08-24-takt-design.md §4.6: 'one is appended when a **named** session takes over, and whenever a takeover was **explicitly forced** with `--force`, whatever the holder's kind; a generated session quietly taking over a generated holder records nothing... and where nothing was taken from anybody... there is no event.' This states both halves (named-session/explicit-force append; silent generated-over-generated does not) matching the code in G5.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:306-325"
+      ]
+    },
+    {
+      "id": "G7",
+      "verdict": "achieved",
+      "evidence": "endAttemptStreak (internal/cli/facts.go:260) returns error rather than discarding it; all four call sites (cmd_record.go:174,263; record_reviewer.go:134,260) capture it as `lost := endAttemptStreak(...)` and pass it through warnStreakLoss, which appends 'attempt-streak reset not recorded: \u003cerr\u003e' to a warnings key at exit 0 (existing keys like sha/all_achieved/mode preserved). Ran `go test -race -count=1 ./internal/cli/...` — passes, including TestRecordGoalsReportsALostStreakResetAppend, TestRecordAlignmentReportsALostStreakResetAppend, TestRecordLensReportsALostStreakResetAppend, TestRecordVerifyReportsALostStreakResetAppend.",
+      "citations": [
+        "internal/cli/facts.go:260-283",
+        "internal/cli/cmd_record.go:174",
+        "internal/cli/cmd_record.go:263",
+        "internal/cli/record_reviewer.go:134",
+        "internal/cli/record_reviewer.go:260"
+      ]
+    },
+    {
+      "id": "G8",
+      "verdict": "achieved",
+      "evidence": "internal/brief/templates/planner.md:6 now uses `{{quote .Token \"rejection\" (join .Problems \"\\n\")}}` instead of bare-text rendering. brief_test.go:362 extends assertRejectionSection to the planner template. Ran `go test -race -count=1 ./internal/brief/...` — TestPlannerAndReviewBriefs passes.",
+      "citations": [
+        "internal/brief/templates/planner.md:5-6",
+        "internal/brief/brief_test.go:362"
+      ]
+    },
+    {
+      "id": "G9",
+      "verdict": "achieved",
+      "evidence": "RenderCopilotAgent(src, ccName string, ccFile []byte) now takes src and wraps errors with fmt.Errorf(\"%s: %w\", src, err) / includes src in the no-description message; hostgen/main.go's render() passes the real source path through. Ran `go test -race -count=1 ./internal/hosts/... ./internal/tools/hostgen/...` — TestRenderCopilotAgentNamesTheSourcePathItWasGiven and TestRunNamesTheRealSourcePathUnderARoot (a --root case) both pass.",
+      "citations": [
+        "internal/hosts/copilot.go:31-40",
+        "internal/tools/hostgen/main.go:115-122"
+      ]
+    },
+    {
+      "id": "G10",
+      "verdict": "achieved",
+      "evidence": "Taskfile.yml's build task runs `go build ./...` (compile check) then `go build -ldflags \"-X .../version.Version={{.VERSION}}\" -o takt ./cmd/takt` with VERSION from setversion --print. Actually ran: `rm -f takt \u0026\u0026 task build` (exit 0), then `./takt version` printed {\"version\":\"0.1.0\"} matching `go run ./internal/tools/setversion --print` output; `./takt version --expect \"0.1.0\"` exited 0. A plain `go build -o /tmp/takt-local ./cmd/takt` and `go install ./cmd/takt` both reported \"0.0.0-dev\" (unstamped dev version), confirming the local/unstamped-build contrast.",
+      "citations": [
+        "Taskfile.yml:4-14",
+        "internal/version (dev fallback observed via go build)"
+      ]
+    },
+    {
+      "id": "G11",
+      "verdict": "achieved",
+      "evidence": "Confirmed all four gaps pinned: TestAcquireStealBoundaryAndSelfStale (internal/bundle/lock_test.go:47) covers the ttl-boundary steal and held-by-self cases; TestPromptInvariantsReadTheSameOnEveryHost (internal/prompt/prompt_test.go:93) checks cross-host invariant sentences in both commands/takt.md and the Copilot skill; TestQuotedScalarProblemBackslashRuns (internal/prompt/copilot_test.go:273) drives the escape look-back with backslash runs; TestNextDoesNotRewriteAMatchingLogsIgnore (internal/cli/cmd_next_test.go:1792) covers writeLogsIgnore's already-present case. Ran `go test -race -count=1 ./internal/bundle/... ./internal/prompt/...` and `-run TestNextDoesNotRewriteAMatchingLogsIgnore ./internal/cli/...` — all pass.",
+      "citations": [
+        "internal/bundle/lock_test.go:47-84",
+        "internal/prompt/prompt_test.go:93-111",
+        "internal/prompt/copilot_test.go:273-296",
+        "internal/cli/cmd_next_test.go:1785-1830"
+      ]
+    },
+    {
+      "id": "G12",
+      "verdict": "achieved",
+      "evidence": "spec.md's Scope section (lines 15-31) lists exactly thirteen in-scope issues (#1,#2,#3,#4,#5,#6,#10,#11,#12,#13,#14,#15,#16) and a '#9 is already fixed' subsection citing config.Validate (internal/config/config.go:254-256, rejecting lock_ttl/wave_stale_after/verify_timeout) and TestValidateRejectsNonPositiveDurations (internal/config/config_test.go:173-185), both verified to exist and pass. Arithmetic checks out: 14 anchor issues − 1 closed (#9) − 2 rulings (#4, #16) = 11 code-and-doc fixes, matching goals.md's stated 'eleven code-and-doc fixes'.",
+      "citations": [
+        "docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/spec.md:15-31",
+        "internal/config/config.go:254-256",
+        "internal/config/config_test.go:173-185",
+        "docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/goals.md:20"
+      ]
+    },
+    {
+      "id": "G13",
+      "verdict": "achieved",
+      "evidence": "Ran `go test -race ./...` directly — every package ok (or no test files), no failures. Ran `golangci-lint run ./...` directly — '0 issues.', exit 0.",
+      "citations": [
+        "go test -race ./... output: all packages ok",
+        "golangci-lint run ./... output: 0 issues"
+      ]
+    }
+  ],
+  "at": "2026-08-28T13:43:33.871001697Z"
+}
