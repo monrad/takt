@@ -23,3 +23,6 @@
 {"ts":"2026-08-28T17:46:01.059671005Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-28T17:47:02.61617688Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-28T17:53:51.797029165Z","type":"gate_reviewed","data":{"findings":0,"gate":"plan","hash":"sha256:f0d89d5ad1f37ed9993d0bbc87179cbae4d3b1b20320ad7a90b2f6b44a08adc7","provider":"copilot","verdict":"error"}}
+{"ts":"2026-08-28T17:54:00.657933366Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-28T18:00:07.576209233Z","type":"gate_overridden","data":{"gate":"plan","hash":"sha256:f0d89d5ad1f37ed9993d0bbc87179cbae4d3b1b20320ad7a90b2f6b44a08adc7","reason":"The sixth plan pass could not run: the quoted prompt (131,114 bytes: spec.md 30 KB, plan.md 25 KB, plan.index.json 75 KB after five revisions) exceeds Linux's 128 KiB single-argument limit by 42 bytes, so copilot -p failed with 'argument list too long' (#49 item 3, no size cap on quoted artifacts). The fifth pass's two findings were both addressed before this pass: spec §A now states the narrowed write-order guarantee T10 implements, and T1's key test mutates each of the seven identity fields. Overridden by the user at the current hash to start execution."}}
+{"ts":"2026-08-28T18:00:07.589763484Z","type":"gate_answered","data":{"choice":"accept","gate":"gate_review"}}

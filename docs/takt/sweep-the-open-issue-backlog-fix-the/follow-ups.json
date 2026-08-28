@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "gate": "plan",
+      "severity": "blocking",
+      "file": "plan.md",
+      "title": "T10 pins commit-failure behavior opposite to spec section A",
+      "detail": "The spec says any runReview failure leaves the receipt unwritten and the next review re-runs. T10 instead requires a receipt to survive commit failure and the next review to return cached. Revise T10 to remove/rollback the receipt on commit failure, or obtain a spec amendment before execution.",
+      "source": "override",
+      "ts": "2026-08-28T18:00:07.576288815Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "major",
+      "file": "plan.md",
+      "title": "T1 does not verify all seven identity fields",
+      "detail": "TestFollowUpKeyIsInjective only exercises delimiter/quote collisions in file and title. An implementation omitting gate, wave, task, severity, or line could pass all declared tests and collapse unrelated findings. Add table tests mutating each tuple element independently, distinguishing nil wave from wave 0, and proving string trimming normalization.",
+      "source": "override",
+      "ts": "2026-08-28T18:00:07.57628887Z"
+    }
+  ]
+}
