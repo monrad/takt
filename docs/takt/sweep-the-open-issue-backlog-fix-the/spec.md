@@ -18,6 +18,12 @@ subsystems rather than a minors-only sweep, is a fairer second data point.
 only), #49 (item 1 only), #45, #51 (minus the user-directory lens override), #54,
 #37, #35, #18.
 
+The anchor — the topic as `takt init` recorded it — lists seventeen of these. #31's
+smaller win was added during brainstorming at the user's request (Assumptions
+table) and is deliberately not in the anchor; this In list, eighteen issues, is
+the run's authoritative scope, and the alignment audit is expected to report G9 as
+a widening the user asked for.
+
 **Already fixed** on this branch, by hand, before the run started: #34, #27, #7 —
 commit `4c5026d`. Nothing in this run touches them again.
 
@@ -67,8 +73,10 @@ migrated. The retro template's `(gate or wave/task, …)` rendering needs no cha
 wave 0 now has something to render.
 
 **#44 — identity, not a lifecycle.** A follow-up's identity is
-`FollowUp.Key()`: the string `gate|wave|task|severity|file|line|title` with `wave`
-rendered `-` when nil and `title` trimmed. `AppendFollowUps` keeps the read-modify-
+`FollowUp.Key()`: the JSON encoding of the seven-element array
+`[gate, wave, task, severity, file, line, title]` — `wave` as `null` when nil, the
+strings trimmed. JSON encoding escapes the delimiters, so the key is injective: a
+`|` or `"` in a file name or title cannot make two findings share one key. `AppendFollowUps` keeps the read-modify-
 write shape but becomes idempotent: an item whose key is already in the file is not
 appended. One exception is an upgrade, not a duplicate: when the stored item's
 `source` is `approve` and the new one's is `override`, the stored item's `source`
@@ -133,8 +141,11 @@ events predate the key counts those attempts as zero; that is the status quo.
 
 **#25 — one timing per dispatched attempt.** `WaveTiming` gains
 `ClosedAt time.Time` (JSON `closed_at`) and `Committed bool` (JSON `committed`);
-`CommittedAt` becomes `omitempty` and is zero for an attempt that closed without
-committing. `waveTimings` pairs `wave_dispatched` with `wave_closed` by
+`CommittedAt` is tagged `json:"committed_at,omitzero"` — `omitzero`, not
+`omitempty`, since `encoding/json` never omits a zero-valued struct under
+`omitempty` and would write a year-1 timestamp; Go 1.24+ omits a zero `time.Time`
+under `omitzero`, and `go.mod` says 1.26 — so the key is absent for an attempt that
+closed without committing. `waveTimings` pairs `wave_dispatched` with `wave_closed` by
 (wave, slice, attempt) — `wave_closed` now carries `slice`; an event without one is
 floored to 1 as today — and fills `committed`/`committed_at` from the
 `wave_committed` with the same key when there is one. A dispatched attempt with no
@@ -164,14 +175,19 @@ doctor`. Exit stays 1.
 ### E. Goal-assessor citations (#24)
 
 A citation is `<path>:<line>` or `<path>:<start>-<end>`: the path repo-relative
-(spec §4.5 — no leading `/`, no `..` segment), naming a regular file, with
-`1 ≤ start ≤ end ≤` the file's line count. `finish.CheckCitations(vs, root)`
+(spec §4.5 — no leading `/`, no `..` segment) and *contained*: the path joined onto
+the repo root and the root itself are both resolved with `filepath.EvalSymlinks`,
+and the resolved path must lie inside the resolved root — an in-repo symlink that
+resolves to a file outside the repository is rejected as "resolves outside the
+repository" — and must name a regular file, with `1 ≤ start ≤ end ≤` the file's
+line count. `finish.CheckCitations(vs, root)`
 returns one problem per violation — `G1: citation "a.go:99" — line 99 is past the
 end (40 lines)`, `… — not a file`, `… — not path:line or path:start-end` — and
 `readVerdicts` appends them to the problems `ParseVerdicts` returns, so a reply with
 a bad citation is rejected the way any unusable reply is: `{"valid": false,
-"problems": […]}`, a `goals_invalid` event, the assessor re-dispatched with the
-problems quoted, `agent_invalid` at the cap. Nothing is written. An empty
+"problems": […]}`, the assessor re-dispatched with the problems quoted,
+`agent_invalid` at the cap. No goal record is written; the one write is the
+`goals_invalid` event, which is what the attempt cap counts. An empty
 `citations` list stays allowed. The brief (`goal-assessor.md` template) and the
 agent definition (`agents/goal-assessor.md`, regenerated into `hosts/copilot/agents/`
 by `task hosts:gen`) state the grammar and that citations are checked against the
@@ -279,7 +295,7 @@ after: the wave-0 round trip and the de-dup/upgrade rules (`followup_test.go`); 
 write order, the reason on the receipt and event, the hash in the findings file and
 the `review-record` WARN; the retro counts across an errored gate pass and a
 reworked attempt, and a timing for an attempt that did not commit; the two status
-lines in the plan phase; the three hints; each citation failure mode; the PR
+lines in the plan phase; the three hints; each citation failure mode, including a symlink that resolves outside the repository; the PR
 title/body file and the escaped title; the option order with merge blocked; the
 brief with a path and no excerpt; the copilot flag; and the tests #45/#51 list.
 `internal/prompt`'s parity tests cover the two skill files.
@@ -294,14 +310,14 @@ brief with a path and no excerpt; the copilot flag; and the tests #45/#51 list.
 | #31: which half? | The path reference only; `--brief-path` stays deferred. | The smaller win is one template; the convention is a protocol change the issue asks to decide deliberately. | user-confirmed |
 | #43.2: how does a user get past an `error` verdict? | A `retry` choice on `gate_review` for error verdicts; `revise` is not offered there. | Showing the reason next to "revise the spec" would still name the wrong action; retry names the right one and writes nothing. | assumed |
 | #43.3: is the findings-file hash enforced or reported? | Reported: a `review-record` doctor WARN. `priorFindingsForScopedPass` is unchanged. | Its content-first reasoning was argued in the fixed-point design; a WARN makes a mismatch visible without re-litigating it. | assumed |
-| #44: what is a follow-up's identity? | `gate\|wave\|task\|severity\|file\|line\|title`; `approve` → `override` upgrades in place; nothing else is rewritten. | The issue's own shape; the upgrade is the one case where the later source is strictly more decisive. | assumed |
+| #44: what is a follow-up's identity? | The JSON array `[gate, wave, task, severity, file, line, title]`; `approve` → `override` upgrades in place; nothing else is rewritten. | The issue's own tuple, encoded so that it is injective — a delimiter-joined string is not, since file names and titles may contain the delimiter. The upgrade is the one case where the later source is strictly more decisive. | assumed |
 | #44 item 3: reorder `runReview`'s writes? | Yes: findings, carry, event, receipt, commit. | Any failure leaves no receipt, so the next call re-runs instead of returning cached with the carry lost; duplicates are idempotent (carry) or fail-closed (round). | assumed |
 | #44 item 4: assert the session lock in `runReview`/`overrideGate`? | Out of scope. | A separate concern from identity; nothing in this run changes the locking. | assumed |
 | #23: count from events or keep the close-record sum? | Events, with `review_findings` on `wave_closed`; the close record also stores its own count. | The retired attempt's record is deleted at the next close; the event log is the only append-only record of every attempt. | assumed |
 | #23: rename `review_findings`? | Keep it as the total; add `gate_review_findings` and `task_review_findings`. | The retro template already names it; the split says what it counts. | assumed |
 | #25: pair with `wave_closed` or keep only commits? | `wave_closed`, adding `slice` to that event; `committed`/`committed_at` from `wave_committed`. | One entry per dispatched attempt is what the issue asks; a close is what every attempt has. | assumed |
 | #8: detect the branch by name or by `git log --all`? | By name: `takt/<slug>` via `BranchExists`. | One cheap call; `takt init` names the branch it creates exactly so. An adopted branch has no convention to find. | assumed |
-| #24: citation grammar | `path:line` or `path:start-end`, repo-relative, regular file, in range; empty list allowed. | Matches the brief's existing example; no new obligation on `achieved`. | assumed |
+| #24: citation grammar | `path:line` or `path:start-end`, repo-relative, symlink-resolved containment in the repo, regular file, in range; empty list allowed. | Matches the brief's existing example; no new obligation on `achieved`. Lexical checks alone would let an in-repo symlink cite a file outside the tree. | assumed |
 | #36: title fallback and quoting | H1, else the topic's first 72 characters; single-quoted with `'\''`. | H1 is the spec's own name for the change; single quotes are the one shell-safe form for arbitrary text. | assumed |
 | #45's "three review rounds" prose | Nothing to do — not present at `cc0a501`. | Verified by grep over `internal/brief/templates` and `agents/`. | assumed |
 | #45's `eventString` extraction | Left as is. | The issue itself calls it a judgment call; the two loops have different semantics. | assumed |
