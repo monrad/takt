@@ -6,3 +6,5 @@
 {"ts":"2026-08-28T10:04:24.225793954Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-28T10:07:27.404451186Z","type":"goals_frozen","data":{"count":13,"hash":"sha256:636cb351f76d16efcf540357e6202f5b977c65e3a0d87e065f8823871fe2fa41"}}
 {"ts":"2026-08-28T10:07:48.460427323Z","type":"gate_reviewed","data":{"findings":2,"gate":"spec","hash":"sha256:ba5ca5261bdfe8ecf90d7ee36bd90032ed572ca3e6564400d9f3f96e84ae3414","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-28T10:08:10.343837282Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-28T10:08:31.407055834Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
