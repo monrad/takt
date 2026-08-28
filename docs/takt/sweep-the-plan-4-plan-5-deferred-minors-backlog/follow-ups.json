@@ -29,6 +29,64 @@
       "detail": "The risk names T2 as concurrent with T1 and T7 in wave 1, while the revised graph places T2 alone in wave 2. Update this paragraph to describe the actual concurrency.",
       "source": "approve",
       "ts": "2026-08-28T11:34:13.032566301Z"
+    },
+    {
+      "severity": "minor",
+      "file": "CONTRIBUTING.md",
+      "line": 12,
+      "title": "task check's shorthand comment no longer matches what task build does",
+      "detail": "`task check     # go build ./... \u0026\u0026 go test ./... -race -count=1 \u0026\u0026 golangci-lint run ./...` implies `task build`'s contribution to `task check` is a plain `go build ./...`. After this diff, `task build` also shells out to `go run ./internal/tools/setversion --print` and runs a second, stamped `go build -ldflags ... -o takt ./cmd/takt`, producing a `takt` binary in the repo root as a side effect of `task check`. The one-liner was already missing `hosts:check` before this diff, but this diff adds a second, newly-introduced discrepancy (an extra build invocation and a version-lookup subprocess) that a contributor reading only this line would not expect.",
+      "source": "internal",
+      "ts": "2026-08-28T12:15:38.373532535Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1188,
+      "title": "§15 Distribution and versioning omits the new task-build stamping route",
+      "detail": "Task 6 (Taskfile.yml + internal/tools/setversion) gives `task build` a real version stamp: `go run ./internal/tools/setversion --print` reads .claude-plugin/plugin.json and the value is passed via -ldflags into internal/version.Version, so `task build`'s binary now reports the manifest version instead of 0.0.0-dev. §15 is this repo's living, actively-amended reference for every mechanism that stamps or fails to stamp the version (flake.nix, goreleaser, tagged go install) and explicitly frames 'local build' as the unstamped 0.0.0-dev case (also echoed in internal/version/version.go:33-46's Current() doc comment, which lists exactly 'three routes' and states 'a local go build or go test has neither, and reports [Dev]'). The diff adds a fourth stamping mechanism without a matching §15 bullet or an update to that Current() comment, even though this codebase's own convention (stated in docs/superpowers/plans/2026-08-26-takt-hardening.md:19, 'a task that changes behaviour amends the spec section that describes it, in the same commit') and recent history on this branch (commits 'docs: the intro and §10.1 count five agents', 'docs: two review layers in the base design and README') both treat this file as kept in sync with behaviour changes.",
+      "source": "internal",
+      "ts": "2026-08-28T12:15:38.373532702Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_version.go",
+      "line": 137,
+      "task": 1,
+      "title": "`subject` reuses a name that already means something else in this package",
+      "detail": "manifestFailure's new `subject` parameter (and its doc comment at lines 127-130) names the noun a mismatch error uses (\"skill\"/\"plugin\"). internal/cli/cmd_close_wave.go already establishes `subject` to mean the git commit subject line (waveSubject, commitSubjectSoftLimit, cmd_next.go:461-494) throughout the same `cli` package. The overlap is harmless today but a grep for \"subject\" in this package now turns up two unrelated concepts.",
+      "source": "internal",
+      "ts": "2026-08-28T12:17:23.387488147Z"
+    },
+    {
+      "severity": "minor",
+      "file": "Taskfile.yml",
+      "line": 14,
+      "task": 6,
+      "title": "New ldflags stamp has no regression test, unlike its two siblings",
+      "detail": "internal/prompt/dist_test.go already pins flake.nix and .goreleaser.yaml to the identical ldflags target (`internal/version.Version=`) with automated tests (TestFlakeReadsThePluginVersion, TestGoreleaserStampsTheVersion), and TestGoreleaserStampsTheVersion's own comment (internal/prompt/dist_test.go:63-64) says it 'pins the release build to the same ldflags path the flake and the Taskfile use' — treating all three as one synchronized invariant. Task 6 adds the third stamp to Taskfile.yml:14 but no Go test reads Taskfile.yml or asserts its -ldflags target/package path match the other two, so a future typo in the -X path (which go build silently ignores rather than erroring on) would go undetected by `go test ./...`, reproducing the exact silent-0.0.0-dev-stamp class of bug this task fixes.",
+      "source": "internal",
+      "ts": "2026-08-28T12:17:23.400313874Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/tools/setversion/main.go",
+      "line": 1,
+      "task": 6,
+      "title": "Package doc comment doesn't mention the new --print mode",
+      "detail": "The package-level comment (lines 1-9) describes setversion purely as the tool that rewrites the version via `task version:set VERSION=x.y.z`. This diff adds a second, independent mode (`--print`, a read-only path used by `task build`) that is never mentioned in that comment, so a reader running `go doc ./internal/tools/setversion` sees only the rewrite mode's contract, not the read mode's.",
+      "source": "internal",
+      "ts": "2026-08-28T12:17:23.40031406Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/copilot_test.go",
+      "line": 290,
+      "task": 7,
+      "title": "Backslash-run test's boundary case is mislabeled \"zero\" when the actual run is two",
+      "detail": "The case named \"a run at the very start of the body is even (zero)\" uses value `\"\\\\\"b\"` (body `\\\\\"b`), where the backslash run preceding the quote at body index 2 is 2, not 0 — it exercises the loop's j\u003e=0 boundary (the run extends to the start of body) rather than a zero-length run. The assertion itself is correct (byte 3), so this is a naming/comment nit, not a functional gap — but the parenthetical is confusing for a future maintainer reading it as documentation of what's being pinned.",
+      "source": "internal",
+      "ts": "2026-08-28T12:17:23.401421769Z"
     }
   ]
 }

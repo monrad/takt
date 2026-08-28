@@ -350,6 +350,16 @@ func TestRejectionReasonsAreQuotedBackOnTheRetry(t *testing.T) {
 	without := mustRender(t, "goal-assessor", assessor)
 	assessor.Problems = assessorProblems
 	assertRejectionSection(t, "goal-assessor", mustRender(t, "goal-assessor", assessor), without, assessorProblems)
+
+	plannerProblems := []string{`unknown class "urgent"`, `"gofmt" not found on PATH`}
+	planner := brief.PlannerData{
+		Slug: "demo", Topic: "t", SpecText: "S", GoalsText: "G", Schema: "{schema}",
+		RepoRoot: "/r", Token: quoteToken, MaxFiles: 12,
+	}
+	withoutPlanner := mustRender(t, "planner", planner)
+	planner.Problems = plannerProblems
+	planner.Attempt = 2
+	assertRejectionSection(t, "planner", mustRender(t, "planner", planner), withoutPlanner, plannerProblems)
 }
 
 // mustRender renders a template or fails the test.

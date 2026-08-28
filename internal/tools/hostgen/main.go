@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,15 +31,20 @@ func main() {
 	check := flag.Bool("check", false, "report stale files instead of writing them")
 	root := flag.String("root", ".", "repository root")
 	flag.Parse()
-	os.Exit(run(*root, *check))
+	os.Exit(run(*root, *check, os.Stdout, os.Stderr))
 }
 
 // run renders every agents/*.md under root, sweeps the generated files no
 // source claims any more, and returns the process exit code.
-func run(root string, check bool) int {
+//
+// The two streams are parameters rather than [os.Stdout] and [os.Stderr]
+// because what a failure prints is part of hostgen's contract: a render
+// error names the source path this run actually read, resolved under root,
+// and the only way to pin that is to read back what the run wrote.
+func run(root string, check bool, stdout, stderr io.Writer) int {
 	srcs, err := filepath.Glob(filepath.Join(root, "agents", "*.md"))
 	if err != nil || len(srcs) == 0 {
-		fmt.Fprintln(os.Stderr, "hostgen: no agents/*.md under", root)
+		fmt.Fprintln(stderr, "hostgen: no agents/*.md under", root)
 		return exitFailure
 	}
 	dstDir := filepath.Join(root, "hosts", "copilot", "agents")
@@ -48,7 +54,7 @@ func run(root string, check bool) int {
 		name := strings.TrimSuffix(filepath.Base(src), ".md")
 		out, rerr := render(src, name)
 		if rerr != nil {
-			fmt.Fprintln(os.Stderr, "hostgen:", rerr)
+			fmt.Fprintln(stderr, "hostgen:", rerr)
 			return exitFailure
 		}
 		dst := filepath.Join(dstDir, hosts.CopilotAgentName(name)+".agent.md")
@@ -57,19 +63,19 @@ func run(root string, check bool) int {
 			continue
 		}
 		if check {
-			fmt.Fprintln(os.Stderr, "stale:", dst)
+			fmt.Fprintln(stderr, "stale:", dst)
 			stale++
 			continue
 		}
 		if werr := write(dst, out); werr != nil {
-			fmt.Fprintln(os.Stderr, "hostgen:", werr)
+			fmt.Fprintln(stderr, "hostgen:", werr)
 			return exitFailure
 		}
-		fmt.Fprintln(os.Stdout, "wrote", dst)
+		fmt.Fprintln(stdout, "wrote", dst)
 	}
-	orphaned, err := sweepOrphans(dstDir, generated, check)
+	orphaned, err := sweepOrphans(dstDir, generated, check, stdout, stderr)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "hostgen:", err)
+		fmt.Fprintln(stderr, "hostgen:", err)
 		return exitFailure
 	}
 	if stale+orphaned > 0 {
@@ -83,7 +89,7 @@ func run(root string, check bool) int {
 // safe because the directory holds nothing but generated files: the whole of
 // it is rewritten from agents/*.md on every gen, so anything the sweep does
 // not recognise came from a source that has since been renamed or removed.
-func sweepOrphans(dstDir string, generated map[string]bool, check bool) (int, error) {
+func sweepOrphans(dstDir string, generated map[string]bool, check bool, stdout, stderr io.Writer) (int, error) {
 	dsts, err := filepath.Glob(filepath.Join(dstDir, "*.agent.md"))
 	if err != nil {
 		return 0, err
@@ -94,14 +100,14 @@ func sweepOrphans(dstDir string, generated map[string]bool, check bool) (int, er
 			continue
 		}
 		if check {
-			fmt.Fprintln(os.Stderr, "orphaned:", dst)
+			fmt.Fprintln(stderr, "orphaned:", dst)
 			orphaned++
 			continue
 		}
 		if rerr := os.Remove(dst); rerr != nil {
 			return 0, rerr
 		}
-		fmt.Fprintln(os.Stdout, "removed", dst)
+		fmt.Fprintln(stdout, "removed", dst)
 	}
 	return orphaned, nil
 }
@@ -113,7 +119,7 @@ func render(src, name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return hosts.RenderCopilotAgent(name, in)
+	return hosts.RenderCopilotAgent(src, name, in)
 }
 
 // write puts one generated file at dst, creating the host's agents directory

@@ -1,0 +1,26 @@
+{
+  "lens": "tests",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T12:08:46.659467522Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/hosts/copilot_test.go",
+      "line": 46,
+      "title": "The \"no description\" failure branch's src-naming is never tested",
+      "detail": "Task 5 requires both of RenderCopilotAgent's failure messages to name src with one error style. internal/hosts/copilot.go:39 (fmt.Errorf(\"%s: frontmatter has no description\", src)) is the second branch — reached when the frontmatter parses but has no/empty description. No test in this diff (internal/hosts/copilot_test.go, internal/prompt/copilot_test.go, internal/tools/hostgen/main_test.go) constructs input that hits this branch at all; TestRenderCopilotAgentRefusesAFileWithoutFrontmatter only feeds unparseable frontmatter (the first branch, prompt.Frontmatter's own error) and only asserts err != nil, never the message text. TestRunNamesTheRealSourcePathUnderARoot (main_test.go:85) also uses \"no frontmatter here\\n\", hitting the same first branch. The description-less branch's src-naming — half of what #14 changed — has zero coverage, so a regression there (e.g. reverting to the old \"agents/\"+ccName+\".md\" format) would pass every test.",
+      "task": 5
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/copilot_test.go",
+      "line": 290,
+      "title": "Backslash-run test's boundary case is mislabeled \"zero\" when the actual run is two",
+      "detail": "The case named \"a run at the very start of the body is even (zero)\" uses value `\"\\\\\"b\"` (body `\\\\\"b`), where the backslash run preceding the quote at body index 2 is 2, not 0 — it exercises the loop's j\u003e=0 boundary (the run extends to the start of body) rather than a zero-length run. The assertion itself is correct (byte 3), so this is a naming/comment nit, not a functional gap — but the parenthetical is confusing for a future maintainer reading it as documentation of what's being pinned.",
+      "task": 7
+    }
+  ]
+}

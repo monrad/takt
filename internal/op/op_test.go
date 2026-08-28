@@ -39,7 +39,7 @@ func TestOpJSONOmitsUnusedFields(t *testing.T) {
 			t.Errorf("missing %s in %s", want, s)
 		}
 	}
-	for _, absent := range []string{`"gate"`, `"question"`, `"command"`, `"reason"`, `"step"`} {
+	for _, absent := range []string{`"gate"`, `"question"`, `"command"`, `"reason"`, `"step"`, `"warnings"`} {
 		if strings.Contains(s, absent) {
 			t.Errorf("unexpected %s in %s", absent, s)
 		}
@@ -47,6 +47,24 @@ func TestOpJSONOmitsUnusedFields(t *testing.T) {
 	var back op.Op
 	if uerr := json.Unmarshal(b, &back); uerr != nil || back.Wave == nil || *back.Wave != 0 {
 		t.Fatalf("round trip: %v %+v", uerr, back)
+	}
+}
+
+func TestOpJSONWarningsPresentWhenSet(t *testing.T) {
+	t.Parallel()
+	o := op.Op{
+		Op:        op.Stop,
+		Narration: "n",
+		Reason:    "archived",
+		Warnings:  []string{"info/exclude not written: permission denied"},
+	}
+	b, err := json.Marshal(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"warnings":["info/exclude not written: permission denied"]`) {
+		t.Errorf("missing warnings in %s", s)
 	}
 }
 

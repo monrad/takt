@@ -94,7 +94,7 @@ func TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents(t *testing.T) {
 	for _, src := range srcs {
 		name := strings.TrimSuffix(filepath.Base(src), ".md")
 		in, _ := os.ReadFile(src)
-		want, err := hosts.RenderCopilotAgent(name, in)
+		want, err := hosts.RenderCopilotAgent(src, name, in)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -216,6 +216,14 @@ func plainScalarProblem(value string) string {
 // own doubling escape (two apostrophes inside a single-quoted scalar) is
 // legal and refused here all the same: nothing takt generates needs it,
 // and a description that wants an apostrophe can be double-quoted.
+//
+// A double-quoted body escapes its closing quote with a literal backslash,
+// but a backslash is itself escaped by a preceding backslash — so what
+// makes the quote escaped is the *parity* of the run of backslashes right
+// before it, not merely whether the one immediately before it is a
+// backslash. An odd run (…\\\") escapes the quote; an even run (…\\\\")
+// does not, because every backslash in the run pairs off with its
+// neighbour and the quote is unescaped and closes the scalar early.
 func quotedScalarProblem(value string) string {
 	q := value[0]
 	body := value[1 : len(value)-1]
@@ -223,8 +231,14 @@ func quotedScalarProblem(value string) string {
 		if body[i] != q {
 			continue
 		}
-		if q == '"' && i > 0 && body[i-1] == '\\' {
-			continue
+		if q == '"' {
+			run := 0
+			for j := i - 1; j >= 0 && body[j] == '\\'; j-- {
+				run++
+			}
+			if run%2 == 1 {
+				continue
+			}
 		}
 		return "value closes its " + string(q) + " quote early, at byte " +
 			strconv.Itoa(i+1) + ": " + value
@@ -253,5 +267,34 @@ func TestPlainScalarProblem(t *testing.T) {
 		if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
 			t.Errorf("plainScalarProblem(%q) = %q, want %q", c.value, got, c.want)
 		}
+	}
+}
+
+// TestQuotedScalarProblemBackslashRuns drives quotedScalarProblem directly
+// with runs of backslashes in front of a double quote, rather than through
+// plainScalarProblem: a one-byte look-back only ever sees "the byte right
+// before the quote is a backslash" and cannot tell a single escaping
+// backslash from the second half of an escaped backslash, so the case that
+// matters is a *run*, not a single byte. Each value below is a raw string
+// literal, so every backslash in it is a literal byte in the YAML body —
+// none of them are Go escapes.
+func TestQuotedScalarProblemBackslashRuns(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, value, want string
+	}{
+		{"one backslash (odd) escapes the quote", `"a\"b"`, ""},
+		{"two backslashes (even) do not escape the quote", `"a\\"b"`, `value closes its " quote early, at byte 4`},
+		{"three backslashes (odd) escape the quote", `"a\\\"b"`, ""},
+		{"four backslashes (even) do not escape the quote", `"a\\\\"b"`, `value closes its " quote early, at byte 6`},
+		{"a run at the very start of the body is even (zero)", `"\\"b"`, `value closes its " quote early, at byte 3`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := quotedScalarProblem(c.value)
+			if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
+				t.Errorf("quotedScalarProblem(%q) = %q, want %q", c.value, got, c.want)
+			}
+		})
 	}
 }

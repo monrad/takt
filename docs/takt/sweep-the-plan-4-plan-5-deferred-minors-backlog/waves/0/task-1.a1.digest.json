@@ -1,0 +1,9 @@
+{
+  "task": 1,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Fixed the version handshake in internal/cli/cmd_version.go (empty --expect now fails via flag.Visit detection, manifestFailure judges once and returns dev too, and failure text names \"skill\" vs \"plugin\" per flag), with matching test coverage added/extended in cmd_version_test.go; all three verify commands pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T11:54:59.277487064Z"
+}

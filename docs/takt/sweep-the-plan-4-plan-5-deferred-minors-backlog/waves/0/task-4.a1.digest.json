@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Converted the planner brief's rejection list to the shared `{{if .Problems}}...{{quote .Token \"rejection\" ...}}` shape used by the other three templates, and extended `TestRejectionReasonsAreQuotedBackOnTheRetry` to cover the planner via `assertRejectionSection`.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T11:52:48.040341702Z"
+}

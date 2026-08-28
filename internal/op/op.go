@@ -79,4 +79,12 @@ type Op struct {
 	// stop
 	Reason  string   `json:"reason,omitempty"`
 	Cleanup []string `json:"cleanup,omitempty"` // git commands takt could not run itself (spec §7.5)
+
+	// Warnings names optional writes that were lost without failing the
+	// command: each entry is one sentence naming what was not written and
+	// why (e.g. "info/exclude not written: permission denied"). It is
+	// absent when nothing was lost and never appears empty. It is
+	// additive: it never changes an exit code and never carries something
+	// the command could have failed on instead.
+	Warnings []string `json:"warnings,omitempty"`
 }

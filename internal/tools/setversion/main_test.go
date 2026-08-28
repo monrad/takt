@@ -63,7 +63,7 @@ func TestRewritesBothVersionFieldsInBothFiles(t *testing.T) {
 	dir := t.TempDir()
 	setup(t, dir)
 
-	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, dir); code != 0 {
+	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, &strings.Builder{}, dir); code != 0 {
 		t.Fatalf("Run exit = %d", code)
 	}
 
@@ -86,7 +86,7 @@ func TestRewriteIsANoopWhenTheVersionAlreadyMatches(t *testing.T) {
 	setup(t, dir)
 	before, _ := os.ReadFile(filepath.Join(dir, ".claude-plugin", "plugin.json"))
 
-	if code := setversion.Run([]string{"0.1.0"}, &strings.Builder{}, dir); code != 0 {
+	if code := setversion.Run([]string{"0.1.0"}, &strings.Builder{}, &strings.Builder{}, dir); code != 0 {
 		t.Fatal("Run failed")
 	}
 
@@ -107,7 +107,7 @@ func TestRefusesANonSemverArgument(t *testing.T) {
 	var errb strings.Builder
 	for _, bad := range []string{"v0.1.0", "0.1", "0.1.0-rc1", "latest", ""} {
 		errb.Reset()
-		if code := setversion.Run([]string{bad}, &errb, dir); code == 0 {
+		if code := setversion.Run([]string{bad}, &strings.Builder{}, &errb, dir); code == 0 {
 			t.Fatalf("%q: must be refused", bad)
 		}
 		if errb.Len() == 0 {
@@ -130,7 +130,7 @@ func TestRunStampsTheCopilotSkill(t *testing.T) {
 	dir := t.TempDir()
 	setup(t, dir)
 
-	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, dir); code != 0 {
+	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, &strings.Builder{}, dir); code != 0 {
 		t.Fatalf("Run exit = %d", code)
 	}
 
@@ -144,7 +144,7 @@ func TestRunStampsTheCopilotSkill(t *testing.T) {
 	// version:set` is run to confirm a release version as often as to change
 	// one, and a rewrite that drifted a byte per run would show up as a dirty
 	// tree nobody asked for.
-	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, dir); code != 0 {
+	if code := setversion.Run([]string{"0.2.0"}, &strings.Builder{}, &strings.Builder{}, dir); code != 0 {
 		t.Fatalf("second Run exit = %d", code)
 	}
 	for _, rel := range []string{skillPath, filepath.Join(".claude-plugin", "plugin.json"),
@@ -197,4 +197,71 @@ func TestSetVersionRewritesTheSkillHandshake(t *testing.T) {
 	if err := setversion.RewriteExpect(p, "0.4.0"); err == nil {
 		t.Fatal("a skill without the handshake line must be an error")
 	}
+}
+
+// TestPrintPrintsTheManifestVersionAndWritesNothing covers `task build`'s use
+// of --print: it reads the same "version" field the rewrite mode writes and
+// leaves every file — including the manifest it read — untouched, so
+// `task build` can shell it out without dirtying the tree it is building.
+func TestPrintPrintsTheManifestVersionAndWritesNothing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	setup(t, dir)
+	beforePlugin, _ := os.ReadFile(filepath.Join(dir, ".claude-plugin", "plugin.json"))
+	beforeMarketplace, _ := os.ReadFile(filepath.Join(dir, ".claude-plugin", "marketplace.json"))
+	beforeSkill, _ := os.ReadFile(filepath.Join(dir, skillPath))
+
+	var out strings.Builder
+	if code := setversion.Run([]string{"--print"}, &out, &strings.Builder{}, dir); code != 0 {
+		t.Fatalf("Run(--print) exit = %d, stdout = %q", code, out.String())
+	}
+	if got := out.String(); got != "0.1.0\n" {
+		t.Fatalf("Run(--print) stdout = %q, want %q", got, "0.1.0\n")
+	}
+
+	afterPlugin, _ := os.ReadFile(filepath.Join(dir, ".claude-plugin", "plugin.json"))
+	afterMarketplace, _ := os.ReadFile(filepath.Join(dir, ".claude-plugin", "marketplace.json"))
+	afterSkill, _ := os.ReadFile(filepath.Join(dir, skillPath))
+	if string(beforePlugin) != string(afterPlugin) {
+		t.Fatalf("--print rewrote plugin.json:\nbefore: %q\nafter:  %q", beforePlugin, afterPlugin)
+	}
+	if string(beforeMarketplace) != string(afterMarketplace) {
+		t.Fatalf("--print rewrote marketplace.json:\nbefore: %q\nafter:  %q", beforeMarketplace, afterMarketplace)
+	}
+	if string(beforeSkill) != string(afterSkill) {
+		t.Fatalf("--print rewrote the skill:\nbefore: %q\nafter:  %q", beforeSkill, afterSkill)
+	}
+}
+
+// TestPrintFailsOnAMissingOrVersionlessManifest covers --print's two refusal
+// cases: a plugin.json that is not there at all, and one that has no
+// "version" field for versionLine to find — the same failure rewriteVersion
+// would hit, since --print reads with the identical regexp.
+func TestPrintFailsOnAMissingOrVersionlessManifest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing manifest", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		var errb strings.Builder
+		if code := setversion.Run([]string{"--print"}, &strings.Builder{}, &errb, dir); code == 0 {
+			t.Fatal("Run(--print) must fail when plugin.json does not exist")
+		}
+		if errb.Len() == 0 {
+			t.Fatal("Run(--print) must explain the failure")
+		}
+	})
+
+	t.Run("versionless manifest", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		write(t, dir, filepath.Join(".claude-plugin", "plugin.json"), `{"name": "takt"}`)
+		var errb strings.Builder
+		if code := setversion.Run([]string{"--print"}, &strings.Builder{}, &errb, dir); code == 0 {
+			t.Fatal("Run(--print) must fail on a manifest with no \"version\" field")
+		}
+		if errb.Len() == 0 {
+			t.Fatal("Run(--print) must explain the failure")
+		}
+	})
 }

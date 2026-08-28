@@ -1,0 +1,9 @@
+{
+  "task": 9,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added the `warnings` contract — `op.Op.Warnings []string` with `omitempty`, a `keyWarnings` constant in cli.go, and op_test.go coverage for both absent and present cases.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T11:59:31.384092938Z"
+}

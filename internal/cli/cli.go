@@ -73,6 +73,7 @@ const (
 	keyVersion       = "version"
 	keyStep          = "step"
 	keyProvider      = "provider"
+	keyWarnings      = "warnings"
 )
 
 // state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`

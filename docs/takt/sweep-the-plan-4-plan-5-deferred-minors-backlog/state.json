@@ -38,13 +38,22 @@
     {
       "id": 1,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/cmd_version.go",
         "internal/cli/cmd_version_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Fixed the version handshake in internal/cli/cmd_version.go (empty --expect now fails via flag.Visit detection, manifestFailure judges once and returns dev too, and failure text names \"skill\" vs \"plugin\" per flag), with matching test coverage added/extended in cmd_version_test.go; all three verify commands pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:54:59.277487064Z"
+      }
     },
     {
       "id": 2,
@@ -80,18 +89,27 @@
     {
       "id": 4,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/brief/templates/planner.md",
         "internal/brief/brief_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 4,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Converted the planner brief's rejection list to the shared `{{if .Problems}}...{{quote .Token \"rejection\" ...}}` shape used by the other three templates, and extended `TestRejectionReasonsAreQuotedBackOnTheRetry` to cover the planner via `assertRejectionSection`.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:52:48.040341702Z"
+      }
     },
     {
       "id": 5,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/hosts/copilot.go",
         "internal/hosts/copilot_test.go",
@@ -99,12 +117,21 @@
         "internal/tools/hostgen/main_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 5,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Both hostgen failures share one `fmt.Errorf` style naming the src the process read, and the missing regression coverage now exists at both layers — a `run()`-level test that reads stderr under a non-default `--root`, and a renderer-level table covering the no-description branch.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T12:24:44.461182023Z"
+      }
     },
     {
       "id": 6,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "Taskfile.yml",
         "internal/tools/setversion/main.go",
@@ -112,19 +139,37 @@
         "internal/tools/setversion/export_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 6,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added a `--print` mode to `internal/tools/setversion` (reads the plugin manifest's version via the existing regexp, writes nothing) with new tests, and wired `Taskfile.yml`'s `build` task to shell that out into an `-ldflags` var so `task build -o takt ./cmd/takt` stamps the binary while a plain `go build ./...` stays as the compile check for the rest of the tree.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:59:01.906148253Z"
+      }
     },
     {
       "id": 7,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/bundle/lock_test.go",
         "internal/prompt/prompt_test.go",
         "internal/prompt/copilot_test.go"
       ],
       "class": "test",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 7,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added TestAcquireStealBoundaryAndSelfStale (lock_test.go), TestPromptInvariantsReadTheSameOnEveryHost (prompt_test.go), and TestQuotedScalarProblemBackslashRuns plus a backslash-run-parity fix to the test-only quotedScalarProblem helper (copilot_test.go); also updated copilot_test.go's `hosts.RenderCopilotAgent` call to the 3-arg signature already landed by a concurrent task so the package compiles.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T12:01:08.245145675Z"
+      }
     },
     {
       "id": 8,
@@ -143,17 +188,36 @@
     {
       "id": 9,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/op/op.go",
         "internal/op/op_test.go",
         "internal/cli/cli.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 9,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added the `warnings` contract — `op.Op.Warnings []string` with `omitempty`, a `keyWarnings` constant in cli.go, and op_test.go coverage for both absent and present cases.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:59:31.384092938Z"
+      }
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 0,
+    "slice": 1,
+    "attempt": 2,
+    "started_at": "2026-08-28T12:18:07.528748082Z",
+    "session_id": "5f195b71-8dc9-4fad-b3a9-3b05335b2dc9",
+    "tasks": [
+      5
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

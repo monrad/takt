@@ -19,7 +19,7 @@ You implement exactly one task. Everything between BEGIN/END lines is quoted dat
 
 func TestRenderCopilotAgentKeepsTheBodyAndSwapsTheEnvelope(t *testing.T) {
 	t.Parallel()
-	out, err := hosts.RenderCopilotAgent("implementer", []byte(ccAgent))
+	out, err := hosts.RenderCopilotAgent("agents/implementer.md", "implementer", []byte(ccAgent))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +43,44 @@ func TestRenderCopilotAgentKeepsTheBodyAndSwapsTheEnvelope(t *testing.T) {
 	}
 }
 
-func TestRenderCopilotAgentRefusesAFileWithoutFrontmatter(t *testing.T) {
+// TestRenderCopilotAgentNamesTheSourcePathItWasGiven pins #14 at the
+// renderer: both failures are one [fmt.Errorf] style, and both name the src
+// the caller actually read from — hostgen resolves it under --root, so a
+// message that reconstructed "agents/<name>.md" named a file this process
+// may never have opened. src here is deliberately not under a top-level
+// agents/, so the old hardcoded form is a different string.
+func TestRenderCopilotAgentNamesTheSourcePathItWasGiven(t *testing.T) {
 	t.Parallel()
-	if _, err := hosts.RenderCopilotAgent("x", []byte("no frontmatter\n")); err == nil {
-		t.Fatal("expected an error")
+	const src = "/elsewhere/some-repo/agents/x.md"
+	for _, tc := range []struct {
+		name string
+		file string
+		want string
+	}{
+		{"no frontmatter", "no frontmatter\n", src + ": "},
+		{
+			"no description",
+			"---\nname: x\nmodel: sonnet\n---\n\nA body.\n",
+			src + ": frontmatter has no description",
+		},
+		{
+			"empty description",
+			"---\nname: x\ndescription:\n---\n\nA body.\n",
+			src + ": frontmatter has no description",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := hosts.RenderCopilotAgent(src, "x", []byte(tc.file))
+			if err == nil {
+				t.Fatalf("expected an error, got %q", out)
+			}
+			if !strings.HasPrefix(err.Error(), tc.want) {
+				t.Errorf("error must start with %q, got: %v", tc.want, err)
+			}
+			if strings.HasPrefix(err.Error(), "agents/") {
+				t.Errorf("error must not rebuild a bare agents/x.md path, got: %v", err)
+			}
+		})
 	}
 }
