@@ -17,3 +17,5 @@
 {"ts":"2026-08-28T17:25:50.350598414Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-28T17:27:42.17902237Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-28T17:36:14.532984248Z","type":"gate_reviewed","data":{"findings":2,"gate":"plan","hash":"sha256:65338427ba54738753fd79342e3ee3b0ed0ada9d8689701464762a2ad4e32254","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-28T17:36:19.265011512Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-28T17:36:59.968277683Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
