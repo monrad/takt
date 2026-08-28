@@ -120,14 +120,18 @@ Linux it is one odd file name that still contains the forbidden segment, on Wind
 real traversal — while a contained file named `..foo.go` is fine); symlink-resolved containment
 (`filepath.EvalSymlinks` on both the joined path and the root; the resolved path is outside when
 `filepath.Rel` is exactly `..` or starts with `..` followed by the path separator — a plain
-prefix test would wrongly reject `..foo.go`); regular file; `1 ≤ start ≤ end ≤` line count —
-and `readVerdicts` appends them to `ParseVerdicts`'s problems so a bad citation is rejected like
-any unusable reply: no record, one `goals_invalid` event. The brief template states the grammar
-and that citations are checked; the agent definition is T14's. The CLI rejection test builds
-one fresh fixture per malformed citation (subtests), so no run ever approaches the
-three-rejection cap that would turn the next `next` into an `agent_invalid` ask — each case
-asserts exactly one `goals_invalid` and the assessor re-dispatched with the problem quoted. The
-test file is new so `finish_test.go` stays free for T12. Five files.
+prefix test would wrongly reject `..foo.go`); regular file; `1 ≤ start ≤ end ≤` line count.
+`readVerdicts` runs it once `ParseVerdicts` has accepted the verdicts, exactly as the amended
+spec §E says: `ParseVerdicts` returns a single error and no verdicts when the list is unusable,
+so such a reply is rejected on that problem alone, and citation problems are reported for a
+reply whose verdicts parse — either way the reply is rejected like any unusable one: no record,
+one `goals_invalid` event. The brief template states the grammar and that citations are
+checked; the agent definition is T14's. The CLI rejection test builds one fresh fixture per
+malformed citation (subtests), so no run ever approaches the three-rejection cap that would
+turn the next `next` into an `agent_invalid` ask — each case asserts exactly one `goals_invalid`
+and the assessor re-dispatched with the problem quoted — and one case carries both a bad
+verdict word and a bad citation, asserting the reply is rejected on the verdict problem alone.
+The test file is new so `finish_test.go` stays free for T12. Five files.
 
 ### T6 — the task brief names the spec by path; brief-package polish (#31, #45 brief items) — `implement`
 
@@ -170,25 +174,32 @@ files.
 ### T10 — `runReview`'s write order, the reason on receipt and event, hash and round on the findings file (#44 item 3, #43.1–3 writer half, #45 review items) — `implement`
 
 Depends on T1 (owns `cmd_review.go`'s `renderFindings` and the idempotent carry the reorder
-relies on) and T2 (`Receipt.Reason`, `GateStatus.Reason`, the `retry` answer). `runReview`
-writes findings → carry (on approve) → `gate_reviewed` event (now checked; exits 1 on failure)
-→ receipt → commit. The guarantee is stated precisely, in the plan and in the function's
-comment, because it has two halves: any failure *before* `WriteReceipt` leaves no receipt, so
-the next `takt review` re-runs the pass instead of returning `cachedReceipt` with the carry
-lost (a retry re-carries idempotently and may count one extra round — fail-closed); a failure
-*at the commit*, after the receipt, leaves the receipt on disk uncommitted, which the next takt
-command's `commitBundle` — it stages the whole bundle directory — sweeps up, so nothing is
-lost and the next `takt review` correctly returns the cached receipt. Both halves are tested:
-the event append is made to fail (read-only `events.jsonl`) and the commit is made to fail
-(`.git/index.lock`). The receipt carries `Reason: res.Reason`; the event carries `reason` when
-non-empty. `reviews/<gate>.json` gains `hash` and `round` (`gate.Rounds` before the pass, plus
-one); `readReviewResult` returns them; `priorFindingsForScopedPass` is unchanged.
-`writeResultJSON` drops its `MkdirAll` (with T1's change, `cmd_review.go` then holds exactly
-one — `preserveEvidence`'s), and every verdict comparison uses `gate.Verdict*`. The
-`overrideGate` comment is rewritten for the idempotent carry. Four files — every new test goes
+relies on) and T2 (`Receipt.Reason`, `GateStatus.Reason`, the `retry` answer; and `gate.go`,
+which this task extends with `RemoveReceipt`). `runReview` writes findings → carry (on approve)
+→ `gate_reviewed` event (now checked; exits 1 on failure) → receipt → commit. The guarantee is
+stated precisely, in the plan and in the function's comment, because it has two halves: any
+failure *before* `WriteReceipt` leaves no receipt, so the next `takt review` re-runs the pass
+instead of returning `cachedReceipt` with the carry lost (a retry re-carries idempotently and
+may count one extra round — fail-closed); a failure *at the commit*, after the receipt, leaves
+the receipt on disk uncommitted, which the next takt command's `commitBundle` — it stages the
+whole bundle directory — sweeps up, so nothing is lost and the next `takt review` correctly
+returns the cached receipt. The first half must also hold for `--force`, which the plan review
+caught: a forced pass runs against a receipt that already answers at the hash, so a failure
+before its own receipt would otherwise leave the *old* one for the next unforced call to return.
+So a forced pass removes `gates/<gate>.json` — whatever hash it is at — immediately before the
+backend is called (`gate.RemoveReceipt`, not-exist ignored), and from that point the guarantee
+reads the same as for any pass. All three shapes are tested: the event append made to fail
+(read-only `events.jsonl`) on a plain pass and on a forced pass over a good receipt, and the
+commit made to fail (`.git/index.lock`). The receipt carries `Reason: res.Reason`; the event
+carries `reason` when non-empty. `reviews/<gate>.json` gains `hash` and `round` (`gate.Rounds`
+before the pass, plus one); `readReviewResult` returns them; `priorFindingsForScopedPass` is
+unchanged. `writeResultJSON` drops its `MkdirAll` (with T1's change, `cmd_review.go` then holds
+exactly one — `preserveEvidence`'s), and every verdict comparison uses `gate.Verdict*`. The
+`overrideGate` comment is rewritten for the idempotent carry. Five files — every new test goes
 into the new `cmd_review_failure_test.go`, and no existing test in `cmd_next_test.go` needs a
 change (the extra `hash`/`round` keys are ignored by the `backend.ReviewResult` decode
-`TestAnErroredPassKeepsThePreviousFindings` uses). Carries the repo-wide gates.
+`TestAnErroredPassKeepsThePreviousFindings` uses; `TestReviewIsIdempotentAtAHash`'s forced
+re-run still commits a fresh receipt). Carries the repo-wide gates.
 
 ### T11 — retro inputs: count every review once, one timing per dispatched attempt (#23, #25, #45 fixture) — `implement`
 
@@ -267,9 +278,11 @@ repository-wide gates the spec names. Four files.
   alternative — folding it into T12 — would put T12 at the twelve-file cap.
 - **Failure injection in T10's tests** relies on two seams: a read-only `events.jsonl`
   refusing `O_APPEND` (the seam the existing streak-loss tests use), which does not hold as
-  root — that test skips when `os.Geteuid() == 0` — and a `.git/index.lock` file, which makes
-  `git add` refuse and holds on every platform.
-- **T5's rejection test costs one full scripted run per malformed citation** (seven fixtures,
+  root — those tests skip when `os.Geteuid() == 0` — and a `.git/index.lock` file, which makes
+  `git add` refuse and holds on every platform. A forced pass that fails after removing the old
+  receipt leaves the gate open with no receipt at all, which is the designed outcome: the next
+  `takt next` execs the review again, exactly as for a run that was never reviewed.
+- **T5's rejection test costs one full scripted run per malformed citation** (eight fixtures,
   parallel subtests). That is the price of never approaching the attempt cap; the finish tests
   already build one run each, so the cost is in line with the suite.
 - **`wave_closed` becomes load-bearing for timings.** Bundles whose `wave_closed` events

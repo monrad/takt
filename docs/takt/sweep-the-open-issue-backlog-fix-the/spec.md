@@ -183,8 +183,11 @@ repository" — and must name a regular file, with `1 ≤ start ≤ end ≤` the
 line count. `finish.CheckCitations(vs, root)`
 returns one problem per violation — `G1: citation "a.go:99" — line 99 is past the
 end (40 lines)`, `… — not a file`, `… — not path:line or path:start-end` — and
-`readVerdicts` appends them to the problems `ParseVerdicts` returns, so a reply with
-a bad citation is rejected the way any unusable reply is: `{"valid": false,
+`readVerdicts` runs it once `ParseVerdicts` has accepted the verdicts — that
+function returns a single error and no verdicts when the list itself is unusable, so
+a reply that fails it is rejected on that problem alone, and citation problems are
+reported for a reply whose verdicts parse — so a reply with a bad citation is
+rejected the way any unusable reply is: `{"valid": false,
 "problems": […]}`, the assessor re-dispatched with the problems quoted,
 `agent_invalid` at the cap. No goal record is written; the one write is the
 `goals_invalid` event, which is what the attempt cap counts. An empty
