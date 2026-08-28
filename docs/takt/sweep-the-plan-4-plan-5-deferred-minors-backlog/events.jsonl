@@ -9,3 +9,6 @@
 {"ts":"2026-08-28T10:08:10.343837282Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-28T10:08:31.407055834Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-28T10:09:18.319419999Z","type":"gate_reviewed","data":{"findings":1,"gate":"spec","hash":"sha256:34d0be5232d1a3da9f6a08eeb150628730de1b13e64273fc507aaad621b5bee5","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-28T10:09:31.017902779Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-28T10:10:31.987277347Z","type":"gate_overridden","data":{"gate":"spec","hash":"sha256:34d0be5232d1a3da9f6a08eeb150628730de1b13e64273fc507aaad621b5bee5","reason":"Declined, third time raised: the anchor is state.json's topic and takt's goals step requires it copied verbatim, because the alignment auditor judges drift against the request as made. Correcting the user's arithmetic in the anchor would audit the run against text the user never wrote. The corrected arithmetic — eleven code-and-doc fixes, two rulings (#4, #16), one closure (#9) — lives in G12 and in the spec's Scope section, and the decline is recorded in the Assumptions table."}}
+{"ts":"2026-08-28T10:10:32.013499823Z","type":"gate_answered","data":{"choice":"accept","gate":"gate_review"}}

@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "gate": "spec",
+      "severity": "minor",
+      "file": "goals.md",
+      "line": 5,
+      "title": "Anchor miscounts fixes and rulings",
+      "detail": "The anchor still says fourteen fixes plus two rulings rather than eleven fixes, two rulings, and one already-fixed closure. G12 explains but does not correct the anchor.",
+      "source": "override",
+      "ts": "2026-08-28T10:10:31.987380867Z"
+    }
+  ]
+}
