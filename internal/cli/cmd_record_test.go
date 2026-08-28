@@ -270,7 +270,7 @@ const streakGoals = "# Goals — demo\n\n## Anchor\n```text\nadd a greeting\n```
 // write and correctly fails the command — a different contract from the
 // bookkeeping reset these tests are about.
 const streakVerdicts = "```json\n" +
-	`[{"id":"G1","verdict":"missed","evidence":"nothing greets yet","citations":["a.go:1"]}]` +
+	`[{"id":"G1","verdict":"missed","evidence":"nothing greets yet","citations":["README.md:1"]}]` +
 	"\n```\n"
 
 // streakClauses is an alignment reply takt can use.
