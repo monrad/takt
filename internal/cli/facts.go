@@ -68,6 +68,8 @@ func gatherFacts(
 	f.AlignmentProblems = lastProblems(events, evAlignmentInvalid, evAlignmentReset)
 	f.GoalsAttempts = countSinceReset(events, evGoalsInvalid, evGoalsReset)
 	f.GoalsProblems = lastProblems(events, evGoalsInvalid, evGoalsReset)
+	f.ReviewerAttempts = countSinceReset(events, evReviewerInvalid, evReviewerReset)
+	f.ReviewerProblems = lastProblems(events, evReviewerInvalid, evReviewerReset)
 	if err = gatherGateFacts(&f, bdir, st, events); err != nil {
 		return f, err
 	}
@@ -84,7 +86,7 @@ func gatherFacts(
 			return f, err
 		}
 	}
-	err = gatherWaveFacts(&f, bdir, st)
+	err = gatherWaveFacts(&f, bdir, st, events)
 	return f, err
 }
 
@@ -142,8 +144,9 @@ func gatherGateFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 }
 
 // gatherWaveFacts records which of the active wave's tasks have a digest for
-// the current attempt, and its close record when one was written.
-func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State) error {
+// the current attempt, its close record when one was written, and the
+// internal review's state for the dispatch.
+func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State, events []bundle.Event) error {
 	aw := st.ActiveWave
 	if aw == nil {
 		return nil
@@ -163,7 +166,61 @@ func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State) error {
 			Rework: c.Rework, ReviewErrors: c.ReviewErrors,
 		}
 	}
+	f.Wave.Internal = gatherInternalFacts(bdir, st, aw, events)
 	return nil
+}
+
+// gatherInternalFacts reads the internal review's state for the active
+// dispatch (two-layers design §4.1). Candidates is computed through the
+// same wave.MergeCandidates every other consumer uses, so decide, the
+// verify brief and close-wave can never disagree about the list.
+func gatherInternalFacts(
+	bdir string, st *bundle.State, aw *bundle.ActiveWave, events []bundle.Event,
+) decide.InternalFacts {
+	in := decide.InternalFacts{
+		Lenses: st.Config.Review.Lenses, Recorded: map[string]bool{},
+	}
+	if len(in.Lenses) == 0 {
+		return in
+	}
+	for _, id := range aw.Tasks {
+		if d, _, _ := latestDigest(bdir, aw.N, id, aw.Attempt); d != nil && d.Status == bundle.StatusDone {
+			in.HasDoneDigest = true
+			break
+		}
+	}
+	records := map[string]*wave.LensRecord{}
+	all := true
+	for _, l := range in.Lenses {
+		r, err := wave.ReadLensRecord(bdir, aw.N, sliceOf(aw), aw.Attempt, l)
+		if err != nil || r == nil {
+			all = false
+			continue
+		}
+		in.Recorded[l] = true
+		records[l] = r
+	}
+	if all {
+		in.Candidates = len(wave.MergeCandidates(in.Lenses, records))
+	}
+	if r, err := wave.ReadInternalRecord(bdir, aw.N, sliceOf(aw), aw.Attempt); err == nil && r != nil {
+		in.VerifyRecorded = true
+	}
+	in.Skipped = internalSkipped(events, aw.N, sliceOf(aw), aw.Attempt)
+	return in
+}
+
+// internalSkipped reports an internal_review_skipped event for exactly this
+// dispatch.
+func internalSkipped(events []bundle.Event, waveN, slice, attempt int) bool {
+	for _, e := range events {
+		if e.Type == "internal_review_skipped" &&
+			toInt(e.Data[keyWave]) == waveN && toInt(e.Data[keySlice]) == slice &&
+			toInt(e.Data[keyAttempt]) == attempt {
+			return true
+		}
+	}
+	return false
 }
 
 // countSinceReset counts events of type typ since the last reset event.

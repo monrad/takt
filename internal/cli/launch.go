@@ -77,6 +77,8 @@ func readDigest(bdir string, waveN, task, attempt int) (*digest, error) {
 // attempt it was found at, or nil, 0 when the task has none. A task recorded
 // in an earlier attempt of the same wave still closes with the wave, which
 // is what makes recovery re-dispatch only the tasks that never reported.
+//
+//nolint:unparam // the attempt it was found at is the documented second result; no caller needs it yet
 func latestDigest(bdir string, waveN, task, maxAttempt int) (*digest, int, error) {
 	for a := maxAttempt; a >= 1; a-- {
 		d, err := readDigest(bdir, waveN, task, a)
