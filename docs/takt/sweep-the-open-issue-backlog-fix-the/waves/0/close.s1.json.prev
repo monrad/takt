@@ -277,7 +277,7 @@
     {
       "task": 4,
       "status": "rework",
-      "reason": "The implementation otherwise matches the task, but it does not fully guarantee the explicit never-bare alignment invariant.",
+      "reason": "The main behavior is implemented, but the promised never-bare alignment line still has a reachable failure case.",
       "files_changed": [
         "internal/cli/cmd_status.go",
         "internal/cli/cmd_status_test.go",
@@ -331,27 +331,27 @@
           "command": "go test -race -count=1 -run 'TestStatus|TestUnlock' ./internal/cli/",
           "exit": 0,
           "passed": true,
-          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.462s",
-          "elapsed_ms": 1729
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.465s",
+          "elapsed_ms": 1687
         },
         {
           "command": "golangci-lint run ./internal/cli/...",
           "exit": 0,
           "passed": true,
           "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
-          "elapsed_ms": 366
+          "elapsed_ms": 363
         }
       ],
       "review": {
         "verdict": "rework",
-        "summary": "The implementation otherwise matches the task, but it does not fully guarantee the explicit never-bare alignment invariant.",
+        "summary": "The main behavior is implemented, but the promised never-bare alignment line still has a reachable failure case.",
         "findings": [
           {
             "severity": "major",
             "file": "internal/cli/cmd_status.go",
             "line": 604,
-            "title": "Unknown verdict values still produce a bare alignment label",
-            "detail": "VerdictsPresent becomes true for any non-empty verdict array, while alignmentLine renders only the five recognized verdict strings. applyVerdicts currently accepts non-empty arrays without validating Verdict values, so an auditor response containing only an unknown or empty verdict reaches this branch and renders \"alignment: \". Validate verdict values when recording them or make alignmentStatusLine provide a non-empty fallback when no recognized counts, contraction, or creep text is produced; add a regression test for this accepted input."
+            "title": "Unknown recorded verdicts can still produce a bare alignment label",
+            "detail": "When VerdictsPresent is true, alignmentStatusLine delegates directly to alignmentLine. That function only renders the five known verdict names, so a non-empty verdict list containing an unrecognized value returns an empty string and renderStatus prints `alignment: ` bare. This is reachable through the normal recorder because applyVerdicts currently accepts arbitrary verdict strings. Add a non-empty fallback or validate/represent unknown verdicts, and cover this case with a test."
           }
         ],
         "provider": "copilot",
@@ -774,13 +774,11 @@
   "out_of_scope": null,
   "reverted": null,
   "committed": false,
-  "closed_at": "2026-08-28T20:07:24.348831968Z",
+  "closed_at": "2026-08-28T20:13:09.638117503Z",
   "failed": [],
   "blocked": [],
   "rework": [
-    4,
-    5,
-    8
+    4
   ],
   "review_errors": []
 }

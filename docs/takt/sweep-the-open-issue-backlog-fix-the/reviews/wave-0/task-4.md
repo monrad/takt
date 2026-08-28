@@ -1,8 +1,8 @@
 # Review: sweep-the-open-issue-backlog-fix-the task 4 — rework
 
-The implementation otherwise matches the task, but it does not fully guarantee the explicit never-bare alignment invariant.
+The main behavior is implemented, but the promised never-bare alignment line still has a reachable failure case.
 
-- **major** internal/cli/cmd_status.go:604 — Unknown verdict values still produce a bare alignment label: VerdictsPresent becomes true for any non-empty verdict array, while alignmentLine renders only the five recognized verdict strings. applyVerdicts currently accepts non-empty arrays without validating Verdict values, so an auditor response containing only an unknown or empty verdict reaches this branch and renders "alignment: ". Validate verdict values when recording them or make alignmentStatusLine provide a non-empty fallback when no recognized counts, contraction, or creep text is produced; add a regression test for this accepted input.
+- **major** internal/cli/cmd_status.go:604 — Unknown recorded verdicts can still produce a bare alignment label: When VerdictsPresent is true, alignmentStatusLine delegates directly to alignmentLine. That function only renders the five known verdict names, so a non-empty verdict list containing an unrecognized value returns an empty string and renderStatus prints `alignment: ` bare. This is reachable through the normal recorder because applyVerdicts currently accepts arbitrary verdict strings. Add a non-empty fallback or validate/represent unknown verdicts, and cover this case with a test.
 
 _copilot / gpt-5.6-sol_
 
