@@ -66,6 +66,12 @@ type Receipt struct {
 	Verdict  string   `json:"verdict"`
 	Reviewer Reviewer `json:"reviewer"`
 	Findings string   `json:"findings"`
+	// Reason is the backend's account of why a review could not be taken: it
+	// is set only on an error verdict, and is what the gate_review question
+	// shows instead of a summary nobody wrote. Absent on a reviewer's answer
+	// (an approve, rework or reject all carry findings instead) and on
+	// receipts written before this field existed, which read as "".
+	Reason string `json:"reason,omitempty"`
 	// Severities tallies the review's findings by severity. Counts only, not
 	// the findings themselves, so a gate decision never has to open a second
 	// file. Absent on receipts written before this field existed, which read
@@ -86,6 +92,10 @@ type Status struct {
 	// spec gate or re-arms it for a scoped confirming pass, and it decides
 	// which of the two revise option texts the user is shown.
 	Blocking bool
+	// Reason is the receipt's Reason when a receipt answers at the current
+	// hash, "" otherwise. It travels to the gate_review question so an error
+	// verdict can say what went wrong.
+	Reason string
 }
 
 // Artifacts lists the files a gate hashes, in order.
@@ -219,6 +229,7 @@ func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	}
 	if r != nil && r.Hash == cur {
 		st.Blocking = r.Severities["blocking"] > 0
+		st.Reason = r.Reason
 		switch {
 		case r.Skipped != nil:
 			st.Satisfied, st.Verdict = true, "skipped"

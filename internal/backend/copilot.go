@@ -15,11 +15,15 @@ func (c *copilotReviewer) Healthy(ctx context.Context) error { return healthyBin
 
 // copilotArgs builds the copilot invocation. Deliberately no --allow-* flags:
 // in non-interactive mode any tool needing permission is denied, which makes
-// the reviewer read-only by construction.
+// the reviewer read-only by construction. --no-custom-instructions is passed
+// so the cross-vendor reviewer never reads the project's custom instructions
+// (e.g. CLAUDE.md-style files) that the implementer followed — otherwise its
+// judgement would no longer be independent of the code under review.
 func copilotArgs(req ReviewRequest) []string {
 	return []string{
 		nameCopilot, "-p", req.Prompt, "--silent", "--output-format", "text",
 		"--model", req.Model, "--effort", req.Effort, "-C", req.RepoRoot, "--add-dir", req.RepoRoot,
+		"--no-custom-instructions",
 	}
 }
 

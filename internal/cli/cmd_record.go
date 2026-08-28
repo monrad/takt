@@ -126,7 +126,7 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 	if code := finishPhaseOnly(env, tgt.st, "record --agent goal-assessor"); code != 0 {
 		return code
 	}
-	vs, problems, code := readVerdicts(env, tgt.bdir, from)
+	vs, problems, code := readVerdicts(env, tgt.bdir, tgt.ws.Repo.Root, from)
 	if code != 0 {
 		return code
 	}
@@ -178,9 +178,17 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 }
 
 // readVerdicts pulls the JSON block out of the assessor's message and
-// validates it against the run's frozen goal ids. It returns the verdicts,
-// the problems that make the message unusable, and an exit code — and only
-// one of the three is ever non-zero.
+// validates it against the run's frozen goal ids and, once the verdicts
+// themselves parse, against the tree at root. It returns the verdicts, the
+// problems that make the message unusable, and an exit code — and only one
+// of the three is ever non-zero.
+//
+// The two checks are ordered, not merged: [finish.ParseVerdicts] reports a
+// single error and returns no verdicts when the list is unusable — an
+// unknown or duplicated id, a verdict that is not a word, empty evidence, a
+// goal with no verdict at all — so such a reply is rejected on that one
+// problem, and there are no verdicts left to check citations against. Only a
+// list that parsed has citations worth resolving (spec §E).
 //
 // What the agent got wrong is a problem list, not a failure: spec §5.1 has
 // `record --agent` report validation errors instead of failing, which is the
@@ -190,7 +198,7 @@ func recordGoals(ctx context.Context, env Env, tgt *runTarget, from string) int 
 // mis-wired session, and a goals.md this run cannot read or parse is a
 // broken bundle — neither is the assessor's doing, and both exit 1 as spec
 // §13 asks.
-func readVerdicts(env Env, bdir, from string) ([]finish.GoalVerdict, []string, int) {
+func readVerdicts(env Env, bdir, root, from string) ([]finish.GoalVerdict, []string, int) {
 	raw, err := os.ReadFile(from)
 	if err != nil {
 		return nil, nil, fail(env.Stderr, exitError, err.Error(), "")
@@ -210,6 +218,9 @@ func readVerdicts(env Env, bdir, from string) ([]finish.GoalVerdict, []string, i
 	vs, err := finish.ParseVerdicts(js, g.IDs())
 	if err != nil {
 		return nil, []string{err.Error()}, 0
+	}
+	if problems := finish.CheckCitations(vs, root); len(problems) > 0 {
+		return nil, problems, 0
 	}
 	return vs, nil, 0
 }

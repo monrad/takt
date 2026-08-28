@@ -75,8 +75,10 @@ const sessionCheckName = "session"
 // Default is the check set every `takt doctor` run applies unless a caller
 // narrows it (plan 1 shipped state-schema and plan-disjoint; plan 2 adds the
 // liveness, staleness and branch checks of spec §11; plan 3 adds the
-// repo-wide index-lock check).
-var Default = []Check{StateSchema, PlanDisjoint, StaleWave, IndexStaleness, Branch, IndexLock}
+// repo-wide index-lock check; the open-issue sweep adds review-record, which
+// WARNs when a gate's findings file was written at a different hash than its
+// receipt (#43.3)).
+var Default = []Check{StateSchema, PlanDisjoint, StaleWave, IndexStaleness, ReviewRecord, Branch, IndexLock}
 
 // Options parameterises a doctor run: the clock and thresholds the
 // liveness/staleness checks judge against, the branch context, and how a

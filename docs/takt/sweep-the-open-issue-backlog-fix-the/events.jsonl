@@ -73,3 +73,12 @@
 {"ts":"2026-08-28T20:14:18.174712515Z","type":"wave_closed","data":{"attempt":2,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[4],"sha":"","wave":0}}
 {"ts":"2026-08-28T20:14:23.107984732Z","type":"gate_opened","data":{"gate":"wave_failures"}}
 {"ts":"2026-08-28T20:14:52.845033914Z","type":"gate_answered","data":{"choice":"retry","gate":"wave_failures"}}
+{"ts":"2026-08-28T20:14:52.872789739Z","type":"wave_dispatched","data":{"attempt":3,"slice":1,"tasks":[4],"wave":0}}
+{"ts":"2026-08-28T20:22:07.893613662Z","type":"task_recorded","data":{"attempt":3,"status":"done","task":4}}
+{"ts":"2026-08-28T20:25:14.732761434Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":0}}
+{"ts":"2026-08-28T20:25:48.495976324Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":0}}
+{"ts":"2026-08-28T20:26:24.710380754Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":0}}
+{"ts":"2026-08-28T20:26:43.975752978Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"docs","slice":1,"wave":0}}
+{"ts":"2026-08-28T20:26:53.435652384Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":1,"mode":"tests","slice":1,"wave":0}}
+{"ts":"2026-08-28T20:28:30.949818946Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":1,"mode":"consistency","slice":1,"wave":0}}
+{"ts":"2026-08-28T20:31:49.42760563Z","type":"internal_review_recorded","data":{"attempt":3,"candidates":2,"confirmed":2,"slice":1,"wave":0}}

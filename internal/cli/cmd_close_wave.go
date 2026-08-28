@@ -732,7 +732,7 @@ func reviewOne(
 }
 
 // writeTaskFindings renders one task's review findings as markdown for a
-// human: writeFindings' familiar "# Review" section for the pass a reader
+// human: renderFindings' familiar "# Review" section for the pass a reader
 // still wants to see in full — tr.Review normally, or tr.BlindReview when a
 // scoped pass replaced it — plus, when a scoped pass ran, a "## Scoped pass"
 // section naming the confirmed claims it was asked about and the verdict
@@ -741,19 +741,19 @@ func reviewOne(
 // Unlike the scoped pass's own prompt (design D6), this file is not
 // adversarial input a prompt-injection can reach, so naming the lens here is
 // safe. The plain case — no scoped pass, no confirmed findings — is
-// byte-for-byte what writeFindings alone produces (today's behaviour).
+// byte-for-byte what writeFindings alone produces.
+//
+// The whole document is built first and written once, atomically: an
+// earlier version wrote the review section and then re-opened the file to
+// append the rest, which left a half-written file behind on any failure
+// between the two (#51).
 func writeTaskFindings(path, title string, tr *wave.TaskResult) error {
 	display := tr.Review
 	if tr.BlindReview != nil {
 		display = tr.BlindReview
 	}
-	if err := writeFindings(path, title, *display); err != nil {
-		return err
-	}
-	if tr.BlindReview == nil && len(tr.Internal) == 0 {
-		return nil
-	}
 	var b strings.Builder
+	b.WriteString(renderFindings(title, *display))
 	if tr.BlindReview != nil {
 		b.WriteString("\n## Scoped pass\n\nConfirmed claims put to the scoped pass:\n")
 		for _, f := range tr.Internal {
@@ -768,13 +768,7 @@ func writeTaskFindings(path, title string, tr *wave.TaskResult) error {
 				strings.Join(f.Lenses, ","), f.Severity, f.File, f.Line, f.Title, f.Detail)
 		}
 	}
-	fh, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = fh.Close() }()
-	_, err = fh.WriteString(b.String())
-	return err
+	return bundle.WriteFileAtomic(path, []byte(b.String()))
 }
 
 // hasBlockingInternal reports whether any confirmed lens finding for the
@@ -843,7 +837,7 @@ func carryInternalOnly(bdir string, waveN int, tr *wave.TaskResult) error {
 	for _, f := range tr.Internal {
 		items = append(items, gate.FollowUp{
 			Severity: f.Severity, File: f.File, Line: f.Line, Title: f.Title, Detail: f.Detail,
-			Source: gate.SourceInternal, Wave: waveN, Task: tr.Task, TS: timeNow(),
+			Source: gate.SourceInternal, Wave: new(waveN), Task: tr.Task, TS: timeNow(),
 		})
 	}
 	return gate.AppendFollowUps(bdir, items...)
@@ -860,7 +854,7 @@ func carryTaskFindings(bdir string, waveN int, tr *wave.TaskResult) error {
 	for _, f := range tr.Review.Findings {
 		items = append(items, gate.FollowUp{
 			Severity: f.Severity, File: f.File, Line: f.Line, Title: f.Title, Detail: f.Detail,
-			Source: gate.SourceApprove, Wave: waveN, Task: tr.Task, TS: timeNow(),
+			Source: gate.SourceApprove, Wave: new(waveN), Task: tr.Task, TS: timeNow(),
 		})
 	}
 	return gate.AppendFollowUps(bdir, items...)

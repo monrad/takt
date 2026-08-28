@@ -128,7 +128,7 @@ func assertApproveFollowUps(t *testing.T, bdir string, wantInternal, wantApprove
 	items := followUps(t, bdir)
 	var sawInternal, sawApprove bool
 	for _, f := range items {
-		if f.Wave != 0 || f.Task != 3 {
+		if f.Wave == nil || *f.Wave != 0 || f.Task != 3 {
 			t.Fatalf("follow-up missing wave/task: %+v", f)
 		}
 		switch f.Source {

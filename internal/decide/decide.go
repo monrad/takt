@@ -40,11 +40,15 @@ const (
 	planGate = "plan"
 )
 
-// verdictRework is gate.VerdictRework spelled here rather than imported:
-// decide performs no I/O and must not depend on internal/gate, so the one
-// verdict whose meaning this package has to branch on travels as the same
-// string literal the ask context already carries.
-const verdictRework = "rework"
+// verdictRework and verdictError are gate.VerdictRework and
+// gate.VerdictError spelled here rather than imported: decide performs no
+// I/O and must not depend on internal/gate, so the two verdicts whose
+// meaning this package has to branch on travel as the same string literals
+// the ask context already carries.
+const (
+	verdictRework = "rework"
+	verdictError  = "error"
+)
 
 // ids normalises a nil id list to an empty one. A gate's context is
 // persisted as the pending gate's payload and re-rendered from it verbatim
@@ -87,6 +91,10 @@ type GateStatus struct {
 	// closes the gate and one that buys a scoped confirming pass — so the
 	// question has to say which the user is getting.
 	Blocking bool
+	// Reason is the backend's account of an error receipt — why no review
+	// was taken — and "" for every other verdict. The gate_review question
+	// shows it, because an errored pass has no summary and no findings.
+	Reason string
 }
 
 // AlignmentFacts summarises alignment.json. ClauseCount is how many clauses
@@ -276,6 +284,7 @@ func decideBrainstorm(st *bundle.State, f Facts) Decision {
 					"verdict":  f.SpecGate.Verdict,
 					"summary":  "see reviews/spec.md",
 					"blocking": f.SpecGate.Blocking,
+					"reason":   f.SpecGate.Reason,
 				},
 			)
 		}
@@ -313,6 +322,7 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 					"verdict":  f.PlanGate.Verdict,
 					"summary":  "see reviews/plan.md",
 					"blocking": f.PlanGate.Blocking,
+					"reason":   f.PlanGate.Reason,
 				},
 			)
 		}

@@ -798,11 +798,12 @@ func TestAgentInvalidQuestionOffersSkipOnlyForTheAuditor(t *testing.T) {
 // TestGateReviewTellsTheUserWhatReviseWillActuallyDo: the revise option's
 // text has to match what revising does, not what it did before the
 // fixed-point design. Only a non-blocking *rework* on the spec gate gets the
-// new wording — every other row of the design's §3 table keeps promising the
+// new wording — every other row a reviewer answered keeps promising the
 // re-review it still performs, because acceptRevision writes the closing
-// event for none of them. reject and error are the two the severity alone
-// cannot tell apart: an error result carries no findings, so it reads as
-// "nothing blocking" while still taking the old loop.
+// event for none of them. reject is the one the severity alone cannot tell
+// apart from that rework: it can find nothing blocking and still take the
+// old loop. The error row is not here at all — it offers no revise, and
+// TestQuestionGateReviewOnAnErrorOffersRetryNotRevise covers it.
 func TestGateReviewTellsTheUserWhatReviseWillActuallyDo(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -815,7 +816,6 @@ func TestGateReviewTellsTheUserWhatReviseWillActuallyDo(t *testing.T) {
 		{"spec rework, nothing blocking", "spec", "rework", false, "closes on the edit"},
 		{"spec rework, blocking", "spec", "rework", true, "re-arms"},
 		{"spec reject, nothing blocking", "spec", "reject", false, "re-arms"},
-		{"spec error carries no findings", "spec", "error", false, "re-arms"},
 		{"plan is unchanged", "plan", "rework", false, "re-arms"},
 	}
 	for _, c := range cases {
@@ -839,6 +839,92 @@ func TestGateReviewTellsTheUserWhatReviseWillActuallyDo(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestQuestionGateReviewOnAnErrorOffersRetryNotRevise: an error verdict is a
+// backend failure, not a review. reviews/spec.md was left alone and still
+// describes the previous pass, so there are no new findings to revise
+// against; the question says what went wrong and offers the one action that
+// can produce a verdict (#43.2).
+func TestQuestionGateReviewOnAnErrorOffersRetryNotRevise(t *testing.T) {
+	t.Parallel()
+	q := decide.Question("gate_review", map[string]any{
+		"slug": "demo", "gate": "spec", "verdict": "error", "blocking": false,
+		"summary": "see reviews/spec.md", "reason": "backend fell over",
+	})
+	for _, want := range []string{
+		"errored: backend fell over",
+		"reviews/spec.md still describes the previous pass",
+	} {
+		if !strings.Contains(q.Question, want) {
+			t.Fatalf("question = %q, want it to mention %q", q.Question, want)
+		}
+	}
+	var choices []string
+	for _, o := range q.Options {
+		choices = append(choices, o.Choice)
+		if o.Choice == "revise" {
+			t.Fatalf("an errored pass has nothing to revise against: %+v", q.Options)
+		}
+	}
+	if !slices.Equal(choices, []string{"retry", "accept", "stop"}) {
+		t.Fatalf("options = %v, want retry, accept, stop in that order", choices)
+	}
+	if !strings.HasSuffix(q.Options[0].Label, "(Recommended)") {
+		t.Fatalf("the recommendation must be the first option: %+v", q.Options[0])
+	}
+	for _, o := range q.Options[1:] {
+		if strings.Contains(o.Label, "(Recommended)") {
+			t.Fatalf("exactly one option may be recommended: %+v", q.Options)
+		}
+	}
+	if !strings.Contains(q.Options[0].Description, "takt review spec --slug demo") {
+		t.Fatalf("retry must name the command that re-runs the review: %q", q.Options[0].Description)
+	}
+	// A receipt written before the reason field existed carries none, and
+	// the question still has to read as an account of what happened.
+	q = decide.Question("gate_review", map[string]any{
+		"slug": "demo", "gate": "spec", "verdict": "error", "summary": "see reviews/spec.md",
+	})
+	if !strings.Contains(q.Question, "(no reason recorded)") {
+		t.Fatalf("a reasonless error must still say so: %q", q.Question)
+	}
+}
+
+// TestTheGateReviewAskCarriesTheReceiptsReason: the reason travels from the
+// receipt (gatherGateFacts copies it into GateStatus) through the ask
+// context to the question. Without this hop the error row would render
+// "(no reason recorded)" for every failure the backend did explain.
+func TestTheGateReviewAskCarriesTheReceiptsReason(t *testing.T) {
+	t.Parallel()
+	t.Run("spec", func(t *testing.T) {
+		t.Parallel()
+		f := facts()
+		f.HasSpec, f.HasGoals, f.GoalsFrozen = true, true, true
+		f.SpecGate = decide.GateStatus{Verdict: "error", Reason: "x"}
+		d := mustDecide(t, state(bundle.PhaseBrainstorm), f)
+		if d.Action != decide.ActAsk || d.Op.Gate != "gate_review" {
+			t.Fatalf("%+v", d)
+		}
+		if d.Op.Context["reason"] != "x" {
+			t.Fatalf("the question must carry the receipt's reason: %+v", d.Op.Context)
+		}
+	})
+	t.Run("plan", func(t *testing.T) {
+		t.Parallel()
+		f := facts()
+		f.HasSpec, f.HasGoals, f.GoalsFrozen = true, true, true
+		f.SpecGate = decide.GateStatus{Satisfied: true}
+		f.HasIndex, f.IndexValid = true, true
+		f.PlanGate = decide.GateStatus{Verdict: "error", Reason: "x"}
+		d := mustDecide(t, state(bundle.PhasePlan), f)
+		if d.Action != decide.ActAsk || d.Op.Gate != "gate_review" {
+			t.Fatalf("%+v", d)
+		}
+		if d.Op.Context["reason"] != "x" {
+			t.Fatalf("the question must carry the receipt's reason: %+v", d.Op.Context)
+		}
+	})
 }
 
 // TestBrainstormPassesBlockingToTheGateReviewQuestion: decideBrainstorm must

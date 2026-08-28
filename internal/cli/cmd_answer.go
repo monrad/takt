@@ -116,6 +116,13 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 // review found nothing blocking, so the edit closes the gate rather than
 // re-arming it — and accept records an evidenced override at the current
 // hash (spec §9, fixed-point design §4).
+//
+// retry — offered only on an error verdict, where no review was taken —
+// writes nothing at all: the caller clears the gate and commits, and the
+// session runs the named `takt review` before its next `takt next`, exactly
+// as the op table requires when an option's text names work. If it does not,
+// the same gate comes back, because the error receipt still answers at the
+// current hash; nothing has been lost either way.
 func answerGateReview(bdir string, st *bundle.State, choice, reason string) (bool, error) {
 	which := pendingGateName(st)
 	switch choice {
@@ -123,6 +130,8 @@ func answerGateReview(bdir string, st *bundle.State, choice, reason string) (boo
 		return false, acceptRevision(bdir, which)
 	case "accept":
 		return false, overrideGate(bdir, which, reason)
+	case choiceRetry:
+		return false, nil
 	case choiceStop:
 		return true, nil
 	}

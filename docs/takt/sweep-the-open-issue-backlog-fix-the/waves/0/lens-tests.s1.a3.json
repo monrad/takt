@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 3,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T20:26:53.43493645Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_status.go",
+      "line": 178,
+      "title": "plannedTasks' materialised-tasks branch is never verified",
+      "detail": "plannedTasks(bdir, st) short-circuits to 0 when len(st.Tasks) \u003e 0 (cmd_status.go:178-180), which is exactly the state a normal run is in once it leaves the plan phase (plan.index.json is never deleted after materialiseTasks, so it still sits on disk in execute/finish phase). No test in this diff or pre-existing exercises this branch with an assertion on the tasks/planned output: the new TestStatusPlanPhaseSaysPlannedAndConfirmedClauses only covers the plan-phase case (st.Tasks empty, index present, planned=4); the pre-existing reviewerRun fixture (record_reviewer_test.go:23-49) does set st.Tasks non-empty alongside a real plan.index.json and is used by status tests such as TestStatusInternalReviewSkipped/TestStatusInternalReviewZeroCandidatesNotVerifyPending, but those tests never assert on the 'tasks' or 'planned' fields — so they exercise the line without verifying it. If the early return were dropped (e.g. plannedTasks always parsed the index and returned len(idx.Tasks) whenever it succeeded), every execute/finish-phase status call for a run whose plan.index.json is still on disk would wrongly report 'N planned (not yet materialised)' instead of real task counts, and no test would fail.",
+      "task": 4
+    }
+  ]
+}

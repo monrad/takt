@@ -368,7 +368,8 @@ func TestRecordVerifyWritesInternalRecordAndCarriesUnattributed(t *testing.T) {
 		t.Fatalf("exactly one unattributed follow-up expected, got %d: %+v", len(fups.Items), fups.Items)
 	}
 	item := fups.Items[0]
-	if item.Source != gate.SourceInternal || item.Wave != 0 || item.Task != 0 || item.Title != "t2" {
+	if item.Source != gate.SourceInternal || item.Wave == nil || *item.Wave != 0 ||
+		item.Task != 0 || item.Title != "t2" {
 		t.Fatalf("follow-up = %+v", item)
 	}
 	if !hasEventOfType(t, bdir, "internal_review_recorded") {

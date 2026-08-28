@@ -1,7 +1,7 @@
 {
   "wave": 0,
   "slice": 1,
-  "attempt": 2,
+  "attempt": 3,
   "tasks": [
     {
       "task": 1,
@@ -276,8 +276,7 @@
     },
     {
       "task": 4,
-      "status": "rework",
-      "reason": "The main behavior is implemented, but the promised never-bare alignment line still has a reachable failure case.",
+      "status": "done",
       "files_changed": [
         "internal/cli/cmd_status.go",
         "internal/cli/cmd_status_test.go",
@@ -331,41 +330,43 @@
           "command": "go test -race -count=1 -run 'TestStatus|TestUnlock' ./internal/cli/",
           "exit": 0,
           "passed": true,
-          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.465s",
-          "elapsed_ms": 1687
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.447s",
+          "elapsed_ms": 1657
         },
         {
           "command": "golangci-lint run ./internal/cli/...",
           "exit": 0,
           "passed": true,
-          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
-          "elapsed_ms": 363
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 375
         }
       ],
       "review": {
-        "verdict": "rework",
-        "summary": "The main behavior is implemented, but the promised never-bare alignment line still has a reachable failure case.",
-        "findings": [
-          {
-            "severity": "major",
-            "file": "internal/cli/cmd_status.go",
-            "line": 604,
-            "title": "Unknown recorded verdicts can still produce a bare alignment label",
-            "detail": "When VerdictsPresent is true, alignmentStatusLine delegates directly to alignmentLine. That function only renders the five known verdict names, so a non-empty verdict list containing an unrecognized value returns an empty string and renderStatus prints `alignment: ` bare. This is reachable through the normal recorder because applyVerdicts currently accepts arbitrary verdict strings. Add a non-empty fallback or validate/represent unknown verdicts, and cover this case with a test."
-          }
-        ],
+        "verdict": "approve",
+        "summary": "The change implements the planned task, alignment, and bundle-hint behavior as specified, with appropriate coverage and no material correctness, scope, or security issues found.",
+        "findings": [],
         "provider": "copilot",
         "model": "gpt-5.6-sol"
       },
       "internal": [
         {
           "severity": "major",
-          "file": "internal/cli/select.go",
-          "line": 119,
-          "title": "Dead defensive nil-check on ws.Repo",
-          "detail": "bundleHint's `if ws.Repo != nil { ... }` guard is unreachable: its only caller, openTarget (select.go:100-102), only reaches bundleHint after openWorkspace (select.go:92) has already succeeded, and openWorkspace (workspace.go:29-44) only returns a non-nil *workspace when gitx.Open succeeded — gitx.Open (internal/gitx/git.go:31-37) returns either (nil, error) or (\u0026Repo{...}, nil), never (nil, nil), and openWorkspace propagates any Open error before constructing the workspace. So ws.Repo is provably non-nil on every path that reaches bundleHint; the branch can never take the false side. This is a dead fallback (rubric item 4) introduced by this diff's new bundleHint helper — it silently guards against a condition that cannot occur instead of trusting (or asserting) the invariant, adding a branch with no real effect and no test can ever exercise the false side.",
+          "file": "internal/cli/cmd_status.go",
+          "line": 178,
+          "title": "plannedTasks' materialised-tasks branch is never verified",
+          "detail": "plannedTasks(bdir, st) short-circuits to 0 when len(st.Tasks) \u003e 0 (cmd_status.go:178-180), which is exactly the state a normal run is in once it leaves the plan phase (plan.index.json is never deleted after materialiseTasks, so it still sits on disk in execute/finish phase). No test in this diff or pre-existing exercises this branch with an assertion on the tasks/planned output: the new TestStatusPlanPhaseSaysPlannedAndConfirmedClauses only covers the plan-phase case (st.Tasks empty, index present, planned=4); the pre-existing reviewerRun fixture (record_reviewer_test.go:23-49) does set st.Tasks non-empty alongside a real plan.index.json and is used by status tests such as TestStatusInternalReviewSkipped/TestStatusInternalReviewZeroCandidatesNotVerifyPending, but those tests never assert on the 'tasks' or 'planned' fields — so they exercise the line without verifying it. If the early return were dropped (e.g. plannedTasks always parsed the index and returned len(idx.Tasks) whenever it succeeded), every execute/finish-phase status call for a run whose plan.index.json is still on disk would wrongly report 'N planned (not yet materialised)' instead of real task counts, and no test would fail.",
           "lenses": [
-            "simplicity"
+            "tests"
+          ]
+        },
+        {
+          "severity": "major",
+          "file": "internal/cli/select.go",
+          "line": 122,
+          "title": "bundleHint assumes the created-branch convention, ignoring the adopted-branch rule documented next to it",
+          "detail": "bundleHint's only positive branch guess is `\"takt/\"+slug` (select.go:122-123), and its doc comment states flatly that `takt init` commits the bundle on takt/\u003cslug\u003e. But cmd_init.go's chooseBranch (internal/cli/cmd_init.go:204-206, spec D9) documents two branch outcomes: on the default branch init creates takt/\u003cslug\u003e, but on any other branch init adopts the current branch (bi.adopted=true) and commits the bundle there instead — under whatever name that branch has, not takt/\u003cslug\u003e. For a run initialised via the adopted path, switching away from that branch and running `status`/`unlock` will fail loadBundle with fs.ErrNotExist, bundleHint's BranchExists(ctx, \"takt/\"+slug) check will correctly return false (no such branch was ever created), and the code falls through to \"no run named \u003cslug\u003e under \u003cbase\u003e; check the slug or pass --dir\" — telling the user no such run exists when it does, just on a differently-named adopted branch. No existing helper maps a slug back to its actual (possibly adopted) branch, so this is a real gap between the new hint logic and the branch rule the surrounding code already knows about, not just an untested edge case.",
+          "lenses": [
+            "consistency"
           ]
         }
       ]
@@ -773,12 +774,10 @@
   ],
   "out_of_scope": null,
   "reverted": null,
-  "committed": false,
-  "closed_at": "2026-08-28T20:13:09.638117503Z",
+  "committed": true,
+  "closed_at": "2026-08-28T20:31:54.233884733Z",
   "failed": [],
   "blocked": [],
-  "rework": [
-    4
-  ],
+  "rework": [],
   "review_errors": []
 }

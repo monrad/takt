@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -363,5 +364,203 @@ func TestStatusInternalReviewZeroCandidatesNotVerifyPending(t *testing.T) {
 	}
 	if out := statusText(t, root); !strings.Contains(out, "internal review: 0 candidates, 0 confirmed") {
 		t.Fatalf("zero candidates must not say verify pending:\n%s", out)
+	}
+}
+
+// fourTaskIndex is a plan.index.json with four tasks, for a run that has
+// planned but not yet materialised them. Its spec_hash never matters here:
+// status reads the index for its task count only, and validates nothing.
+const fourTaskIndex = `{"schema":1,"spec_hash":"sha256:deadbeef","tasks":[
+ {"id":1,"title":"a","description":"add a","files":["a.go"],"verify":["true"],"depends_on":[],"goals":["G1"],"class":"bounded"},
+ {"id":2,"title":"b","description":"add b","files":["b.go"],"verify":["true"],"depends_on":[1],"goals":["G1"],"class":"implement"},
+ {"id":3,"title":"c","description":"add c","files":["c.go"],"verify":["true"],"depends_on":[1],"goals":["G1"],"class":"implement"},
+ {"id":4,"title":"d","description":"add d","files":["d.go"],"verify":["true"],"depends_on":[2,3],"goals":["G1"],"class":"implement"}]}`
+
+// fiveClauseAlignment is alignment.json with five clauses; verdicts is the
+// body of the "verdicts" array, empty for the shape the audit has between
+// decomposition and the auditor's ruling.
+func fiveClauseAlignment(confirmed, skipped bool, verdicts string) string {
+	clauses := make([]string, 0, 5)
+	for i := 1; i <= 5; i++ {
+		clauses = append(clauses, fmt.Sprintf(`{"id":"A%d","text":"t%d","span":"s%d"}`, i, i, i))
+	}
+	return fmt.Sprintf(`{"anchor_hash":"x","clauses":[%s],"confirmed":%t,"skipped":%t,"verdicts":[%s]}`,
+		strings.Join(clauses, ","), confirmed, skipped, verdicts)
+}
+
+// TestStatusPlanPhaseSaysPlannedAndConfirmedClauses pins the two lines a run
+// in the plan phase used to get wrong (#33): tasks reach state.json only at
+// the plan → execute transition, so a planned run reported "0 total" with a
+// whole plan on disk; and an alignment.json with clauses but no verdicts
+// rendered as a bare "alignment:" label.
+func TestStatusPlanPhaseSaysPlannedAndConfirmedClauses(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", fourTaskIndex)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# Plan — demo\n")
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Phase = bundle.PhasePlan
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "docs/takt/demo/alignment.json", fiveClauseAlignment(true, false, ""))
+
+	code, got, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	tasks, ok := got["tasks"].(map[string]any)
+	if !ok || tasks["planned"] != float64(4) || tasks["total"] != float64(0) {
+		t.Fatalf("tasks = %v", got["tasks"])
+	}
+	al, ok := got["alignment"].(map[string]any)
+	if !ok || al["clauses"] != float64(5) || al["skipped"] != false || al["verdicts_present"] != false {
+		t.Fatalf("alignment = %v", got["alignment"])
+	}
+
+	out := statusText(t, root)
+	if !strings.Contains(out, "tasks: 4 planned (not yet materialised)") {
+		t.Fatalf("planned tasks line:\n%s", out)
+	}
+	if strings.Contains(out, "0 total") {
+		t.Fatalf("a planned run must not claim zero tasks:\n%s", out)
+	}
+	if !strings.Contains(out, "alignment: 5 clauses confirmed, verdicts pending") {
+		t.Fatalf("confirmed-without-verdicts line:\n%s", out)
+	}
+
+	testutil.WriteFile(t, root, "docs/takt/demo/alignment.json", fiveClauseAlignment(false, false, ""))
+	if out = statusText(t, root); !strings.Contains(out, "alignment: 5 clauses awaiting confirmation") {
+		t.Fatalf("unconfirmed line:\n%s", out)
+	}
+
+	testutil.WriteFile(t, root, "docs/takt/demo/alignment.json", fiveClauseAlignment(false, true, ""))
+	if out = statusText(t, root); !strings.Contains(out, "alignment: skipped") {
+		t.Fatalf("skipped line:\n%s", out)
+	}
+}
+
+// TestStatusAlignmentAwaitsConfirmationEvenWithVerdicts pins the one state
+// precedence has to get right: `takt record --agent alignment-auditor --mode
+// verdicts` stores verdicts whatever the confirmation flag says, so a bundle
+// can hold verdicts against a clause set nobody has confirmed. Status names
+// the confirmation that is still owed — a ruling on an ask the user never
+// agreed to is not a settled reading of it. The plan → execute commit
+// message is the other caller and keeps rendering the verdicts there; that
+// half is TestLoadCommitMessageCarriesAlignmentSummary.
+func TestStatusAlignmentAwaitsConfirmationEvenWithVerdicts(t *testing.T) {
+	t.Parallel()
+	root := setupAlignmentRun(t, fiveClauseAlignment(false, false,
+		`{"id":"A1","verdict":"narrowed","evidence":"scope cut"}`))
+
+	code, got, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	al, ok := got["alignment"].(map[string]any)
+	if !ok || al["confirmed"] != false || al["verdicts_present"] != true {
+		t.Fatalf("alignment = %v", got["alignment"])
+	}
+
+	out := statusText(t, root)
+	if !strings.Contains(out, "alignment: 5 clauses awaiting confirmation") {
+		t.Fatalf("unconfirmed clauses must await confirmation whatever the verdicts say:\n%s", out)
+	}
+	if strings.Contains(out, "narrowed") {
+		t.Fatalf("a verdict against unconfirmed clauses must not read as a ruling:\n%s", out)
+	}
+}
+
+// TestStatusAlignmentNamesAVerdictItDoesNotRecognise pins the last way the
+// "alignment:" label could still print bare (#33): `takt record --agent
+// alignment-auditor --mode verdicts` checks the auditor's reply for shape,
+// not for vocabulary, so a bundle takt itself wrote can hold a verdict word
+// — or an empty one — outside the five status renders. They are counted
+// under one "unrecognised" bucket, which is what makes "a verdict is
+// recorded" and "the line says something" the same statement.
+func TestStatusAlignmentNamesAVerdictItDoesNotRecognise(t *testing.T) {
+	t.Parallel()
+	root := setupAlignmentRun(t, fiveClauseAlignment(true, false,
+		`{"id":"A1","verdict":"covered","evidence":"task 1"},`+
+			`{"id":"A2","verdict":"maybe","evidence":"?"},`+
+			`{"id":"A3","verdict":"","evidence":""}`))
+
+	if out := statusText(t, root); !strings.Contains(out, "alignment: 1 covered, 2 unrecognised\n") {
+		t.Fatalf("a verdict takt has no word for must still be counted:\n%s", out)
+	}
+
+	// And that state is one the recorder produces: the same reply that
+	// reaches alignment.json here is accepted at exit 0 with ok:true, so a
+	// status that rendered only the five known words would print a bare
+	// label on a bundle takt had just written.
+	report := filepath.Join(t.TempDir(), "verdicts.txt")
+	if err := os.WriteFile(report, []byte("```json\n"+
+		`{"mode":"verdicts","verdicts":[{"id":"A1","verdict":"maybe","evidence":"?"}]}`+
+		"\n```\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, got, errb := runIn(t, root, nil, "record", "--agent", "alignment-auditor",
+		"--mode", "verdicts", "--from", report, "--slug", "demo")
+	if code != 0 || got["ok"] != true {
+		t.Fatalf("the recorder takes the auditor's word as given: %d %v %s", code, got, errb)
+	}
+	stored, err := os.ReadFile(filepath.Join(root, "docs", "takt", "demo", "alignment.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(stored), `"verdict": "maybe"`) {
+		t.Fatalf("an unrecognised verdict must be on disk to be renderable: %s", stored)
+	}
+}
+
+// setupAlignmentRun is a run in the plan phase whose alignment.json holds
+// the given document, the state every alignment status line is read from.
+func setupAlignmentRun(t *testing.T, alignment string) string {
+	t.Helper()
+	root, bdir := setupRun(t)
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Phase = bundle.PhasePlan
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "docs/takt/demo/alignment.json", alignment)
+	return root
+}
+
+// TestStatusHintsAtTheBranchHoldingTheBundle pins the three hints a bundle
+// that cannot be read now carries (#8). The first is the one the dogfood run
+// hit: `takt init` commits the bundle on takt/<slug>, so from any other
+// branch every file of it is simply gone from the working tree.
+func TestStatusHintsAtTheBranchHoldingTheBundle(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	if code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "topic"); code != 0 {
+		t.Fatal(errb)
+	}
+	testutil.Git(t, root, "checkout", "main")
+
+	code, _, errb := runIn(t, root, nil, "status", "--slug", "demo")
+	if code != 1 || !strings.Contains(errb, "takt/demo") ||
+		!strings.Contains(errb, "check it out, or pass --dir") {
+		t.Fatalf("branch hint: %d %s", code, errb)
+	}
+
+	code, _, errb = runIn(t, root, nil, "status", "--slug", "nope")
+	if code != 1 || !strings.Contains(errb, "no run named nope under") ||
+		!strings.Contains(errb, "check the slug or pass --dir") {
+		t.Fatalf("unknown-slug hint: %d %s", code, errb)
+	}
+
+	testutil.Git(t, root, "checkout", "takt/demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/state.json", "{")
+	code, _, errb = runIn(t, root, nil, "status", "--slug", "demo")
+	if code != 1 || !strings.Contains(errb, "run takt doctor") {
+		t.Fatalf("unreadable-state hint: %d %s", code, errb)
 	}
 }

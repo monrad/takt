@@ -101,7 +101,7 @@ type ImplementerData struct {
 	Files           []string
 	Verify          []string
 	Goals           []GoalLine
-	SpecExcerpt     string
+	SpecPath        string // absolute path of the run's spec.md; the agent reads it as data
 	Attempt         int
 	PreviousModel   string
 	PreviousFailure string
@@ -241,10 +241,16 @@ type ReviewData struct {
 func (d ReviewData) PriorFindingLines() string {
 	var b strings.Builder
 	for _, f := range d.PriorFindings {
-		fmt.Fprintf(&b, "%s %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, f.Detail)
+		fmt.Fprintf(&b, "%s %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, lineSafe.Replace(f.Detail))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
+
+// lineSafe collapses the line breaks in a finding's detail — the one field
+// that carries free prose — to single spaces. PriorFindingLines renders one
+// finding per line and the reviewer counts findings by line, so a detail
+// with a newline in it would otherwise arrive as several.
+var lineSafe = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ")
 
 // RunData fills the `run` op instruction templates. Every field is set for
 // every step — the templates pick out what they need — so a step that grows

@@ -30,6 +30,13 @@ go install github.com/monrad/takt/cmd/takt@latest
 `takt version` reads its version from Go's build info, so it is accurate however you installed. Pin a
 tag (`@v0.1.0`) if you want the same binary on every machine.
 
+On macOS, the cask's post-install hook (`.goreleaser.yaml`) strips `com.apple.quarantine` from the
+installed binary, so it runs without the right-click dance. If a future macOS or Homebrew change stops
+that, the first run is refused with "cannot be opened because the developer cannot be verified". Open
+System Settings → Privacy & Security → Open Anyway, or run
+`xattr -d com.apple.quarantine "$(brew --prefix)/Caskroom/takt/<version>/takt"`. Signing and notarizing
+is tracked as [#17](https://github.com/monrad/takt/issues/17).
+
 As a flake input, for a home-manager or NixOS configuration:
 
 ```nix

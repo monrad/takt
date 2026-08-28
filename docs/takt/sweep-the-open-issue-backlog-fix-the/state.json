@@ -110,7 +110,7 @@
     {
       "id": 4,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/cmd_status.go",
         "internal/cli/select.go",
@@ -118,15 +118,15 @@
         "internal/cli/cmd_unlock_test.go"
       ],
       "class": "implement",
-      "attempt": 2,
+      "attempt": 3,
       "last_digest": {
         "task": 4,
-        "attempt": 2,
+        "attempt": 3,
         "status": "done",
-        "summary": "Corrected the alignment state precedence to skipped → unconfirmed → confirmed-without-verdicts → verdict counts, and moved that rendering into a status-only `alignmentStatusLine` so `alignmentLine`'s empty-means-no-verdicts contract with `loadCommitMessage` is restored intact; added the missing unconfirmed-with-verdicts test and removed the unrequested unknown-verdict bucket.",
+        "summary": "Made the alignment summary total over unknown verdict words (so `alignment:` is provably never bare) with a test that drives the recorder, and removed the unreachable `ws.Repo` nil guard in `bundleHint`.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T19:42:29.688762191Z"
+        "recorded_at": "2026-08-28T20:22:07.892662888Z"
       }
     },
     {
@@ -316,7 +316,17 @@
       }
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 0,
+    "slice": 1,
+    "attempt": 3,
+    "started_at": "2026-08-28T20:14:52.862571895Z",
+    "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
+    "tasks": [
+      4
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

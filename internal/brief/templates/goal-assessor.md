@@ -22,4 +22,6 @@ Reply with ONE fenced JSON block, a list with exactly one entry per goal id ({{r
 [{"id": "G1", "verdict": "achieved|partial|missed", "evidence": "what you ran or read and what it showed", "citations": ["path:line"]}]
 ```
 
+Each `citations` entry is `path:line` or `path:start-end`: the path relative to the repository root, naming a regular file that exists, and the line range inside that file — `internal/finish/goals.go:42`, `README.md:10-18`. takt checks every citation against the tree, and rejects the whole reply — asking you again — when one is not in that form, names a path that is absolute or escapes the repository, names something that is not a regular file, or cites a line past the file's end. `citations` may be empty when what you observed is a command's exit status rather than a place in the tree.
+
 `achieved` needs evidence you observed yourself; `partial` when the goal is only partly served; `missed` when nothing serves it. Put nothing after the block.

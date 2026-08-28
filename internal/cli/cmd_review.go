@@ -259,11 +259,12 @@ func storeFindings(bdir, g string, res backend.ReviewResult) error {
 	return writeResultJSON(filepath.Join(bdir, "reviews", g+".json"), res)
 }
 
-// writeFindings renders a reviewer result as markdown for humans.
-func writeFindings(path, title string, res backend.ReviewResult) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
+// renderFindings renders a reviewer result as markdown for humans. It
+// returns the text rather than writing it so that a caller with more to say
+// about the same pass — writeTaskFindings, which adds the scoped pass and
+// the confirmed internal findings — can build one document and write it
+// once.
+func renderFindings(title string, res backend.ReviewResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Review: %s — %s\n\n%s\n\n", title, res.Verdict, res.Summary)
 	if res.Reason != "" {
@@ -273,7 +274,13 @@ func writeFindings(path, title string, res backend.ReviewResult) error {
 		fmt.Fprintf(&b, "- **%s** %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, f.Detail)
 	}
 	fmt.Fprintf(&b, "\n_%s / %s_\n", res.Provider, res.Model)
-	return os.WriteFile(path, []byte(b.String()), 0o600)
+	return b.String()
+}
+
+// writeFindings writes renderFindings' markdown to path, atomically; the
+// write creates the reviews directory when it is not there yet.
+func writeFindings(path, title string, res backend.ReviewResult) error {
+	return bundle.WriteFileAtomic(path, []byte(renderFindings(title, res)))
 }
 
 // writeResultJSON stores the reviewer's structured result beside the human

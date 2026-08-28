@@ -79,7 +79,7 @@ For the **spec gate only**, with a receipt at the current hash:
 | `rework` | 0 | ask `gate_review`. **`revise` closes the gate** (§4) — no second backend call. |
 | `rework` | ≥ 1 | ask `gate_review`. `revise` re-arms; the next pass is scoped (§5). |
 | `reject` | any | ask `gate_review`; `revise` re-arms; the next pass is a full re-review. |
-| `error` | — | unchanged: ask `gate_review`. |
+| `error` | — | ask `gate_review`, on its error row: nothing was reviewed, so the choices are `retry` (re-run the reviewer; writes nothing), `accept` and `stop`. `revise` is not offered. |
 
 `skipped` and `gate_overridden` keep today's meaning. The plan gate is untouched: `decidePlan` keeps
 calling `needsRework` exactly as it does now.
@@ -138,7 +138,8 @@ accepts, and it applies only where the reviewer itself said nothing blocking.
 | Several revision events for `spec` | Newest wins; older ones are inert history. |
 | Revision event present, artifact later edited again, no review since | Still satisfied — an edit does not consume the event, only a later review does. |
 | A `gate_reviewed` event for the gate follows the revision event (e.g. `takt review spec --force`) | Revision cleared; a later edit no longer resurrects it on its own — the new receipt, if it answers at the current hash, governs, otherwise the gate is open until revised again. |
-| `revise` on the plan gate, or on a blocking/`reject`/`error` spec receipt | No event written; today's re-arm behaviour, unchanged. |
+| `revise` on the plan gate, or on a blocking/`reject` spec receipt | No event written; today's re-arm behaviour, unchanged. |
+| `revise` on an `error` spec receipt | Not reachable: the question's error row offers `retry` instead (§3). Were it answered anyway, no event is written and the gate re-arms as before. |
 
 ---
 
@@ -180,6 +181,8 @@ that survivable rather than fatal.
 | `accept` (override) | yes | The user explicitly declined to act. |
 | `rework` closed on `revise` | no | The findings *were* the instruction. |
 | Scoped pass returns `approve` with leftovers | yes | Via the `approve` row. |
+
+Findings that were the instruction for a `revise` are never carried, because the session was asked to act on them.
 
 Two call sites, and nothing else needs to know: `runReview` when the verdict is `approve` and findings
 exist, and `answerGateReview` on `accept`.

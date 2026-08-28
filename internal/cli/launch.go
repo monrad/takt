@@ -379,8 +379,9 @@ func lastLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderImplementer renders one task's brief from the embedded template; the
-// spec excerpt travels as quoted data, never as instructions (spec §7.4).
+// renderImplementer renders one task's brief from the embedded template. The
+// spec travels as the absolute path of the bundle's spec.md, which the brief
+// tells the agent to read as data, never as instructions (spec §7.4).
 func renderImplementer(
 	r *nextRun, pt *plan.Task, t *bundle.Task, attempt int, prev, failure string, findings []string,
 ) (string, error) {
@@ -392,7 +393,7 @@ func renderImplementer(
 	return brief.Render("implementer", brief.ImplementerData{
 		Slug: r.slug, Task: t.ID, Total: len(r.st.Tasks), Title: pt.Title, Description: pt.Description,
 		Files: pt.Files, Verify: pt.Verify, Goals: goalLines(r.bdir, pt.Goals),
-		SpecExcerpt: readArtifact(r.bdir, "spec.md"), Attempt: attempt, PreviousModel: prev,
+		SpecPath: filepath.Join(r.bdir, "spec.md"), Attempt: attempt, PreviousModel: prev,
 		PreviousFailure: failure, Findings: findings, Token: tok, BundleDirRel: rel,
 	})
 }
