@@ -51,7 +51,37 @@ The line numbers are where it stood then, not a contract.
 | #15 | `internal/bundle/lock_test.go` has two tests and neither covers the steal boundary or "mine but stale". `TestPromptHandshakeVerbsAndInvariants` loads `commands/takt.md` only. `quotedScalarProblem` looks back exactly one byte. `writeLogsIgnore` compares before writing but only the deleted-and-restored path is tested. |
 | #16 | `endAttemptStreak` (`internal/cli/facts.go`) discards both `bundle.ReadEvents` and `bundle.AppendEvent` errors and returns nothing. |
 
-## The two rulings
+## The two rulings, and the contract they share
+
+### The `warnings` contract
+
+Both rulings below need one thing takt does not have: a way for a command to
+say "this did not get written" without failing. Neither ruling is implementable
+until that is defined, so it is defined here once and used by both.
+
+**Wire contract.** The key is `warnings`. Its value is an array of strings, each
+one sentence naming what was not written and why — `info/exclude not written:
+permission denied`, `attempt-streak reset not recorded: <error>`. It is absent
+when nothing was lost; it never appears empty. It is additive: no existing key
+changes, no exit code changes, and no host prompt needs to read it (the hosts
+print the command's JSON, and a reader that ignores the key behaves exactly as
+today).
+
+**Where it lives.** `init` and every `record` verb already print a
+`map[string]any`, so for those it is one more key. `next` does not: it prints a
+typed `op.Op`. That struct therefore gains
+
+```go
+Warnings []string `json:"warnings,omitempty"`
+```
+
+which is the same wire shape by another route. `omitempty` is what keeps a clean
+run's op byte-identical to today's.
+
+**What it is not.** It is not an error channel — a warning never changes an exit
+code, never suppresses a real failure, and never carries something the command
+could have failed on instead. It is for a write that was optional in the first
+place.
 
 ### #16 — surface the loss, do not fail on it
 
@@ -65,37 +95,48 @@ counting, the next brief keeps quoting a dead rejection) is user-visible at the
 moment it happens.
 
 **Decision: report it, keep exit 0.** `endAttemptStreak` returns an `error`; each
-caller folds a failure into the JSON it already prints, as a field naming the loss
-rather than an error that aborts. The command's contract is unchanged: exit 0,
-same keys, one extra key when something was lost.
+caller folds a failure into its JSON as a `warnings` entry. The command's
+contract is otherwise unchanged: exit 0, same keys, one extra key when something
+was lost.
 
-This is the same degradation shape #6 asks for, and the two must use one idiom:
-a named field in the command's own JSON output, at exit 0, describing what was not
-written and why.
-
-### #4 — log every explicit `--force`
+### #4 — log a takeover, not a `--force`
 
 The exemption in `cmd_next.go` exists to keep `events.jsonl` — a tracked file —
 from being rewritten on every `takt next` a session without
 `CLAUDE_CODE_SESSION_ID`/`TAKT_SESSION` makes. That argument covers the automatic
-paths (`orphaned`, and `outcome == LockStolen` for an idle generated holder). It
-does not cover `--force`: `r.force` is set only from the command line, and the
-only thing that tells a user to pass it is the `owner` gate's `takeover` choice.
-Nothing in `commands/takt.md` or `hosts/copilot/skills/takt/SKILL.md` passes it
-automatically.
+paths. It does not cover `--force`: `r.force` is set only from the command line,
+and the only thing that tells a user to pass it is the `owner` gate's `takeover`
+choice. Nothing in `commands/takt.md` or `hosts/copilot/skills/takt/SKILL.md`
+passes it automatically.
 
-**Decision: grade `r.force` ahead of the exemption.** An explicit `--force`
-always appends a `lock_taken`, whatever the holder's kind and whatever `Acquire`
-graded the outcome. The silent generated-over-generated takeover stays silent when
-`--force` was not passed.
+But `--force` is not by itself a takeover. `bundle.Acquire` returns
+`LockAcquired` when there is no holder at all and `LockHeldBySelf` when the
+caller already holds the run, and a `--force` passed in either situation takes
+nothing from anybody. Grading on the flag alone would write a `lock_taken` for a
+takeover that never happened — a false audit event, and churn in a tracked file
+on every forced `next` against a free lock.
 
-#2 then states both halves in §4.6: a `lock_taken` is recorded when a **named**
-session takes over, and whenever a takeover was **explicitly forced**; a generated
-session taking over a generated holder on its own records nothing.
+**Decision: the event records a takeover, and an explicit `--force` stops
+exempting one.** Precisely:
 
+- A `lock_taken` is appended only when the run was actually taken from a
+  different holder — `outcome` is `stolen` or `forced`. `acquired`,
+  `held-by-self` and `blocked` never append.
+- The generated-over-generated silence still applies, but only when `--force`
+  was **not** passed. `orphaned` already means a *different* generated holder
+  (`held != nil && held.ID != r.session && held.Generated`), so the exemption
+  keeps covering exactly the case it was written for: two sessions neither of
+  which could have been driving.
+- An explicit `--force` that does take the run from someone therefore always
+  appends, whatever the holder's kind, carrying the outcome `Acquire` graded.
+
+#2 then states all three parts in §4.6: a `lock_taken` is recorded when a
+**named** session takes over, and whenever a takeover was **explicitly forced**;
+a generated session quietly taking over a generated holder records nothing; and
+no takeover, no event.
 ## Tasks
 
-Seven tasks. `internal/cli/cmd_next.go` and `internal/cli/cmd_init.go` are each
+Eight tasks. `internal/cli/cmd_next.go` and `internal/cli/cmd_init.go` are each
 wanted by three separate issues, so the grouping is by file rather than by issue —
 otherwise the obvious per-issue split would put three tasks in one file and no
 wave could run them in parallel.
@@ -120,33 +161,38 @@ Verify: `go test ./internal/cli -run 'TestVersion|TestManifest' -count=1`.
 
 ### T2 — the init/next write path (#5, #6, #12, and #15's `writeLogsIgnore` case)
 
-`internal/bundle`, `internal/gitx`, `internal/cli/cmd_init.go`,
-`internal/cli/cmd_next.go` and their tests.
+`internal/op/op.go`, `internal/bundle`, `internal/gitx`,
+`internal/cli/cmd_init.go`, `internal/cli/cmd_next.go`,
+`internal/cli/launch.go` and their tests.
 
+- **The contract.** Add `Warnings []string` to `op.Op` per the contract above.
+  T8 uses the same key; this task is where the field and the convention land.
 - **Atomic writes.** Add `bundle.WriteFileAtomic(path string, data []byte) error`
   beside `WriteJSONAtomic`, with the same temp-then-rename shape and the same
-  permissions. Use it for the brief writer and the slice-diff writer in
-  `cmd_next.go` and for `writeLogsIgnore` in `cmd_init.go`. Spec §13's "every
-  bundle write is atomic" then holds for the files an agent is handed.
-- **Escaping.** Add a gitignore-pattern escaper in `internal/gitx` — backslash the
-  metacharacters `*`, `?`, `[`, and the leading indicators `#` and `!`, and escape
-  a trailing space, which git otherwise strips — and have `excludeLogsDir` build both rules through it.
-  `EnsureExclude` keeps taking patterns verbatim; its doc comment already says
-  escaping is the caller's business, and that contract is unchanged. Test with a
-  `--dir` such as `docs/[takt]`.
-- **Degradation.** `excludeLogsDir`'s failure stops failing `init` and `next`. Both
-  report it in the JSON they already print — the field named in the #16 ruling —
-  and carry on. The tracked `logs/.gitignore` is what protects a commit and a
-  clone; `info/exclude` only keeps the sidecar invisible from another branch, and
-  losing it is a cosmetic loss, not a broken run. `init`'s rollback must not run
-  for this.
+  permissions. There are **four** call sites, not three: the stable-brief writer
+  and the slice-diff writer in `cmd_next.go`, `renderTaskBrief` in `launch.go` —
+  the task-brief writer issue #5 names — and `writeLogsIgnore` in `cmd_init.go`.
+  Spec §13's "every bundle write is atomic" then holds for every file an agent is
+  handed.
+- **Escaping.** Add a gitignore-pattern escaper in `internal/gitx` and have
+  `excludeLogsDir` build both rules through it. It must escape a literal
+  backslash **first** — `\` is gitignore's own escape character and a legal
+  character in a Unix directory name, so escaping it after the others would
+  double-process what they inserted — then the metacharacters `*`, `?`, `[`, the
+  leading indicators `#` and `!`, and a trailing space, which git otherwise
+  strips. `EnsureExclude` keeps taking patterns verbatim; its doc comment already
+  says escaping is the caller's business, and that contract is unchanged. Test
+  with a `--dir` such as `docs/[takt]`, and one containing a backslash.
+- **Degradation.** `excludeLogsDir`'s failure stops failing `init` and `next`.
+  Both report it as a `warnings` entry and carry on. The tracked
+  `logs/.gitignore` is what protects a commit and a clone; `info/exclude` only
+  keeps the sidecar invisible from another branch, and losing it is a cosmetic
+  loss, not a broken run. `init`'s rollback must not run for this.
 - **The test gap.** `writeLogsIgnore` compares before writing; add the
   already-present case beside `TestNextRestoresADeletedLogsIgnore`, asserting the
-  file is not rewritten (mtime or a write counter, whichever the test helpers make
-  honest).
+  file is not rewritten.
 
-Verify: `go test ./internal/gitx ./internal/bundle ./internal/cli -count=1`.
-
+Verify: `go test ./internal/op ./internal/gitx ./internal/bundle ./internal/cli -count=1`.
 ### T3 — `lock_taken` on an explicit `--force` (#4, #2)
 
 `internal/cli/cmd_next.go`, `internal/cli/cmd_next_test.go`,
@@ -154,16 +200,22 @@ Verify: `go test ./internal/gitx ./internal/bundle ./internal/cli -count=1`.
 
 Depends on T2 — same file.
 
-- Grade `r.force` ahead of `case orphaned && r.genID`. The appended event carries
-  the outcome `Acquire` returned, so a `--force` over a long-idle holder still
-  reads `stolen`; what changes is that it is recorded at all.
-- Keep the generated-over-generated silence for every path that is not an explicit
-  `--force`, and keep the comment explaining why — it is the reason the exemption
-  exists and it is still correct for the automatic case.
-- Rewrite §4.6's sentence to state both halves, per the ruling above.
-- A test that an explicit `--force` from a generated session over a generated
-  holder appends exactly one `lock_taken`, and its sibling that a plain `next` in
-  the same situation appends none.
+- Gate the whole event switch on a takeover having happened: nothing is appended
+  unless `outcome` is `stolen` or `forced`. This is a fix in its own right —
+  today's `case orphaned` arm cannot fire on `acquired` or `held-by-self` because
+  `orphaned` implies a different holder, but the new `--force` arm could, and the
+  guard is what stops it.
+- Condition the generated-over-generated exemption on `--force` not being passed,
+  so an explicit forced takeover always records. Keep the comment explaining the
+  exemption — it is still correct for the automatic case, which is the case it was
+  written for.
+- The appended event carries the outcome `Acquire` graded, so a `--force` over a
+  long-idle holder still reads `stolen`; what changes is that it is recorded.
+- Rewrite §4.6's sentence to state all three parts, per the ruling above.
+- Tests: an explicit `--force` from a generated session over a generated holder
+  appends exactly one `lock_taken`; a plain `next` in the same situation appends
+  none; and `--force` against a free lock and against the caller's own lock append
+  none either, which is the arm the review caught.
 
 Verify: `go test ./internal/cli -run 'TestNext|TestLock' -count=1`.
 
@@ -186,14 +238,17 @@ Verify: `go test ./internal/brief -count=1`.
 
 ### T5 — hostgen error messages (#14)
 
-`internal/hosts/copilot.go` and its tests.
+`internal/hosts/copilot.go`, `internal/tools/hostgen/main.go` and their tests.
 
-One error style for the two adjacent failures, and thread the source path through
-so a message cannot name `agents/<x>.md` when `hostgen --root` read the file from
+`RenderCopilotAgent(ccName string, ccFile []byte)` receives a name and bytes; the
+path actually read exists only in `internal/tools/hostgen/main.go`, which resolves
+it under `--root`. So the fix spans both: give the renderer the source path,
+update the one caller to pass it, and use it in both failures — which then share
+one error style instead of a `fmt.Errorf` and an `errors.New` two lines apart.
+A message can no longer name `agents/<x>.md` when `--root` read the file from
 somewhere else.
 
-Verify: `go test ./internal/hosts ./internal/prompt -count=1`.
-
+Verify: `go test ./internal/hosts ./internal/tools/hostgen -count=1`.
 ### T6 — `task build` stamps the version (#13)
 
 `Taskfile.yml`, `internal/tools/setversion`.
@@ -204,11 +259,20 @@ one implementation and `task build` gains no new dependency. `Taskfile.yml`'s
 `build` reads it into a var and passes
 `-ldflags "-X github.com/monrad/takt/internal/version.Version=<v>"`.
 
-`go build` and `go install` keep reporting `0.0.0-dev` — that is what the dev
-exception in the handshake is for. Only `task build` stamps.
+`go build ./...` cannot carry this: building more than one package compiles and
+discards, emitting no binary at all — which is why `/takt` in `.gitignore` comes
+from a hand-run `go build ./cmd/takt`. `build` therefore names an output and a
+main package: `go build -ldflags "…" -o takt ./cmd/takt`. Keeping a plain
+`go build ./...` beside it as a compile check of the other packages is optional
+and left to the implementer.
 
-Verify: `task build && ./takt version --expect "$(go run ./internal/tools/setversion --print)"` exits 0, plus `go test ./internal/tools/... -count=1`. `/takt` is gitignored, so the built binary does not dirty the tree.
+A local `go build`, `go test` and an unstamped `go install ./cmd/takt` keep
+reporting `0.0.0-dev` — that is what the dev exception in the handshake is for.
+Only `task build` stamps. Note that a *tagged* `go install …@vX.Y.Z` already
+reports X.Y.Z, recovered from build info by `version.Current`; that route is not
+affected either way.
 
+Verify: `task build && ./takt version --expect "$(go run ./internal/tools/setversion --print)"` exits 0, plus `go test ./internal/tools/setversion -count=1`. `/takt` is gitignored, so the built binary does not dirty the tree.
 ### T7 — the remaining test gaps (#15)
 
 `internal/bundle/lock_test.go`, `internal/prompt`.
@@ -227,24 +291,50 @@ Verify: `task build && ./takt version --expect "$(go run ./internal/tools/setver
 
 Verify: `go test ./internal/bundle ./internal/prompt -count=1`.
 
+### T8 — `endAttemptStreak` reports what it loses (#16)
+
+`internal/cli/facts.go`, `internal/cli/cmd_record.go`,
+`internal/cli/record_reviewer.go` and their tests.
+
+`endAttemptStreak` returns an `error` instead of discarding the `ReadEvents` and
+`AppendEvent` failures. Each of its four callers folds a failure into the
+`warnings` array of the JSON it already prints, per the contract above, and none
+of them changes its exit code or its existing keys.
+
+Depends on T2, which defines the contract. File-disjoint from it: T2 edits
+`cmd_init.go`, `cmd_next.go` and `launch.go`; this task edits `facts.go`,
+`cmd_record.go` and `record_reviewer.go`.
+
+Verify: `go test ./internal/cli -count=1`, with a forced append failure asserted to leave the exit code at 0, the existing keys intact and the loss named.
 ## Waves
 
-Wave 1 runs T1, T2, T4, T5, T6 — five file-disjoint tasks. Wave 2 runs T3 and T7.
+Tasks in a wave must be **file**-disjoint. That is takt's own rule — the
+`plan-disjoint` doctor check validates that shared files are ordered by
+`depends_on` — and this spec adopts it rather than inventing a stricter one.
 
-T3 waits on T2 because both edit `cmd_next.go`. T7 waits for a subtler reason:
-every implementer of a wave works in the same worktree, and file-disjointness is
-not package-disjointness. T7 edits `internal/bundle/lock_test.go` while T2 adds
-`WriteFileAtomic` to `internal/bundle`, and T7 edits `internal/prompt` while T5's
-verify runs it. Different files, but a shared compile — so their verifies would
-race. Wave 2 costs nothing here and removes both hazards.
+Wave 1: T1, T2, T4, T5, T6, T7. Wave 2: T3, T8.
 
+T3 waits on T2 because both edit `cmd_next.go`. T8 waits on T2 because T2 defines
+the `warnings` contract it uses.
+
+The accepted residual risk, stated because it is real and not mitigated here:
+every implementer of a wave works in the same worktree, so a task's verify can
+transiently observe another task's half-written edit in the same Go *package* —
+T1, T2 and T7 all compile `internal/cli` or `internal/bundle` in wave 1. The cost
+of that is a spurious verify failure, which takt already handles by re-attempting
+the task; it cannot produce a wrong result, because the wave is graded on the
+committed tree. Serialising by package instead would put the four `internal/cli`
+tasks in four separate waves for no correctness gain.
 ## Testing
 
 Each task carries its own package tests as its verify. The run as a whole is green
-when `go test -race ./...` and `golangci-lint run ./...` both pass. No item here
-changes an op, a gate or a JSON key any host prompt parses, with two exceptions
-that add keys and remove none: the #6/#16 degradation field, and T1's failure
-wording (prose in `error`/`hint`, which no host parses).
+when `go test -race ./...` and `golangci-lint run ./...` both pass.
+
+No item here removes or renames a key any host prompt parses. Two add something:
+the `warnings` array (a new `omitempty` field on `op.Op`, a new key on `init` and
+`record`), and T1's failure wording — prose inside `error`/`hint`, which no host
+parses. A host that ignores `warnings` behaves exactly as it does today, which is
+why no prompt change is in scope.
 
 ## Assumptions & Open Decisions
 
@@ -259,3 +349,7 @@ wording (prose in `error`/`hint`, which no host parses).
 | Where does the gitignore escaper live? | `internal/gitx`, called by `excludeLogsDir` | Escaping is gitignore knowledge, so it belongs beside `EnsureExclude` — but `EnsureExclude`'s documented "a rule is written exactly as given" contract stays, because a caller passing an already-escaped pattern must not have it escaped twice | assumed |
 | Does T1 change `--expect-manifest`'s empty dispatch too? | No | An absent `--expect-manifest` and an empty one are the same thing: no manifest to read. `--expect` is different because an empty stamp is a broken host prompt, which is what the refusal says | assumed |
 | Does the sweep close the issues it fixes? | Not automatically | Closing GitHub issues is outward-facing and belongs to the branch's finish, not to a task's diff | assumed |
+| What is the wire shape of the degradation field #6 and #16 share? | A `warnings` array of one-sentence strings; absent when empty; a new `omitempty` field on `op.Op` and a map key elsewhere | `next` prints a typed `op.Op` with no free-form slot, so the shape had to be chosen rather than assumed. An array takes two losses in one command; `omitempty` keeps a clean run byte-identical | assumed |
+| Does an explicit `--force` log when it takes nothing? | No — the event requires `outcome` to be `stolen` or `forced` | `Acquire` returns `LockAcquired` on a free lock and `LockHeldBySelf` on the caller's own, and recording a takeover from nobody is a false audit event plus churn in a tracked file | assumed (review-corrected) |
+| Are waves disjoint by file or by Go package? | By file | It is takt's own rule, enforced by the `plan-disjoint` doctor check. Package-level serialisation would cost four waves for the `internal/cli` tasks and buy no correctness — a verify that observes a partial edit fails and is re-attempted | assumed (review-corrected) |
+| Does #14 change `RenderCopilotAgent`'s signature? | Yes, and its one caller in `internal/tools/hostgen` | The path the message should name exists only in the tool; polishing the message without threading it would leave the `--root` half of the issue unfixed | assumed (review-corrected) |
