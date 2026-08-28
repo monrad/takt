@@ -1,6 +1,6 @@
 {
   "gate": "spec",
-  "hash": "sha256:5f1c287d003811662d03f4297bb9fd8d67bb1352ecd82a4fc0c05b984c455b0c",
+  "hash": "sha256:ba5ca5261bdfe8ecf90d7ee36bd90032ed572ca3e6564400d9f3f96e84ae3414",
   "verdict": "rework",
   "reviewer": {
     "provider": "copilot",
@@ -8,10 +8,9 @@
   },
   "findings": "reviews/spec.md",
   "severities": {
-    "blocking": 6,
-    "major": 2,
+    "blocking": 1,
     "minor": 1
   },
-  "ts": "2026-08-28T09:59:03.548800568Z",
+  "ts": "2026-08-28T10:07:48.459050619Z",
   "skipped": null
 }

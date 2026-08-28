@@ -1,69 +1,20 @@
 {
   "verdict": "rework",
-  "summary": "The approach is viable, but several requirements cannot be implemented correctly as written.",
+  "summary": "Two prior findings remain unresolved because revised text retains contradictory or incorrect statements.",
   "findings": [
     {
       "severity": "blocking",
       "file": "spec.md",
-      "line": 87,
+      "line": 0,
       "title": "`--force` would log non-takeovers",
-      "detail": "Grading `r.force` first regardless of `Acquire` outcome records `lock_taken` when no holder exists or the caller already holds the lock. Require a different existing holder; otherwise this creates false audit events and tracked-file churn."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 126,
-      "title": "Atomic-write scope omits task briefs",
-      "detail": "Issue #5 and G2 cover all agent briefs, but T2 omits `internal/cli/launch.go`, where `renderTaskBrief` uses `os.WriteFile`. Include that call site; there are four relevant call sites, not three."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 137,
-      "title": "Degradation JSON contract is undefined",
-      "detail": "Neither ruling names the shared field, its value shape, nor its location. This is especially blocking for `next`, whose typed `op.Op` has no such top-level field. Define the exact wire contract and required files/tests."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 131,
-      "title": "Gitignore escaping omits backslashes",
-      "detail": "A backslash is itself gitignore syntax and is legal in a Unix directory name. The specified escaper would fail to match such a custom bundle path; it must escape literal backslashes before other metacharacters."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 187,
-      "title": "Hostgen task omits the source-path caller",
-      "detail": "`hosts.RenderCopilotAgent` currently receives only a name and bytes; the real path exists only in `internal/tools/hostgen/main.go`. T5 must include that caller and its tests, and its verify command must run `internal/tools/hostgen`."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 203,
-      "title": "Stamped build still would not create `./takt`",
-      "detail": "Adding ldflags to the existing `go build ./...` compiles multiple packages but emits no `takt` binary, so the stated verification cannot pass. Specify an output and main package, such as `go build -o takt ... ./cmd/takt`."
-    },
-    {
-      "severity": "major",
-      "file": "spec.md",
-      "line": 232,
-      "title": "Wave rationale is applied inconsistently",
-      "detail": "T7 is deferred because package compilation can race in the shared worktree, yet T1 and T2 both edit and verify `internal/cli` concurrently in wave 1. The same hazard applies and can expose either test run to another task's partial edits."
-    },
-    {
-      "severity": "major",
-      "file": "goals.md",
-      "line": 18,
-      "title": "`go install` success criterion is factually overbroad",
-      "detail": "Tagged `go install github.com/monrad/takt/cmd/takt@vX.Y.Z` reports the module release version via build info, not the dev version. Qualify this as a local unstamped `go install`."
+      "detail": "The ruling and T3 correctly require a stolen/forced outcome, but the Assumptions table still says to log whenever `r.force` is set. That contradiction could still prescribe false events for free or self-held locks."
     },
     {
       "severity": "minor",
       "file": "goals.md",
       "line": 5,
       "title": "Anchor miscounts fixes and rulings",
-      "detail": "It calls the fourteen listed issues “fourteen fixes and two rulings,” although #4 and #16 are among those fourteen and #9 requires no fix. State the intended eleven code/doc fixes, two rulings, and one already-fixed closure."
+      "detail": "The anchor still describes fourteen fixes plus two rulings instead of eleven code/doc fixes, two rulings, and one already-fixed closure. G12 explains the arithmetic elsewhere but does not correct the anchor."
     }
   ],
   "provider": "copilot",
