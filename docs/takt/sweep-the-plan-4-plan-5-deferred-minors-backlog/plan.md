@@ -51,7 +51,11 @@ and `ensureSliceDiff` (cmd_next.go:672), `renderTaskBrief` (launch.go:304), and
 `writeLogsIgnore` (cmd_init.go:351). (3) A gitignore-pattern escaper in
 `internal/gitx`, backslash first, then `*` `?` `[`, leading `#`/`!`, trailing
 space; `excludeLogsDir` builds both rules through it while `EnsureExclude`'s
-written-exactly-as-given contract is unchanged. (4) Degradation: `excludeLogsDir`
+written-exactly-as-given contract is unchanged. The escaper gets a unit test, and
+`init` gets cli-level cases for *both* shapes the spec names — a `--dir` holding a
+glob metacharacter (`docs/[takt]`) and one holding a literal backslash — since
+only those prove path handling and rule construction together, which is the
+pairing the whole fix exists for. (4) Degradation: `excludeLogsDir`
 failure stops failing `init` (no rollback) and `next`; both report it as a
 `warnings` entry and carry on, because the tracked `logs/.gitignore` is what
 protects commits and clones. The writeLogsIgnore already-present test closes
@@ -107,8 +111,15 @@ output and a main package are required: `go build ./...` over many packages
 emits no binary), keeping a plain `go build ./...` beside it as a compile check.
 `/takt` is already gitignored, so the built binary never dirties the tree; local
 `go build` / `go test` keep reporting `0.0.0-dev`, which the handshake's dev
-exception exists for. Class `bounded`: mechanism, flag name, ldflags string and
-verify are all fixed by a user-confirmed decision.
+exception exists for.
+
+That exception is also why the verify cannot use `takt version --expect`:
+`ManifestMatches` returns `(true, true)` for a `0.0.0-dev` binary, so an
+unstamped build satisfies *any* expectation and the check could never fail — it
+would mark the goal achieved whether or not the ldflags landed. The stamp is
+proved directly instead: `./takt version` must print the manifest's version, and
+must not print `0.0.0-dev`. Class `bounded`: mechanism, flag name, ldflags string
+and verify are all fixed by a user-confirmed decision.
 
 ### T7 — the remaining test gaps (#15) — `test`
 
