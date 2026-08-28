@@ -1,0 +1,96 @@
+{
+  "anchor_hash": "sha256:2cd45893b761f07fa123543b81c95003ea1817f05a84ad5c9b6adb123e500dec",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run",
+      "span": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run"
+    },
+    {
+      "id": "A2",
+      "text": "#53 (follow-ups.json omitempty drops wave 0)",
+      "span": "#53 (follow-ups.json omitempty drops wave 0)"
+    },
+    {
+      "id": "A3",
+      "text": "#44 (follow-ups identity/de-dup)",
+      "span": "#44 (follow-ups identity/de-dup)"
+    },
+    {
+      "id": "A4",
+      "text": "#43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json)",
+      "span": "#43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json)"
+    },
+    {
+      "id": "A5",
+      "text": "#23 (retro-inputs review_findings spans gate reviews and every attempt)",
+      "span": "#23 (retro-inputs review_findings spans gate reviews and every attempt)"
+    },
+    {
+      "id": "A6",
+      "text": "#25 (wave_timings per dispatched attempt)",
+      "span": "#25 (wave_timings per dispatched attempt)"
+    },
+    {
+      "id": "A7",
+      "text": "#33 (status during the plan phase says planned/not materialised and confirmed clauses)",
+      "span": "#33 (status during the plan phase says planned/not materialised and confirmed clauses)"
+    },
+    {
+      "id": "A8",
+      "text": "#8 (unlock/status --slug hint when the bundle lives on another branch)",
+      "span": "#8 (unlock/status --slug hint when the bundle lives on another branch)"
+    },
+    {
+      "id": "A9",
+      "text": "#24 (goal-assessor citations validated as path:line inside a real file)",
+      "span": "#24 (goal-assessor citations validated as path:line inside a real file)"
+    },
+    {
+      "id": "A10",
+      "text": "#36 (PR title and body from the spec and goals rather than --fill)",
+      "span": "#36 (PR title and body from the spec and goals rather than --fill)"
+    },
+    {
+      "id": "A11",
+      "text": "#26 (branch_finish does not recommend a merge it has disabled)",
+      "span": "#26 (branch_finish does not recommend a merge it has disabled)"
+    },
+    {
+      "id": "A12",
+      "text": "#45 and #51 (the two polish checklists, minus the user-directory lens override)",
+      "span": "#45 and #51 (the two polish checklists, minus the user-directory lens override)"
+    },
+    {
+      "id": "A13",
+      "text": "#54 (design §4.6 lock_taken wording by holder)",
+      "span": "#54 (design §4.6 lock_taken wording by holder)"
+    },
+    {
+      "id": "A14",
+      "text": "#37 (skill invariant: absolute paths, never cd into the bundle)",
+      "span": "#37 (skill invariant: absolute paths, never cd into the bundle)"
+    },
+    {
+      "id": "A15",
+      "text": "#35 (retro path in the plan doc)",
+      "span": "#35 (retro path in the plan doc)"
+    },
+    {
+      "id": "A16",
+      "text": "#18 (README macOS quarantine note)",
+      "span": "#18 (README macOS quarantine note)"
+    },
+    {
+      "id": "A17",
+      "text": "#49 item 1 (copilot --no-custom-instructions, if the CLI supports it)",
+      "span": "#49 item 1 (copilot --no-custom-instructions, if the CLI supports it)"
+    },
+    {
+      "id": "A18",
+      "text": "#34, #27 and #7 are already fixed in commit 4c5026d on this branch",
+      "span": "#34, #27 and #7 are already fixed in commit 4c5026d on this branch"
+    }
+  ],
+  "confirmed": true
+}
