@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "sweep-the-plan-4-plan-5-deferred-minors-backlog",
   "topic": "Sweep the plan-4/plan-5 deferred minors backlog: fourteen small, independently verifiable fixes and two rulings, filed as GitHub issues #1 #2 #3 #4 #5 #6 #9 #10 #11 #12 #13 #14 #15 #16 on monrad/takt. Each issue already states its fix shape. Group by file so tasks stay disjoint: cmd_version.go takes #3 (--expect \"\" must fail the handshake, not pass), #10 (ManifestMatches evaluated twice) and #11 (mismatch text says \"plugin\" on the Copilot host); gitx + cmd_init.go take #6 (init/next fail when .git/info/exclude is read-only — degrade to a warning) and #12 (EnsureExclude writes the bundle path unescaped); cmd_next.go takes #5 (briefs written non-atomically — wants bundle.WriteFileAtomic) and #4 (a --force takeover from a generated session over a generated holder records no lock_taken — decide log-always vs document). Standalone: #9 (config lock_ttl and wave_stale_after not validated \u003e 0), #1 (planner brief template renders validation problems outside the delimiter quote), #14 (hostgen message polish and --root-unaware paths), #13 (task build does not stamp the version), #15 (test gaps: lock steal boundary, cross-prompt invariant sentences, quotedScalarProblem escape look-back, writeLogsIgnore already-present case). Two need a ruling before code: #16 (endAttemptStreak swallows read and append errors — keep documented or fail loud) and #4 above; #2 is the spec §4.6 doc sentence that follows whatever #4 decides. Out of scope: #34 (open PR #38 on fix/doctor-finding-count) and everything in the diagnostics, retro and review-layer clusters. Green afterwards: go test -race ./... and golangci-lint run ./...",
-  "phase": "plan",
+  "phase": "execute",
   "created_at": "2026-08-28T09:39:02.926701075Z",
   "branch": "monrad/fixes",
   "branch_adopted": true,
@@ -31,10 +31,128 @@
   },
   "goals_hash": "sha256:636cb351f76d16efcf540357e6202f5b977c65e3a0d87e065f8823871fe2fa41",
   "gates": {
-    "plan": "pending",
+    "plan": "ok",
     "spec": "ok"
   },
-  "tasks": [],
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/cli/cmd_version.go",
+        "internal/cli/cmd_version_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 2,
+      "wave": 1,
+      "status": "pending",
+      "files": [
+        "internal/bundle/write.go",
+        "internal/bundle/write_test.go",
+        "internal/gitx/git.go",
+        "internal/gitx/git_test.go",
+        "internal/cli/cmd_init.go",
+        "internal/cli/cmd_init_test.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/cmd_next_test.go",
+        "internal/cli/launch.go",
+        "internal/cli/archive.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 3,
+      "wave": 2,
+      "status": "pending",
+      "files": [
+        "internal/cli/cmd_next.go",
+        "internal/cli/cmd_next_test.go",
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/brief/templates/planner.md",
+        "internal/brief/brief_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 5,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/hosts/copilot.go",
+        "internal/hosts/copilot_test.go",
+        "internal/tools/hostgen/main.go",
+        "internal/tools/hostgen/main_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 6,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "Taskfile.yml",
+        "internal/tools/setversion/main.go",
+        "internal/tools/setversion/main_test.go",
+        "internal/tools/setversion/export_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    },
+    {
+      "id": 7,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/bundle/lock_test.go",
+        "internal/prompt/prompt_test.go",
+        "internal/prompt/copilot_test.go"
+      ],
+      "class": "test",
+      "attempt": 0
+    },
+    {
+      "id": 8,
+      "wave": 2,
+      "status": "pending",
+      "files": [
+        "internal/cli/facts.go",
+        "internal/cli/cmd_record.go",
+        "internal/cli/record_reviewer.go",
+        "internal/cli/cmd_record_test.go",
+        "internal/cli/record_reviewer_test.go"
+      ],
+      "class": "implement",
+      "attempt": 0
+    },
+    {
+      "id": 9,
+      "wave": 0,
+      "status": "pending",
+      "files": [
+        "internal/op/op.go",
+        "internal/op/op_test.go",
+        "internal/cli/cli.go"
+      ],
+      "class": "bounded",
+      "attempt": 0
+    }
+  ],
   "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,

@@ -5,7 +5,7 @@
     {
       "id": 1,
       "title": "Version handshake: refuse an empty --expect, judge once, name the skill",
-      "description": "In internal/cli/cmd_version.go: (1) #3 — cmdVersion currently dispatches on `*expect != \"\"` (lines 22/26), so `takt version --expect \"\"` never reaches versionExpect and exits 0 printing the version. Detect that --expect was GIVEN — via flag.Visit after fs.Parse, or a sentinel default — and route a literal-empty value through the same refusal a whitespace-only one already gets in versionExpect (\"the host's handshake names no version\" / \"check the host prompt's takt version --expect line\"), so a host whose stamp came out empty fails the handshake instead of passing. --expect-manifest keeps its current empty-means-absent dispatch, and the mutual-exclusion check keeps working. (2) #10 — manifestFailure calls ManifestMatches to judge, then versionExpect (line 60) and versionExpectManifest (line 93) each call ManifestMatches a second time to learn dev. Collapse to one helper that judges once and returns problem, hint and dev together; both call sites use it. ManifestMatches stays exported with its current signature — TestManifestMatches reads it directly. (3) #11 — the --expect failure text currently says \"does not match plugin version\" / \"update the plugin\", but --expect is the Copilot skill's handshake and there is no plugin: give the failure a subject noun per flag — \"does not match skill version\" / \"install takt <v> (nix/brew/go install) or update the skill\" for --expect, keep \"plugin\" for --expect-manifest, and keep the empty-manifest failure naming the manifest path. In internal/cli/cmd_version_test.go add: TestVersionExpectEmptyFailsTheHandshake (a literal-empty and a whitespace-only --expect both exit non-zero with the versionless refusal; assert the mutual-exclusion and plain-print paths are unchanged) and extend TestManifestFailure/TestVersionExpectManifest coverage so each subject noun is asserted (\"skill\" for --expect, \"plugin\" for --expect-manifest). Keep TestVersionExpectAcceptsADevBuild passing: a dev binary still passes a non-empty --expect with dev:true. Acceptance note for #10: cmd_version.go must contain exactly two occurrences of `ManifestMatches(` — its declaration and the single call inside the one judging helper. It holds four today (declaration plus three calls: manifestFailure, versionExpect, versionExpectManifest), so the count is what proves the double evaluation is gone; behavioural tests cannot see it. cmd_version_test.go may still call the exported function freely — it is a different file.",
+      "description": "In internal/cli/cmd_version.go: (1) #3 — cmdVersion currently dispatches on `*expect != \"\"` (lines 22/26), so `takt version --expect \"\"` never reaches versionExpect and exits 0 printing the version. Detect that --expect was GIVEN — via flag.Visit after fs.Parse, or a sentinel default — and route a literal-empty value through the same refusal a whitespace-only one already gets in versionExpect (\"the host's handshake names no version\" / \"check the host prompt's takt version --expect line\"), so a host whose stamp came out empty fails the handshake instead of passing. --expect-manifest keeps its current empty-means-absent dispatch, and the mutual-exclusion check keeps working. (2) #10 — manifestFailure calls ManifestMatches to judge, then versionExpect (line 60) and versionExpectManifest (line 93) each call ManifestMatches a second time to learn dev. Collapse to one helper that judges once and returns problem, hint and dev together; both call sites use it. ManifestMatches stays exported with its current signature — TestManifestMatches reads it directly. (3) #11 — the --expect failure text currently says \"does not match plugin version\" / \"update the plugin\", but --expect is the Copilot skill's handshake and there is no plugin: give the failure a subject noun per flag — \"does not match skill version\" / \"install takt \u003cv\u003e (nix/brew/go install) or update the skill\" for --expect, keep \"plugin\" for --expect-manifest, and keep the empty-manifest failure naming the manifest path. In internal/cli/cmd_version_test.go add: TestVersionExpectEmptyFailsTheHandshake (a literal-empty and a whitespace-only --expect both exit non-zero with the versionless refusal; assert the mutual-exclusion and plain-print paths are unchanged) and extend TestManifestFailure/TestVersionExpectManifest coverage so each subject noun is asserted (\"skill\" for --expect, \"plugin\" for --expect-manifest). Keep TestVersionExpectAcceptsADevBuild passing: a dev binary still passes a non-empty --expect with dev:true. Acceptance note for #10: cmd_version.go must contain exactly two occurrences of `ManifestMatches(` — its declaration and the single call inside the one judging helper. It holds four today (declaration plus three calls: manifestFailure, versionExpect, versionExpectManifest), so the count is what proves the double evaluation is gone; behavioural tests cannot see it. cmd_version_test.go may still call the exported function freely — it is a different file.",
       "files": [
         "internal/cli/cmd_version.go",
         "internal/cli/cmd_version_test.go"
@@ -19,7 +19,8 @@
       "goals": [
         "G1"
       ],
-      "class": "bounded"
+      "class": "bounded",
+      "wave": 0
     },
     {
       "id": 2,
@@ -55,12 +56,13 @@
         "G4",
         "G11"
       ],
-      "class": "implement"
+      "class": "implement",
+      "wave": 1
     },
     {
       "id": 3,
       "title": "lock_taken records a takeover, and an explicit --force stops exempting one",
-      "description": "#4 and #2, per the spec's ruling. In internal/cli/cmd_next.go acquireLock (event switch at lines 161-171 pre-task-2): (1) gate the whole switch on a takeover having happened — nothing is appended unless outcome is bundle.LockStolen or bundle.LockForced; `acquired`, `held-by-self` and `blocked` never append (today's `case orphaned` arm cannot fire on those because orphaned implies a different holder, but the new --force arm could, and this guard is what stops a false lock_taken plus churn in the tracked events.jsonl on every forced next against a free lock). (2) condition the generated-over-generated exemption on --force NOT being passed: the `orphaned && r.genID` silence keeps covering exactly the automatic case it was written for (orphaned already means a DIFFERENT generated holder — held.ID != r.session && held.Generated), while an explicit --force that takes the run from someone always appends one lock_taken, whatever the holder's kind, carrying the outcome Acquire graded (so a --force over a long-idle holder still reads `stolen`). Keep the existing comment block explaining the exemption — it is still correct for the automatic case — extending it for the --force condition. (3) rewrite the §4.6 sentence in docs/superpowers/specs/2026-08-24-takt-design.md (currently \"an older heartbeat is taken over with a lock_taken event\", ~line 315) to state all three parts: a lock_taken is recorded when a named session takes over and whenever a takeover was explicitly forced; a generated session quietly taking over a generated holder records nothing; no takeover, no event. Tests in internal/cli/cmd_next_test.go: TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (a --force from a generated session over a different generated holder appends exactly one lock_taken); a plain next in the same situation appends none (extend or sit beside TestNextWithAGeneratedIdIgnoresAStaleGeneratedHolder); and --force against a free lock and against the caller's own held lock append none. This task also carries G12: the goal's evidence is spec.md's \"#9 is already fixed\" and Scope sections, already recorded in this bundle — no additional diff is required, and this task's commit is the one that lands the sweep's ruling-derived doc change alongside it. Carries the repo-wide gates for G13 as a wave-2 task. G12 is an evidence goal, not an action: it is satisfied by spec.md's '#9 is already fixed' section and its Scope list, both already in the bundle, which is what records that the anchor's fourteen listed issues resolve to eleven fixes, two rulings and one closure. This task edits neither — its verify greps them, so the goal fails loudly if that evidence ever leaves the spec. Closing the GitHub issue itself is not part of this plan and no task performs it.",
+      "description": "#4 and #2, per the spec's ruling. In internal/cli/cmd_next.go acquireLock (event switch at lines 161-171 pre-task-2): (1) gate the whole switch on a takeover having happened — nothing is appended unless outcome is bundle.LockStolen or bundle.LockForced; `acquired`, `held-by-self` and `blocked` never append (today's `case orphaned` arm cannot fire on those because orphaned implies a different holder, but the new --force arm could, and this guard is what stops a false lock_taken plus churn in the tracked events.jsonl on every forced next against a free lock). (2) condition the generated-over-generated exemption on --force NOT being passed: the `orphaned \u0026\u0026 r.genID` silence keeps covering exactly the automatic case it was written for (orphaned already means a DIFFERENT generated holder — held.ID != r.session \u0026\u0026 held.Generated), while an explicit --force that takes the run from someone always appends one lock_taken, whatever the holder's kind, carrying the outcome Acquire graded (so a --force over a long-idle holder still reads `stolen`). Keep the existing comment block explaining the exemption — it is still correct for the automatic case — extending it for the --force condition. (3) rewrite the §4.6 sentence in docs/superpowers/specs/2026-08-24-takt-design.md (currently \"an older heartbeat is taken over with a lock_taken event\", ~line 315) to state all three parts: a lock_taken is recorded when a named session takes over and whenever a takeover was explicitly forced; a generated session quietly taking over a generated holder records nothing; no takeover, no event. Tests in internal/cli/cmd_next_test.go: TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (a --force from a generated session over a different generated holder appends exactly one lock_taken); a plain next in the same situation appends none (extend or sit beside TestNextWithAGeneratedIdIgnoresAStaleGeneratedHolder); and --force against a free lock and against the caller's own held lock append none. This task also carries G12: the goal's evidence is spec.md's \"#9 is already fixed\" and Scope sections, already recorded in this bundle — no additional diff is required, and this task's commit is the one that lands the sweep's ruling-derived doc change alongside it. Carries the repo-wide gates for G13 as a wave-2 task. G12 is an evidence goal, not an action: it is satisfied by spec.md's '#9 is already fixed' section and its Scope list, both already in the bundle, which is what records that the anchor's fourteen listed issues resolve to eleven fixes, two rulings and one closure. This task edits neither — its verify greps them, so the goal fails loudly if that evidence ever leaves the spec. Closing the GitHub issue itself is not part of this plan and no task performs it.",
       "files": [
         "internal/cli/cmd_next.go",
         "internal/cli/cmd_next_test.go",
@@ -84,7 +86,8 @@
         "G12",
         "G13"
       ],
-      "class": "implement"
+      "class": "implement",
+      "wave": 2
     },
     {
       "id": 4,
@@ -102,12 +105,13 @@
       "goals": [
         "G8"
       ],
-      "class": "bounded"
+      "class": "bounded",
+      "wave": 0
     },
     {
       "id": 5,
       "title": "hostgen failures share one style and name the path actually read",
-      "description": "#14. internal/hosts/copilot.go uses fmt.Errorf(\"agents/%s.md: %w\", ...) at line 33 and errors.New(\"agents/\" + ccName + \".md: ...\") at line 37 for the same job, and both hardcode agents/ although hostgen accepts --root — the path actually read exists only in internal/tools/hostgen/main.go, which resolves it under --root. Change RenderCopilotAgent's signature to receive the source path (e.g. func RenderCopilotAgent(src, ccName string, ccFile []byte) ([]byte, error)), update its one caller — render() in internal/tools/hostgen/main.go:111-117 — to pass the src it already resolved, and use that path in BOTH failure messages with one error style (fmt.Errorf for both). The generatedNote const is untouched: it names the canonical source for a reader of the generated file, not a path this process read. Update internal/hosts/copilot_test.go for the new signature, and add a case to internal/tools/hostgen/main_test.go running with a --root other than \".\" against a broken agent file, asserting the error names the real source path under that root rather than a bare agents/<x>.md.",
+      "description": "#14. internal/hosts/copilot.go uses fmt.Errorf(\"agents/%s.md: %w\", ...) at line 33 and errors.New(\"agents/\" + ccName + \".md: ...\") at line 37 for the same job, and both hardcode agents/ although hostgen accepts --root — the path actually read exists only in internal/tools/hostgen/main.go, which resolves it under --root. Change RenderCopilotAgent's signature to receive the source path (e.g. func RenderCopilotAgent(src, ccName string, ccFile []byte) ([]byte, error)), update its one caller — render() in internal/tools/hostgen/main.go:111-117 — to pass the src it already resolved, and use that path in BOTH failure messages with one error style (fmt.Errorf for both). The generatedNote const is untouched: it names the canonical source for a reader of the generated file, not a path this process read. Update internal/hosts/copilot_test.go for the new signature, and add a case to internal/tools/hostgen/main_test.go running with a --root other than \".\" against a broken agent file, asserting the error names the real source path under that root rather than a bare agents/\u003cx\u003e.md.",
       "files": [
         "internal/hosts/copilot.go",
         "internal/hosts/copilot_test.go",
@@ -122,7 +126,8 @@
       "goals": [
         "G9"
       ],
-      "class": "bounded"
+      "class": "bounded",
+      "wave": 0
     },
     {
       "id": 6,
@@ -138,19 +143,20 @@
         "grep -q 'ldflags' Taskfile.yml",
         "go run ./internal/tools/setversion --print",
         "go test -race -count=1 ./internal/tools/setversion/...",
-        "rm -f takt && task build && ./takt version | grep -q \"\\\"$(go run ./internal/tools/setversion --print)\\\"\"",
-        "rm -f takt && task build && ./takt version | grep -c 0.0.0-dev | grep -qx 0"
+        "rm -f takt \u0026\u0026 task build \u0026\u0026 ./takt version | grep -q \"\\\"$(go run ./internal/tools/setversion --print)\\\"\"",
+        "rm -f takt \u0026\u0026 task build \u0026\u0026 ./takt version | grep -c 0.0.0-dev | grep -qx 0"
       ],
       "depends_on": [],
       "goals": [
         "G10"
       ],
-      "class": "bounded"
+      "class": "bounded",
+      "wave": 0
     },
     {
       "id": 7,
       "title": "Pin the deferred test gaps: steal boundary, cross-host invariants, escape look-back",
-      "description": "#15's remaining slices; no production code changes. (1) internal/bundle/lock_test.go gains TestAcquireStealBoundaryAndSelfStale: with ttl t, a holder whose heartbeat is exactly now-t is LockBlocked (Acquire uses `now.Sub(held.Heartbeat) > ttl`, strict), one at now-t-1ns is LockStolen, and \"mine but stale\" — held.ID == who.ID with a heartbeat far older than ttl — returns LockHeldBySelf because the identity case is graded before staleness. (2) internal/prompt/prompt_test.go gains TestPromptInvariantsReadTheSameOnEveryHost: load both commands/takt.md (promptPath) and hosts/copilot/skills/takt/SKILL.md (reuse skillPath from copilot_test.go — same prompt_test package) and assert the invariant sentences that must not drift appear in both: the owner-gate exception, the `kept: true` rule, and the `git add -A` prohibition; today TestPromptHandshakeVerbsAndInvariants loads only the Claude prompt. Anchor on the phrases shared by both files today (e.g. \"kept: true\", \"git add -A\", the owner-gate wording) so the test fails when one host's copy is edited alone. (3) internal/prompt/copilot_test.go: quotedScalarProblem's escape look-back reads one byte (line 226: `body[i-1] == '\\\\'`), so a double-quoted body ending \\\\\" is a false negative — count the run of backslashes preceding the quote; an even count means the quote is NOT escaped and must be reported. Add TestQuotedScalarProblemBackslashRuns table-testing the helper directly (same package): `\"a\\\"b\"` escaped quote passes, `\"a\\\\\"b\"` even-count run is reported, longer odd/even runs behave accordingly. The writeLogsIgnore already-present case (the fourth gap #15 names) lands with task 2, which owns cmd_next_test.go.",
+      "description": "#15's remaining slices; no production code changes. (1) internal/bundle/lock_test.go gains TestAcquireStealBoundaryAndSelfStale: with ttl t, a holder whose heartbeat is exactly now-t is LockBlocked (Acquire uses `now.Sub(held.Heartbeat) \u003e ttl`, strict), one at now-t-1ns is LockStolen, and \"mine but stale\" — held.ID == who.ID with a heartbeat far older than ttl — returns LockHeldBySelf because the identity case is graded before staleness. (2) internal/prompt/prompt_test.go gains TestPromptInvariantsReadTheSameOnEveryHost: load both commands/takt.md (promptPath) and hosts/copilot/skills/takt/SKILL.md (reuse skillPath from copilot_test.go — same prompt_test package) and assert the invariant sentences that must not drift appear in both: the owner-gate exception, the `kept: true` rule, and the `git add -A` prohibition; today TestPromptHandshakeVerbsAndInvariants loads only the Claude prompt. Anchor on the phrases shared by both files today (e.g. \"kept: true\", \"git add -A\", the owner-gate wording) so the test fails when one host's copy is edited alone. (3) internal/prompt/copilot_test.go: quotedScalarProblem's escape look-back reads one byte (line 226: `body[i-1] == '\\\\'`), so a double-quoted body ending \\\\\" is a false negative — count the run of backslashes preceding the quote; an even count means the quote is NOT escaped and must be reported. Add TestQuotedScalarProblemBackslashRuns table-testing the helper directly (same package): `\"a\\\"b\"` escaped quote passes, `\"a\\\\\"b\"` even-count run is reported, longer odd/even runs behave accordingly. The writeLogsIgnore already-present case (the fourth gap #15 names) lands with task 2, which owns cmd_next_test.go.",
       "files": [
         "internal/bundle/lock_test.go",
         "internal/prompt/prompt_test.go",
@@ -166,12 +172,13 @@
       "goals": [
         "G11"
       ],
-      "class": "test"
+      "class": "test",
+      "wave": 0
     },
     {
       "id": 8,
       "title": "endAttemptStreak returns its error; callers report the loss as a warning at exit 0",
-      "description": "#16, per the spec's ruling: report it, keep exit 0. internal/cli/facts.go's endAttemptStreak (lines 256-263) currently discards both the bundle.ReadEvents error and the bundle.AppendEvent error and returns nothing; change it to return error (a failed read that prevents judging the streak is also a loss worth naming), updating its doc comment — the \"a lost append is tolerated\" paragraph becomes \"a lost append is reported by the caller, at exit 0\". Each of the four call sites runs AFTER the substantive write has succeeded and immediately before the command prints its JSON, so each folds a non-nil error into the warnings array of that JSON instead of failing: cmd_record.go:174 (goals record), cmd_record.go:261 (alignment record), record_reviewer.go:134 (lens record), record_reviewer.go:258 (verify record). Use the keyWarnings constant task 2 added to cli.go; the warning is one sentence naming the loss, e.g. `attempt-streak reset not recorded: <error>`. No exit code changes, no existing key changes, and the key is absent when nothing was lost. Tests in cmd_record_test.go and record_reviewer_test.go: seed a rejection streak (as TestRecordLensValidReplyEndsTheRejectionStreak does), then force the failure at the right seam and assert exit 0. The two losses need different setups and must not be conflated: making events.jsonl READ-ONLY after seeding lets ReadEvents succeed and fails AppendEvent, which is the append loss; REPLACING events.jsonl with a directory fails ReadEvents first and AppendEvent is never reached, which is the read loss. Cover both, and say which is which, the existing keys intact (valid/mode/findings etc.), and a warnings entry naming the loss; also assert a clean record prints no warnings key. Depends on task 2 (the warnings contract and keyWarnings); file-disjoint from it and from task 3. Carries the repo-wide gates for G13 as a wave-2 task. All FOUR call sites must handle the error, not one per file: cmd_record.go has two (the goals record and the alignment record) and record_reviewer.go has two. Each gets its own test asserting the warning reaches that command's JSON. Two acceptance checks make a missed caller impossible to hide: errcheck is enabled in .golangci.yml, so once the function returns an error every discarded call fails `golangci-lint run ./...`, and the greps forbid the `_ = endAttemptStreak` escape hatch that would silence errcheck instead of handling the loss.",
+      "description": "#16, per the spec's ruling: report it, keep exit 0. internal/cli/facts.go's endAttemptStreak (lines 256-263) currently discards both the bundle.ReadEvents error and the bundle.AppendEvent error and returns nothing; change it to return error (a failed read that prevents judging the streak is also a loss worth naming), updating its doc comment — the \"a lost append is tolerated\" paragraph becomes \"a lost append is reported by the caller, at exit 0\". Each of the four call sites runs AFTER the substantive write has succeeded and immediately before the command prints its JSON, so each folds a non-nil error into the warnings array of that JSON instead of failing: cmd_record.go:174 (goals record), cmd_record.go:261 (alignment record), record_reviewer.go:134 (lens record), record_reviewer.go:258 (verify record). Use the keyWarnings constant task 2 added to cli.go; the warning is one sentence naming the loss, e.g. `attempt-streak reset not recorded: \u003cerror\u003e`. No exit code changes, no existing key changes, and the key is absent when nothing was lost. Tests in cmd_record_test.go and record_reviewer_test.go: seed a rejection streak (as TestRecordLensValidReplyEndsTheRejectionStreak does), then force the failure at the right seam and assert exit 0. The two losses need different setups and must not be conflated: making events.jsonl READ-ONLY after seeding lets ReadEvents succeed and fails AppendEvent, which is the append loss; REPLACING events.jsonl with a directory fails ReadEvents first and AppendEvent is never reached, which is the read loss. Cover both, and say which is which, the existing keys intact (valid/mode/findings etc.), and a warnings entry naming the loss; also assert a clean record prints no warnings key. Depends on task 2 (the warnings contract and keyWarnings); file-disjoint from it and from task 3. Carries the repo-wide gates for G13 as a wave-2 task. All FOUR call sites must handle the error, not one per file: cmd_record.go has two (the goals record and the alignment record) and record_reviewer.go has two. Each gets its own test asserting the warning reaches that command's JSON. Two acceptance checks make a missed caller impossible to hide: errcheck is enabled in .golangci.yml, so once the function returns an error every discarded call fails `golangci-lint run ./...`, and the greps forbid the `_ = endAttemptStreak` escape hatch that would silence errcheck instead of handling the loss.",
       "files": [
         "internal/cli/facts.go",
         "internal/cli/cmd_record.go",
@@ -195,7 +202,8 @@
         "G7",
         "G13"
       ],
-      "class": "implement"
+      "class": "implement",
+      "wave": 2
     },
     {
       "id": 9,
@@ -215,7 +223,8 @@
       "goals": [
         "G4"
       ],
-      "class": "bounded"
+      "class": "bounded",
+      "wave": 0
     }
   ]
 }
