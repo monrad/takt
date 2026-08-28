@@ -251,20 +251,37 @@ func answerAgentInvalid(bdir string, st *bundle.State, choice string) (bool, err
 		reset := map[string]string{
 			op.AgentAlignmentAuditor: evAlignmentReset,
 			op.AgentGoalAssessor:     evGoalsReset,
+			op.AgentReviewer:         evReviewerReset,
 		}[agent]
 		if reset == "" {
 			return false, errorf("agent_invalid gate names no agent")
 		}
 		return false, bundle.AppendEvent(bdir, reset, map[string]any{keyProblems: payload.Context[keyProblems]})
 	case "skip":
-		if agent != op.AgentAlignmentAuditor {
-			return false, errorf("skip answers only the alignment-auditor, not the %s", agent)
+		switch agent {
+		case op.AgentAlignmentAuditor:
+			return false, skipAlignment(bdir, st)
+		case op.AgentReviewer:
+			return false, skipInternalReview(bdir, st)
 		}
-		return false, skipAlignment(bdir, st)
+		return false, errorf("skip answers only the alignment-auditor or the reviewer, not the %s", agent)
 	case choiceStop:
 		return true, nil
 	}
 	return false, errorf("unknown choice %q for agent_invalid", choice)
+}
+
+// skipInternalReview records the internal review skipped for the active
+// dispatch: the layer is advisory, so a skipped review reads as complete
+// and close-wave proceeds without candidates (two-layers design §4.3).
+func skipInternalReview(bdir string, st *bundle.State) error {
+	aw := st.ActiveWave
+	if aw == nil {
+		return errorf("no active wave to skip the internal review for")
+	}
+	return bundle.AppendEvent(bdir, "internal_review_skipped", map[string]any{
+		keyWave: aw.N, keySlice: sliceOf(aw), keyAttempt: aw.Attempt, keyReason: "agent_invalid",
+	})
 }
 
 // skipAlignment records the audit as skipped for this run's anchor: the

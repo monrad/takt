@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ type initOptions struct {
 	noTasks  bool
 	noGoals  bool
 	noAlign  bool
+	noLenses bool
 	topic    string
 }
 
@@ -135,6 +137,7 @@ func initFlags(env Env) (*initOptions, int) {
 	noTasks := fs.Bool("no-review-tasks", false, "disable per-task review for this run")
 	noGoals := fs.Bool("no-goals", false, "disable goals for this run")
 	noAlign := fs.Bool("no-alignment", false, "disable the alignment audit for this run")
+	noLenses := fs.Bool("no-review-lenses", false, "disable the internal lens review for this run")
 	positional, err := parseInterspersed(fs, env.Args)
 	if err != nil {
 		return nil, usageError(env, fs, err)
@@ -151,7 +154,8 @@ func initFlags(env Env) (*initOptions, int) {
 	return &initOptions{
 		dir: *dirFlag, slug: *slug, autonomy: *autonomy,
 		noSpec: *noSpec, noPlan: *noPlan, noTasks: *noTasks, noGoals: *noGoals, noAlign: *noAlign,
-		topic: topic,
+		noLenses: *noLenses,
+		topic:    topic,
 	}, 0
 }
 
@@ -259,9 +263,10 @@ func newRunState(
 		Config: bundle.RunConfig{
 			Autonomy: cfg.Autonomy,
 			Review: bundle.ReviewConfig{
-				Spec:  cfg.Review.Spec && !opts.noSpec,
-				Plan:  cfg.Review.Plan && !opts.noPlan,
-				Tasks: cfg.Review.Tasks && !opts.noTasks,
+				Spec:   cfg.Review.Spec && !opts.noSpec,
+				Plan:   cfg.Review.Plan && !opts.noPlan,
+				Tasks:  cfg.Review.Tasks && !opts.noTasks,
+				Lenses: frozenLenses(cfg.Review.Lenses, opts.noLenses),
 			},
 			Goals:       cfg.Goals && !opts.noGoals,
 			Alignment:   cfg.Alignment && !opts.noAlign,
@@ -271,6 +276,16 @@ func newRunState(
 		Gates: map[string]string{"spec": gatePending, "plan": gatePending},
 		Tasks: []bundle.Task{},
 	}, sess
+}
+
+// frozenLenses copies the configured lens set into the run's frozen config;
+// --no-review-lenses freezes an empty set, turning the internal layer off
+// for this run only (two-layers design §10).
+func frozenLenses(lenses []string, off bool) []string {
+	if off {
+		return nil
+	}
+	return slices.Clone(lenses)
 }
 
 // persistState saves state.json and appends the init event (spec §4.4); a

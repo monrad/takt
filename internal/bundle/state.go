@@ -47,6 +47,8 @@ type ReviewConfig struct {
 	Spec  bool `json:"spec"`
 	Plan  bool `json:"plan"`
 	Tasks bool `json:"tasks"`
+	// Lenses is the frozen internal-lens set (two-layers design §10).
+	Lenses []string `json:"lenses,omitempty"`
 }
 
 // RunConfig is the per-run configuration frozen at init.

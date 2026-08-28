@@ -29,9 +29,10 @@ const (
 	AgentAlignmentAuditor = "alignment-auditor"
 	AgentGoalAssessor     = "goal-assessor"
 	AgentImplementer      = "implementer"
+	AgentReviewer         = "reviewer"
 )
 
 // Agents returns every agent name a dispatch op can carry.
 func Agents() []string {
-	return []string{AgentPlanner, AgentAlignmentAuditor, AgentGoalAssessor, AgentImplementer}
+	return []string{AgentPlanner, AgentAlignmentAuditor, AgentGoalAssessor, AgentImplementer, AgentReviewer}
 }

@@ -211,9 +211,10 @@ func questionPlanInvalid(q *op.Op, ctx map[string]any) {
 
 // questionAgentInvalid fills the "agent_invalid" gate: an agent whose reply
 // takt could not parse three times running (spec §5.3 rows 10, 11, 21).
-// Skipping is an answer only for the alignment auditor, whose digest is
-// advisory; the goal check has no skip — a run that must not check its
-// goals is initialised with --no-goals.
+// Skipping is an answer only for the alignment auditor and the reviewer,
+// whose digest and internal review are both advisory (two-layers design
+// §4.2); the goal check has no skip — a run that must not check its goals
+// is initialised with --no-goals.
 func questionAgentInvalid(q *op.Op, ctx map[string]any) {
 	agent, _ := ctx[ctxAgent].(string)
 	q.Narration = fmt.Sprintf("the %s replied unusably %v times", agent, ctx[ctxAttempts])
@@ -228,11 +229,18 @@ func questionAgentInvalid(q *op.Op, ctx map[string]any) {
 			Description: "Re-dispatch the " + agent + " with the rejection reasons appended to its brief.",
 		},
 	}
-	if agent == op.AgentAlignmentAuditor {
+	switch agent {
+	case op.AgentAlignmentAuditor:
 		q.Options = append(q.Options, op.Option{
 			Choice:      choiceSkip,
 			Label:       "Skip the audit",
 			Description: "Proceed without the alignment digest (advisory only).",
+		})
+	case op.AgentReviewer:
+		q.Options = append(q.Options, op.Option{
+			Choice:      choiceSkip,
+			Label:       "Skip the review",
+			Description: "Proceed without the internal review for this wave (advisory only).",
 		})
 	}
 	q.Options = append(q.Options, op.Option{

@@ -77,6 +77,8 @@ func readDigest(bdir string, waveN, task, attempt int) (*digest, error) {
 // attempt it was found at, or nil, 0 when the task has none. A task recorded
 // in an earlier attempt of the same wave still closes with the wave, which
 // is what makes recovery re-dispatch only the tasks that never reported.
+//
+//nolint:unparam // the attempt it was found at is the documented second result; no caller needs it yet
 func latestDigest(bdir string, waveN, task, maxAttempt int) (*digest, int, error) {
 	for a := maxAttempt; a >= 1; a-- {
 		d, err := readDigest(bdir, waveN, task, a)
@@ -360,6 +362,13 @@ func previousFailure(bdir string, waveN, slice, task int) (string, []string) {
 			findings = append(findings,
 				fmt.Sprintf("%s %s:%d — %s: %s", f.Severity, f.File, f.Line, f.Title, f.Detail))
 		}
+	}
+	// A confirmed internal-lens finding a rework did not act on is not lost:
+	// it rides along beside the backend's own findings, tagged with the lens
+	// that raised it (two-layers design §3.7, D11).
+	for _, f := range tr.Internal {
+		findings = append(findings, fmt.Sprintf("[lens:%s] %s %s:%d — %s: %s",
+			strings.Join(f.Lenses, ","), f.Severity, f.File, f.Line, f.Title, f.Detail))
 	}
 	return failure.String(), findings
 }

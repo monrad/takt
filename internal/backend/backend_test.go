@@ -98,6 +98,33 @@ func TestFakeReviewerFromEnvAndFile(t *testing.T) {
 	}
 }
 
+func TestFakeReviewerPicksThePerRubricFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "followup.json")
+	if err := os.WriteFile(p, []byte(`{"verdict":"rework","summary":"from followup"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	getenv := func(k string) string {
+		switch k {
+		case "TAKT_FAKE_REVIEW_FILE_TASK_FOLLOWUP":
+			return p
+		case "TAKT_FAKE_REVIEW":
+			return `{"verdict":"approve","summary":"generic"}`
+		}
+		return ""
+	}
+	r := backend.Registry(getenv)["fake"]
+	res, err := r.Review(context.Background(), backend.ReviewRequest{Rubric: "task-followup"})
+	if err != nil || res.Summary != "from followup" {
+		t.Fatalf("res = %+v, %v", res, err)
+	}
+	res, err = r.Review(context.Background(), backend.ReviewRequest{Rubric: "task"})
+	if err != nil || res.Summary != "generic" {
+		t.Fatalf("task rubric must fall back: %+v, %v", res, err)
+	}
+}
+
 type stub struct {
 	name    string
 	healthy error

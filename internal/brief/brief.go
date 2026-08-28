@@ -12,12 +12,42 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 )
 
 //go:embed templates/*.md
 var files embed.FS
+
+//go:embed lenses/*.md
+var lensFiles embed.FS
+
+// Lenses lists the shipped lens names, sorted — the registry config
+// validation and the dispatch fan-out both read (design §7.2, §10). The
+// embedded directory is the single source: adding a lens is dropping a file
+// here and naming it in config.
+func Lenses() []string {
+	entries, err := lensFiles.ReadDir("lenses")
+	if err != nil {
+		return nil // embed cannot fail at runtime; nil keeps the contract total
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, strings.TrimSuffix(e.Name(), ".md"))
+	}
+	slices.Sort(names)
+	return names
+}
+
+// LensRubric returns the rubric body for one lens.
+func LensRubric(name string) (string, error) {
+	b, err := lensFiles.ReadFile("lenses/" + name + ".md")
+	if err != nil {
+		return "", fmt.Errorf("brief: unknown lens %q", name)
+	}
+	return string(b), nil
+}
 
 //nolint:gosec // G101 false positive: not a credential, a public delimiter-token prefix embedded in every rendered brief
 const tokenPrefix = "UNTRUSTED-ARTIFACT-"
@@ -121,6 +151,60 @@ type GoalAssessorData struct {
 	VerifySummary string
 	Goals         []GoalLine
 	Problems      []string
+}
+
+// LensTask is one task in a wave reviewed through a lens.
+type LensTask struct {
+	ID          int
+	Title       string
+	Description string
+	Files       []string
+}
+
+// LensData feeds review-lens.md (spec §7.4 row 8, §10).
+type LensData struct {
+	Slug                 string
+	Wave, Slice, Attempt int
+	Lens                 string
+	Rubric               string
+	DiffPath             string // absolute path of the slice diff file
+	Tasks                []LensTask
+	Token                string
+}
+
+// TaskBlock renders one task for quoting: title, description and declared
+// files in a single delimiter pair, so the template stays one quote call
+// per task.
+func (LensData) TaskBlock(t LensTask) string {
+	return t.Title + "\n" + t.Description + "\nfiles: " + strings.Join(t.Files, ", ")
+}
+
+// VerifyCandidate is one candidate finding a lens review proposed, being
+// verified in a pass over the candidates.
+type VerifyCandidate struct {
+	ID, Severity, File, Title, Detail string
+	Line                              int
+}
+
+// VerifyData feeds review-verify.md (spec §7.4 row 9, §10).
+type VerifyData struct {
+	Slug                 string
+	Wave, Slice, Attempt int
+	DiffPath             string
+	Token                string
+	Candidates           []VerifyCandidate
+}
+
+// CandidateLines renders the merged candidates as one block for a single
+// delimiter pair — distilled claims only, no lens names and no reasoning
+// (design D6): a candidate is another agent's words about implementer-
+// authored code, exactly the laundering path PriorFindingLines closes.
+func (d VerifyData) CandidateLines() string {
+	var b strings.Builder
+	for _, c := range d.Candidates {
+		fmt.Fprintf(&b, "%s %s %s:%d — %s: %s\n", c.ID, c.Severity, c.File, c.Line, c.Title, c.Detail)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // PriorFinding is one finding from the pass a scoped review is confirming.

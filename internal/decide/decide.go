@@ -74,6 +74,8 @@ const (
 	ActRecover    Action = "recover"    // Tasks to reset, then launch with Attempt
 	ActClearWave  Action = "clear_wave" // the slice's close record says committed
 	ActArchive    Action = "archive"    // phase → archived, commit, apply the disposition, stop
+
+	ActDispatchLenses Action = "dispatch_lenses" // Wave, Attempt, Lenses
 )
 
 // GateStatus summarises a gate receipt (spec §9).
@@ -107,10 +109,36 @@ type CloseFacts struct {
 	ReviewErrors []int
 }
 
+// InternalFacts is what is on disk for the active dispatch's internal
+// review (two-layers design §3.4, §4.1).
+type InternalFacts struct {
+	Lenses         []string        // the run's frozen lens set
+	Recorded       map[string]bool // lens → record present for this attempt
+	Candidates     int             // merged candidates once every lens is recorded
+	VerifyRecorded bool
+	Skipped        bool // internal_review_skipped for this dispatch
+	HasDoneDigest  bool // at least one task of the slice reported done
+}
+
+// Done reports whether the internal review holds nothing further for this
+// dispatch — the pure gate row 15 waits on (design §3.4).
+func (in InternalFacts) Done() bool {
+	if in.Skipped || len(in.Lenses) == 0 || !in.HasDoneDigest {
+		return true
+	}
+	for _, l := range in.Lenses {
+		if !in.Recorded[l] {
+			return false
+		}
+	}
+	return in.Candidates == 0 || in.VerifyRecorded
+}
+
 // WaveFacts is what is on disk for the active wave attempt and slice.
 type WaveFacts struct {
 	Recorded map[int]bool // task id → digest present for this attempt
 	Close    *CloseFacts  // nil until close-wave wrote the slice record
+	Internal InternalFacts
 }
 
 // Facts is everything Decide needs beyond the state.
@@ -134,6 +162,8 @@ type Facts struct {
 	AlignmentProblems []string // problems of the newest of those events
 	GoalsAttempts     int      // goals_invalid events since the last goals_attempts_reset
 	GoalsProblems     []string // problems of the newest of those events
+	ReviewerAttempts  int      // reviewer_invalid events since the last reviewer_attempts_reset
+	ReviewerProblems  []string // problems of the newest of those events
 
 	// SpecRounds is how many spec reviews have run since the newest
 	// gate_rounds_reset. Gate review is the one loop that cannot self-limit,
@@ -156,6 +186,7 @@ type Decision struct {
 	Attempt int       // launch / recover
 	Tasks   []int     // launch / recover
 	Agent   *op.Agent // dispatch of a single non-task agent (Brief filled by the caller)
+	Lenses  []string  // dispatch_lenses: the unrecorded lenses to fan out
 }
 
 // maxAgentAttempts caps how many unusable replies in a row takt accepts from an agent before it asks (spec §5.3 rows 8, 10, 11, 21).
@@ -393,6 +424,9 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 		}
 		return Decision{Action: ActRecover, Wave: aw.N, Tasks: unrecorded, Attempt: aw.Attempt + 1}
 	}
+	if d, ok := decideInternal(st, aw, f); ok {
+		return d
+	}
 	c := f.Wave.Close
 	if c == nil {
 		return exec(
@@ -445,4 +479,32 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 			ctxRework:    retry,
 		},
 	)
+}
+
+// decideInternal is rows 15a and 15b (two-layers design §4.2): between the
+// slice's last task record and its close, the lens fan-out and then the
+// verifier — capped exactly as the auditor is, with skip allowed because
+// the layer is advisory. The false return is "nothing internal to do":
+// row 15's exec close-wave proceeds.
+func decideInternal(st *bundle.State, aw *bundle.ActiveWave, f Facts) (Decision, bool) {
+	in := f.Wave.Internal
+	if in.Done() {
+		return Decision{}, false
+	}
+	if f.ReviewerAttempts >= maxAgentAttempts {
+		return askAgentInvalid(st, op.AgentReviewer, f.ReviewerAttempts, f.ReviewerProblems), true
+	}
+	var missing []string
+	for _, l := range in.Lenses {
+		if !in.Recorded[l] {
+			missing = append(missing, l)
+		}
+	}
+	if len(missing) > 0 {
+		return Decision{Action: ActDispatchLenses, Wave: aw.N, Attempt: aw.Attempt, Lenses: missing}, true
+	}
+	return Decision{
+		Action: ActDispatch,
+		Agent:  &op.Agent{Agent: op.AgentReviewer, Mode: "verify", Label: "verify the internal findings"},
+	}, true
 }

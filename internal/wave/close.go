@@ -28,6 +28,13 @@ type TaskResult struct {
 	FilesChanged []string              `json:"files_changed"`
 	Verify       []VerifyResult        `json:"verify,omitempty"`
 	Review       *backend.ReviewResult `json:"review,omitempty"`
+	// BlindReview is the first backend pass when a scoped pass replaced it
+	// (two-layers design §3.5); Review then holds the verdict that graded
+	// the task. Nil when no scoped pass ran.
+	BlindReview *backend.ReviewResult `json:"blind_review,omitempty"`
+	// Internal is the confirmed internal-lens findings attributed to this
+	// task — advisory input, never a grader.
+	Internal []InternalFinding `json:"internal,omitempty"`
 }
 
 // CloseResult is waves/<n>/close.s<slice>.json.

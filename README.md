@@ -56,7 +56,7 @@ takt also exports `overlays.default`, so `nixpkgs.overlays = [ inputs.takt.overl
 
 ### The plugin
 
-The `/takt` command and its four agent definitions ship from the same repository, via its own
+The `/takt` command and its five agent definitions ship from the same repository, via its own
 marketplace. In Claude Code:
 
 ```
@@ -128,7 +128,8 @@ timeouts. Precedence runs flags › environment › `.takt.json` › user config
 {
   "dir": "docs/takt",
   "autonomy": "auto",
-  "review": { "spec": true, "plan": true, "tasks": true },
+  "review": { "spec": true, "plan": true, "tasks": true,
+              "lenses": ["correctness", "intent", "tests", "simplicity", "consistency", "docs"] },
   "goals": true,
   "alignment": true,
   "max_parallel": 8,
@@ -151,7 +152,8 @@ timeouts. Precedence runs flags › environment › `.takt.json` › user config
     },
     "planner": { "model": "fable" },
     "goal-assessor": { "model": "sonnet" },
-    "alignment-auditor": { "model": "sonnet" }
+    "alignment-auditor": { "model": "sonnet" },
+    "reviewer": { "model": "sonnet" }
   }
 }
 ```
@@ -162,6 +164,7 @@ Most keys mean what they look like. The ones that don't:
 |---|---|
 | `autonomy` | `"auto"` runs ops back to back. `"step"` asks "continue?" before each wave dispatch. Neither skips a gate. |
 | `review.tasks` | Cross-vendor review of each task at the end of its wave. |
+| `review.lenses` | Internal reviewer lenses dispatched on every wave slice. Empty disables the internal layer. |
 | `goals` | A goal-assessor verdict per declared goal at finish, before disposition. |
 | `alignment` | An end-of-planning audit of the merged plan against the original request. |
 | `max_rework` | Rework rounds a task gets from review before it counts as a wave failure. |
@@ -195,9 +198,17 @@ takt review spec --skip --reason "<why>" --evidence <file>
 `<file>` holds the failing backend's error output. Both flags are required, and the evidence is copied
 into the bundle's receipt so the skip stays auditable.
 
+The backend chain is the *attested* layer, not the only one. When `review.lenses` is non-empty, each
+wave slice is first read by internal lens subagents — session-side, same vendor as the implementer —
+whose merged findings a verifier subagent confirms or refutes; the backend then reviews blind, and Go
+merges the layers. Confirmed findings ride retry briefs and `follow-ups.json`, and a blocking finding
+the backend missed buys one scoped second backend pass. Only the backend's verdict can change a task's
+status. The design, and the research behind keeping the layers blind to each other:
+[docs/superpowers/specs/2026-08-27-two-review-layers-design.md](docs/superpowers/specs/2026-08-27-two-review-layers-design.md).
+
 ## GitHub Copilot CLI
 
-The same op loop runs under the Copilot CLI (1.0.80 or newer) as a skill plus four custom agents.
+The same op loop runs under the Copilot CLI (1.0.80 or newer) as a skill plus five custom agents.
 Install the binary as above, then:
 
 ```sh

@@ -418,6 +418,143 @@ func TestExecuteCompletion(t *testing.T) {
 	})
 }
 
+// internalWaveFixture is the shared fixture task 8's internal-review tests
+// build on: phase execute, one active wave (N 0, slice 1, attempt 1) whose
+// two tasks are both recorded, with no close record yet — the window
+// decideInternal runs in, between the unrecorded-tasks check and the
+// `Close == nil` exec (two-layers design §3.2, §3.3).
+func internalWaveFixture() (*bundle.State, decide.Facts) {
+	st := execState()
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Slice: 1, Attempt: 1, StartedAt: t0, SessionID: "S", Tasks: []int{1, 2}}
+	f := facts()
+	f.Wave.Recorded = map[int]bool{1: true, 2: true}
+	return st, f
+}
+
+// TestDecideDispatchesUnrecordedLenses covers row 15a (two-layers design
+// §3.2): with one lens still unrecorded for this attempt, Decide dispatches
+// exactly the lenses that still owe a record — not the ones already in.
+func TestDecideDispatchesUnrecordedLenses(t *testing.T) {
+	t.Parallel()
+	st, f := internalWaveFixture()
+	f.Wave.Internal = decide.InternalFacts{
+		Lenses: []string{"correctness", "intent"}, Recorded: map[string]bool{"correctness": true},
+		HasDoneDigest: true,
+	}
+	d := mustDecide(t, st, f)
+	if d.Action != decide.ActDispatchLenses || d.Wave != 0 || d.Attempt != 1 {
+		t.Fatalf("%+v", d)
+	}
+	if len(d.Lenses) != 1 || d.Lenses[0] != "intent" {
+		t.Fatalf("lenses = %v, want [intent]", d.Lenses)
+	}
+}
+
+// TestDecideDispatchesTheVerifierWhenCandidatesExist covers row 15b
+// (two-layers design §3.3): every lens recorded, candidates merged and
+// unverified → dispatch the reviewer in verify mode.
+func TestDecideDispatchesTheVerifierWhenCandidatesExist(t *testing.T) {
+	t.Parallel()
+	st, f := internalWaveFixture()
+	f.Wave.Internal = decide.InternalFacts{
+		Lenses:        []string{"correctness", "intent"},
+		Recorded:      map[string]bool{"correctness": true, "intent": true},
+		Candidates:    3,
+		HasDoneDigest: true,
+	}
+	d := mustDecide(t, st, f)
+	if d.Action != decide.ActDispatch || d.Agent == nil {
+		t.Fatalf("%+v", d)
+	}
+	if d.Agent.Agent != op.AgentReviewer || d.Agent.Mode != "verify" {
+		t.Fatalf("agent %+v", d.Agent)
+	}
+}
+
+// TestDecideSkipsStraightToCloseWhenInternalDone covers every shape of
+// InternalFacts.Done (two-layers design §3.4): whichever way the internal
+// review reads as complete, row 15's exec close-wave runs exactly as it did
+// before the internal layer existed.
+func TestDecideSkipsStraightToCloseWhenInternalDone(t *testing.T) {
+	t.Parallel()
+	lenses := []string{"correctness", "intent"}
+	bothRecorded := map[string]bool{"correctness": true, "intent": true}
+	cases := []struct {
+		name     string
+		internal decide.InternalFacts
+	}{
+		{"lenses empty", decide.InternalFacts{HasDoneDigest: true}},
+		{"no done digest", decide.InternalFacts{Lenses: lenses, Recorded: map[string]bool{}}},
+		{"recorded, zero candidates", decide.InternalFacts{
+			Lenses: lenses, Recorded: bothRecorded, Candidates: 0, HasDoneDigest: true,
+		}},
+		{"recorded, candidates verified", decide.InternalFacts{
+			Lenses: lenses, Recorded: bothRecorded, Candidates: 2, VerifyRecorded: true, HasDoneDigest: true,
+		}},
+		{"skipped", decide.InternalFacts{
+			Lenses: lenses, Recorded: map[string]bool{}, HasDoneDigest: true, Skipped: true,
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			st, f := internalWaveFixture()
+			f.Wave.Internal = c.internal
+			d := mustDecide(t, st, f)
+			if d.Action != decide.ActExec || d.Op.Command != "takt close-wave --slug demo" {
+				t.Fatalf("%+v", d)
+			}
+		})
+	}
+}
+
+// TestDecideAsksAgentInvalidAtTheReviewerCap covers the cap shared with the
+// auditor's (two-layers design D14): three unusable reviewer replies asks
+// agent_invalid instead of dispatching a fourth time, and — because the
+// internal layer is advisory — the question offers a skip.
+func TestDecideAsksAgentInvalidAtTheReviewerCap(t *testing.T) {
+	t.Parallel()
+	st, f := internalWaveFixture()
+	f.Wave.Internal = decide.InternalFacts{
+		Lenses: []string{"correctness"}, Recorded: map[string]bool{}, HasDoneDigest: true,
+	}
+	f.ReviewerAttempts = 3
+	f.ReviewerProblems = []string{"no fenced json block"}
+	d := mustDecide(t, st, f)
+	if d.Action != decide.ActAsk || d.Op.Gate != "agent_invalid" {
+		t.Fatalf("%+v", d)
+	}
+	if d.Op.Context["agent"] != op.AgentReviewer {
+		t.Fatalf("context = %+v", d.Op.Context)
+	}
+	found := false
+	for _, o := range d.Op.Options {
+		if o.Choice == "skip" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the reviewer's agent_invalid question must offer skip: %+v", d.Op.Options)
+	}
+}
+
+// TestDecideInternalNeverRunsWithTasksUnrecorded pins the load-bearing order
+// in decideActiveWave: decideInternal is only ever consulted once every task
+// of the wave has recorded, even when the run has lenses configured and
+// nothing recorded for them yet.
+func TestDecideInternalNeverRunsWithTasksUnrecorded(t *testing.T) {
+	t.Parallel()
+	st, f := internalWaveFixture()
+	f.Wave.Recorded = map[int]bool{1: true} // task 2 unrecorded
+	f.Wave.Internal = decide.InternalFacts{
+		Lenses: []string{"correctness", "intent"}, Recorded: map[string]bool{},
+	}
+	d := mustDecide(t, st, f)
+	if d.Action != decide.ActStop || d.Op.Reason != "wave_in_flight" {
+		t.Fatalf("%+v", d)
+	}
+}
+
 func TestFinishAndArchivedStop(t *testing.T) {
 	t.Parallel()
 	if d := mustDecide(

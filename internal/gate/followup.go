@@ -17,20 +17,27 @@ import (
 // minors from existing only in reviews/<gate>.md, reaching no plan and no
 // follow-up (#29).
 type FollowUp struct {
-	Gate     string    `json:"gate"`
-	Severity string    `json:"severity"`
-	File     string    `json:"file,omitempty"`
-	Line     int       `json:"line,omitempty"`
-	Title    string    `json:"title"`
-	Detail   string    `json:"detail,omitempty"`
-	Source   string    `json:"source"`
-	TS       time.Time `json:"ts"`
+	Gate     string `json:"gate,omitempty"`
+	Severity string `json:"severity"`
+	File     string `json:"file,omitempty"`
+	Line     int    `json:"line,omitempty"`
+	// Wave and Task locate a task-review follow-up; both are zero for a
+	// gate follow-up (two-layers design §5.4).
+	Wave   int       `json:"wave,omitempty"`
+	Task   int       `json:"task,omitempty"`
+	Title  string    `json:"title"`
+	Detail string    `json:"detail,omitempty"`
+	Source string    `json:"source"`
+	TS     time.Time `json:"ts"`
 }
 
 // Sources a follow-up can come from.
 const (
 	SourceApprove  = "approve"
 	SourceOverride = "override"
+	// SourceInternal marks a confirmed internal-lens finding the backend's
+	// verdict did not act on (two-layers design D11).
+	SourceInternal = "internal"
 )
 
 // FollowUps is follow-ups.json.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -110,13 +111,85 @@ func record(t *testing.T, root string, task, attempt int, status, summary string
 	}
 }
 
+// candidateID matches the ids the verify brief quotes its candidates under
+// ("c1", "c2", …) — the shape wave.MergeCandidates assigns them.
+var candidateID = regexp.MustCompile(`\bc\d+\b`)
+
+// drainReview is `next`, extended to answer the internal review layer's
+// dispatches on the caller's behalf (two-layers design §3.2, §3.3): every
+// execute-phase wave in this file's fixtures runs the default six lenses, so
+// the first `next` after a wave's last "done" digest now dispatches the lens
+// fan-out rather than falling through to whatever the caller was expecting
+// next — `exec close-wave`, a gate, the next wave's dispatch. drainReview
+// answers a lens dispatch with no findings, so the merged candidate list
+// stays empty and the verifier is never dispatched
+// (decide.InternalFacts.Done); on the rare path where the verifier is
+// dispatched anyway, it answers every candidate false_positive, reading the
+// ids straight out of the brief it was handed rather than assuming any. It
+// then calls `next` again, and keeps doing so until the op is not a reviewer
+// dispatch, which behaves exactly like a bare `next` call for every caller
+// that never triggers the internal review at all (the very first dispatch of
+// a wave, before any digest is recorded, or any call once one is complete).
+func drainReview(t *testing.T, root string, env map[string]string, extra ...string) (int, map[string]any, string) {
+	t.Helper()
+	for {
+		code, o, errb := next(t, root, env, extra...)
+		if code != 0 || o["op"] != "dispatch" {
+			return code, o, errb
+		}
+		agents := agentsOf(t, o)
+		if len(agents) == 0 || agents[0]["agent"] != "reviewer" {
+			return code, o, errb
+		}
+		attempt := strconv.Itoa(int(o["attempt"].(float64)))
+		for _, ag := range agents {
+			recordReviewerReply(t, root, env, ag, attempt)
+		}
+	}
+}
+
+// recordReviewerReply answers one lens or verify dispatch of the internal
+// review layer with a canned reply and records it.
+func recordReviewerReply(t *testing.T, root string, env map[string]string, ag map[string]any, attempt string) {
+	t.Helper()
+	mode, ok := ag["mode"].(string)
+	if !ok {
+		t.Fatalf("reviewer dispatch without a mode: %v", ag)
+	}
+	var body string
+	if mode == "verify" {
+		b, err := os.ReadFile(ag["brief"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := slices.Compact(slices.Sorted(slices.Values(candidateID.FindAllString(string(b), -1))))
+		verdicts := make([]string, 0, len(ids))
+		for _, id := range ids {
+			verdicts = append(verdicts, fmt.Sprintf(
+				`{"id":%q,"verdict":"false_positive","evidence":"scripted: no defect found"}`, id))
+		}
+		body = "```json\n{\"mode\":\"verify\",\"verdicts\":[" + strings.Join(verdicts, ",") + "]}\n```\n"
+	} else {
+		body = fmt.Sprintf("```json\n{\"lens\":%q,\"findings\":[]}\n```\n", mode)
+	}
+	f := filepath.Join(t.TempDir(), "reviewer-msg.txt")
+	if err := os.WriteFile(f, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errb := runIn(t, root, env, "record", "--agent", "reviewer", "--mode", mode,
+		"--attempt", attempt, "--from", f, "--slug", "demo")
+	if code != 0 || out["valid"] != true {
+		t.Fatalf("record reviewer %s: %d %v %s", mode, code, out, errb)
+	}
+}
+
 //nolint:gocognit,gocyclo,cyclop // one scripted wave, end to end; splitting it would hide the sequence
 func TestWaveLaunchCloseAndCommit(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
 	testutil.WriteFile(t, root, "notes.txt", "user dirt\n") // must survive untouched and uncommitted
 
-	code, o, errb := next(t, root, nil)
+	code, o, errb := drainReview(t, root, nil)
 	if code != 0 || o["op"] != "dispatch" || o["wave"] != float64(0) {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
@@ -134,7 +207,7 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 		t.Fatalf("active_wave = %+v", st.ActiveWave)
 	}
 	// Same session, nothing recorded yet → wait.
-	if _, o, _ = next(t, root, nil); o["op"] != "stop" || o["reason"] != "wave_in_flight" {
+	if _, o, _ = drainReview(t, root, nil); o["op"] != "stop" || o["reason"] != "wave_in_flight" {
 		t.Fatalf("%v", o)
 	}
 	// Agents work: task 1 in scope, task 2 in scope plus a stray file.
@@ -143,7 +216,12 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 	testutil.WriteFile(t, root, "stray.go", "package stray\n")
 	record(t, root, 1, 1, "done", "wrote a.go")
 	record(t, root, 2, 1, "done", "wrote b.go")
-	if _, o, _ = next(t, root, nil); o["op"] != "exec" || !strings.HasPrefix(o["command"].(string), "takt close-wave") {
+	if _, o, _ = drainReview(
+		t,
+		root,
+		nil,
+	); o["op"] != "exec" ||
+		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("%v", o)
 	}
 	code, o, errb = runIn(t, root, nil, "close-wave", "--slug", "demo")
@@ -184,7 +262,7 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 		t.Fatalf("status task 1 = %v (items %v)", task1, items)
 	}
 	// next clears the wave and launches wave 1 (task 3, docs → sonnet).
-	_, o, _ = next(t, root, nil)
+	_, o, _ = drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["wave"] != float64(1) || agentsOf(t, o)[0]["model"] != "sonnet" {
 		t.Fatalf("%v", o)
 	}
@@ -193,7 +271,7 @@ func TestWaveLaunchCloseAndCommit(t *testing.T) {
 func TestVerifyFailureThenRetryEscalates(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	record(t, root, 1, 1, "done", "a")
 	record(t, root, 2, 1, "done", "claims b but wrote nothing")
@@ -209,14 +287,14 @@ func TestVerifyFailureThenRetryEscalates(t *testing.T) {
 	if st.Task(1).Status != bundle.StatusDone || st.Task(2).Status != bundle.StatusFailed {
 		t.Fatalf("%+v", st.Tasks)
 	}
-	if _, o, _ = next(t, root, nil); o["op"] != "ask" || o["gate"] != "wave_failures" {
+	if _, o, _ = drainReview(t, root, nil); o["op"] != "ask" || o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	if rc, _, errb := runIn(t, root, nil,
 		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); rc != 0 {
 		t.Fatal(errb)
 	}
-	_, o, _ = next(t, root, nil)
+	_, o, _ = drainReview(t, root, nil)
 	ags := agentsOf(t, o)
 	if len(ags) != 1 || ags[0]["task"] != float64(2) || ags[0]["model"] != "opus" || o["attempt"] != float64(2) {
 		t.Fatalf("retry dispatch = %v", o)
@@ -239,7 +317,7 @@ func TestVerifyFailureThenRetryEscalates(t *testing.T) {
 func TestReworkRedispatchesWithFindingsThenApproves(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -253,7 +331,7 @@ func TestReworkRedispatchesWithFindingsThenApproves(t *testing.T) {
 	if len(c.Rework) != 2 {
 		t.Fatalf("both reviewed tasks got rework: %+v", c)
 	}
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["attempt"] != float64(2) || len(agentsOf(t, o)) != 2 {
 		t.Fatalf("%v", o)
 	}
@@ -272,21 +350,21 @@ func TestReworkRedispatchesWithFindingsThenApproves(t *testing.T) {
 func TestReviewErrorGateSkip(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
 	record(t, root, 2, 1, "done", "b")
 	broken := map[string]string{"TAKT_FAKE_REVIEW": `not json`}
 	runIn(t, root, broken, "close-wave", "--slug", "demo")
-	if _, o, _ := next(t, root, nil); o["gate"] != "review_error" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "review_error" {
 		t.Fatalf("%v", o)
 	}
 	if code, _, errb := runIn(t, root, nil, "answer", "--gate", "review_error", "--choice", "skip",
 		"--reason", "fake backend broken", "--slug", "demo"); code != 0 {
 		t.Fatal(errb)
 	}
-	if _, o, _ := next(t, root, nil); o["op"] != "exec" {
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "exec" {
 		t.Fatalf("skip re-runs close-wave without review: %v", o)
 	}
 	if code, o, _ := runIn(t, root, broken, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != true {
@@ -302,13 +380,13 @@ func TestRecoveryResetsOnlyUnrecordedTasks(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
 	a := map[string]string{"TAKT_SESSION": "A"}
-	next(t, root, a)
+	drainReview(t, root, a)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b half-done\n")
 	record(t, root, 1, 1, "done", "a")
 	// Session A dies. Session B takes over.
 	b := map[string]string{"TAKT_SESSION": "B"}
-	_, o, _ := next(t, root, b, "--force")
+	_, o, _ := drainReview(t, root, b, "--force")
 	if o["op"] != "dispatch" || o["attempt"] != float64(2) || len(agentsOf(t, o)) != 1 ||
 		agentsOf(t, o)[0]["task"] != float64(2) {
 		t.Fatalf("recovery re-dispatches only task 2: %v", o)
@@ -333,7 +411,7 @@ func TestRecoveryResetsOnlyUnrecordedTasks(t *testing.T) {
 func TestWaiveAndStaleDigest(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	f := filepath.Join(t.TempDir(), "m.txt")
 	_ = os.WriteFile(f, []byte("STATUS: blocked\nSUMMARY: cannot\nBLOCKERS: needs schema\n"), 0o600)
 	testutil.WriteFile(t, root, "a.go", "package a // as far as task 1 got\n")
@@ -345,7 +423,7 @@ func TestWaiveAndStaleDigest(t *testing.T) {
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 2, 1, "done", "b")
 	runIn(t, root, nil, "close-wave", "--slug", "demo")
-	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	runIn(t, root, nil, "answer", "--gate", "wave_failures", "--choice", "waive", "--slug", "demo")
@@ -359,7 +437,7 @@ func TestWaiveAndStaleDigest(t *testing.T) {
 	}
 	// The wave is re-closed, not abandoned: task 2's work is committed as it
 	// stands now that the rest of the wave is accounted for (spec §7.4 step 5).
-	if _, o, _ := next(t, root, nil); o["op"] != "exec" ||
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "exec" ||
 		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("a waived wave must be closed, not dropped: %v", o)
 	}
@@ -379,7 +457,7 @@ func TestWaiveAndStaleDigest(t *testing.T) {
 	if status := porcelainOutsideBundle(t, root); status != "" {
 		t.Fatalf("tree after the waived wave commit: %q", status)
 	}
-	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("waived task 1 unblocks wave 1: %v", o)
 	}
 }
@@ -405,7 +483,7 @@ func wideRun(t *testing.T, maxParallel int) (string, string) {
 func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	t.Parallel()
 	root, bdir := wideRun(t, 2)
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if len(agentsOf(t, o)) != 2 {
 		t.Fatalf("a slice is max_parallel tasks: %v", o)
 	}
@@ -421,7 +499,7 @@ func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	}
 	first := sliceRecord(t, bdir, 0, 1) // each slice keeps its own record, named by its number
 	// No gate: the wave's remaining task goes out as the next slice.
-	_, o, _ = next(t, root, nil)
+	_, o, _ = drainReview(t, root, nil)
 	ags := agentsOf(t, o)
 	if o["op"] != "dispatch" || o["wave"] != float64(0) || len(ags) != 1 || ags[0]["task"] != float64(3) {
 		t.Fatalf("second slice: %v", o)
@@ -444,7 +522,7 @@ func TestWaveSlicesCommitPerSlice(t *testing.T) {
 	if status := porcelainOutsideBundle(t, root); status != "" {
 		t.Fatalf("tree after the last slice: %q", status)
 	}
-	next(t, root, nil) // clears the finished wave
+	drainReview(t, root, nil) // clears the finished wave
 	if _, doc, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo"); doc["active_wave"] != nil {
 		t.Fatalf("the last slice's wave must be cleared: %v %s", doc["active_wave"], errb)
 	}
@@ -488,7 +566,7 @@ func assertLogHas(t *testing.T, root string, subjects ...string) {
 func TestOldActiveWaveWithoutASliceHeals(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -500,7 +578,7 @@ func TestOldActiveWaveWithoutASliceHeals(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, o, _ := next(t, root, nil); o["op"] != "exec" ||
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "exec" ||
 		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("a fully recorded wave is closed: %v", o)
 	}
@@ -510,7 +588,7 @@ func TestOldActiveWaveWithoutASliceHeals(t *testing.T) {
 	if c, _ := wave.ReadClose(bdir, 0, 1); c == nil || c.Slice != 1 || !c.Committed {
 		t.Fatalf("the healed close records itself as slice 1: %+v", c)
 	}
-	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("the healed wave clears and the run moves on: %v", o)
 	}
 	if st, _ = bundle.LoadState(bdir); st.ActiveWave == nil || st.ActiveWave.N != 1 {
@@ -526,14 +604,14 @@ func TestOldActiveWaveWithoutASliceHeals(t *testing.T) {
 func TestRetryKeepsTheSliceNumber(t *testing.T) {
 	t.Parallel()
 	root, bdir := wideRun(t, 2)
-	next(t, root, nil) // slice 1: tasks 1 and 2
+	drainReview(t, root, nil) // slice 1: tasks 1 and 2
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	recordReport(t, root, 1, "STATUS: failed\nSUMMARY: ran out of ideas\nBLOCKERS: none\n")
 	record(t, root, 2, 1, "done", "b")
 	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
-	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	if code, _, errb := runIn(t, root, nil,
@@ -541,7 +619,7 @@ func TestRetryKeepsTheSliceNumber(t *testing.T) {
 		t.Fatal(errb)
 	}
 
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["attempt"] != float64(2) {
 		t.Fatalf("retry dispatch: %v", o)
 	}
@@ -582,13 +660,13 @@ func TestRecoveredWaveEarlierFailureBlocksTheCommit(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
 	a := map[string]string{"TAKT_SESSION": "A"}
-	next(t, root, a)
+	drainReview(t, root, a)
 	f := filepath.Join(t.TempDir(), "m.txt")
 	_ = os.WriteFile(f, []byte("STATUS: failed\nSUMMARY: could not\nBLOCKERS: none\n"), 0o600)
 	runIn(t, root, nil, "record", "--task", "1", "--attempt", "1", "--from", f, "--slug", "demo")
 	// Task 2 never reports; session B recovers it alone.
 	b := map[string]string{"TAKT_SESSION": "B"}
-	_, o, _ := next(t, root, b, "--force")
+	_, o, _ := drainReview(t, root, b, "--force")
 	if len(agentsOf(t, o)) != 1 || o["attempt"] != float64(2) {
 		t.Fatalf("recovery re-dispatches only task 2: %v", o)
 	}
@@ -602,7 +680,7 @@ func TestRecoveredWaveEarlierFailureBlocksTheCommit(t *testing.T) {
 	if len(c.Failed) != 1 || c.Failed[0] != 1 {
 		t.Fatalf("%+v", c)
 	}
-	if _, gate, _ := next(t, root, b); gate["gate"] != "wave_failures" {
+	if _, gate, _ := drainReview(t, root, b); gate["gate"] != "wave_failures" {
 		t.Fatalf("%v", gate)
 	}
 }
@@ -613,7 +691,7 @@ func TestRecoveredWaveEarlierFailureBlocksTheCommit(t *testing.T) {
 func TestCloseWaveCommitFailureDropsTheRecord(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -631,7 +709,7 @@ func TestCloseWaveCommitFailureDropsTheRecord(t *testing.T) {
 	if err := os.Remove(lock); err != nil {
 		t.Fatal(err)
 	}
-	if _, o, _ := next(t, root, nil); o["op"] != "exec" ||
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "exec" ||
 		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("the wave must be closed again: %v", o)
 	}
@@ -650,7 +728,7 @@ func TestCloseWaveCommitFailureDropsTheRecord(t *testing.T) {
 func TestReCloseCarriesEarlierResultsForward(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -715,18 +793,18 @@ func waiveOne(t *testing.T, root string, task int, reason string) {
 func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
 	t.Parallel()
 	root, bdir := wideRun(t, 8)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	recordReport(t, root, 1, "STATUS: blocked\nSUMMARY: cannot\nBLOCKERS: needs schema\n")
 	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
 	testutil.WriteFile(t, root, "c.go", "package c\n")
 	record(t, root, 3, 1, "done", "c")
 	runIn(t, root, nil, "close-wave", "--slug", "demo")
-	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 
 	waiveOne(t, root, 1, "schema lands later")
-	if _, o, _ := next(t, root, nil); o["op"] != "exec" {
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "exec" {
 		t.Fatalf("a waived wave is re-closed: %v", o)
 	}
 	if code, o, _ := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
@@ -736,7 +814,7 @@ func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
 	if len(c.Failed) != 1 || c.Failed[0] != 2 || len(c.Blocked) != 0 {
 		t.Fatalf("the record must name the still-failed task and drop the waived one: %+v", c)
 	}
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
@@ -746,7 +824,7 @@ func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
 
 	// Waiving the last failure lets the wave commit the work that is there.
 	waiveOne(t, root, 2, "out of scope")
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
@@ -764,24 +842,24 @@ func TestPartialWaiveGateNamesTheRemainingFailure(t *testing.T) {
 func TestAllWaivedWaveCommitSubject(t *testing.T) {
 	t.Parallel()
 	root, _ := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	recordReport(t, root, 1, "STATUS: blocked\nSUMMARY: cannot\nBLOCKERS: needs schema\n")
 	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
 	runIn(t, root, nil, "close-wave", "--slug", "demo")
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	waiveOne(t, root, 1, "schema lands later")
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	runIn(t, root, nil, "close-wave", "--slug", "demo")
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	waiveOne(t, root, 2, "out of scope")
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	if code, o, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != true {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
 	if msg := testutil.Git(t, root, "log", "-1", "--format=%s"); msg != "takt(demo): wave 0 — waived 1, 2" {
 		t.Fatalf("commit = %q", msg)
 	}
-	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("an all-waived wave still unblocks the next one: %v", o)
 	}
 }
@@ -794,7 +872,7 @@ func TestAllWaivedWaveCommitSubject(t *testing.T) {
 func TestStatusTextOmitsModelUntilDigest(t *testing.T) {
 	t.Parallel()
 	root, _ := executeRun(t)
-	if _, o, _ := next(t, root, nil); o["op"] != "dispatch" {
+	if _, o, _ := drainReview(t, root, nil); o["op"] != "dispatch" {
 		t.Fatalf("%v", o)
 	}
 	before := statusText(t, root)
@@ -819,7 +897,7 @@ func TestStatusTextOmitsModelUntilDigest(t *testing.T) {
 func TestCloseWaveTwiceIsANoOp(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -871,7 +949,7 @@ func TestCloseWaveTwiceIsANoOp(t *testing.T) {
 func TestCrashInsideWaveCommitIsReconciled(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -884,7 +962,7 @@ func TestCrashInsideWaveCommitIsReconciled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "exec" || !strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("a commit git cannot confirm must be re-closed, not cleared: %v", o)
 	}
@@ -907,7 +985,7 @@ func TestCrashInsideWaveCommitIsReconciled(t *testing.T) {
 	if n := strings.Count(log, "wave 0 — tasks"); n != 1 {
 		t.Fatalf("exactly one wave commit, got %d:\n%s", n, log)
 	}
-	if _, o, _ = next(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
+	if _, o, _ = drainReview(t, root, nil); o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("the reconciled wave clears and the run moves on: %v", o)
 	}
 }
@@ -937,14 +1015,14 @@ func TestWaiveAcceptsAReworkExhaustedTask(t *testing.T) {
 	root, bdir := soloWaveRun(t)
 	rework := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"needs a test",` +
 		`"findings":[{"severity":"major","file":"a.go","line":1,"title":"no test","detail":"add a_test.go"}]}`}
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	record(t, root, 1, 1, "done", "a")
 	if code, o, errb := runIn(t, root, rework, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
 	// max_rework is 1: one retry, then the gate.
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["attempt"] != float64(2) {
 		t.Fatalf("the first rework is retried: %v", o)
 	}
@@ -952,7 +1030,7 @@ func TestWaiveAcceptsAReworkExhaustedTask(t *testing.T) {
 	if code, out, errb := runIn(t, root, rework, "close-wave", "--slug", "demo"); code != 0 {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
-	if _, o, _ = next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ = drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	if got := fmt.Sprint(o["context"].(map[string]any)["exhausted"]); got != "[1]" {
@@ -967,7 +1045,7 @@ func TestWaiveAcceptsAReworkExhaustedTask(t *testing.T) {
 	if st, _ = bundle.LoadState(bdir); st.Task(1).Status != bundle.StatusWaived {
 		t.Fatalf("waive must accept a rework-exhausted task: %+v", st.Tasks)
 	}
-	if _, o, _ = next(t, root, nil); o["op"] != "exec" ||
+	if _, o, _ = drainReview(t, root, nil); o["op"] != "exec" ||
 		!strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("the waived wave is re-closed: %v", o)
 	}
@@ -995,7 +1073,7 @@ func TestWaiveRefusesAPendingTaskThatHasNotRun(t *testing.T) {
 		t.Fatalf("a task that has never run must not be waivable: %s", errb)
 	}
 	rework := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"needs a test"}`}
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	record(t, root, 1, 1, "done", "a")
 	runIn(t, root, rework, "close-wave", "--slug", "demo")
@@ -1014,7 +1092,7 @@ func TestWaiveRefusesAPendingTaskThatHasNotRun(t *testing.T) {
 func TestRetryMeasuresAgainstTheWaveBaseline(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	// Task 1 gives up, but leaves what it had written behind — which is, as
 	// it happens, exactly right. Task 2 finishes.
 	testutil.WriteFile(t, root, "a.go", "package a\n")
@@ -1024,14 +1102,14 @@ func TestRetryMeasuresAgainstTheWaveBaseline(t *testing.T) {
 	if code, o, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || o["committed"] != false {
 		t.Fatalf("%d %v %s", code, o, errb)
 	}
-	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	if code, _, errb := runIn(t, root, nil,
 		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); code != 0 {
 		t.Fatal(errb)
 	}
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["attempt"] != float64(2) || len(agentsOf(t, o)) != 1 {
 		t.Fatalf("retry dispatch: %v", o)
 	}
@@ -1069,7 +1147,7 @@ func TestRetryMeasuresAgainstTheWaveBaseline(t *testing.T) {
 func TestRecordRejectsATaskTheWaveNeverDispatched(t *testing.T) {
 	t.Parallel()
 	root, _ := executeRun(t)
-	next(t, root, nil) // dispatches wave 0: tasks 1 and 2
+	drainReview(t, root, nil) // dispatches wave 0: tasks 1 and 2
 	msg := filepath.Join(t.TempDir(), "m.txt")
 	if err := os.WriteFile(msg, []byte("STATUS: done\nSUMMARY: s\nBLOCKERS: none\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -1102,14 +1180,14 @@ func TestRecordRejectsATaskTheWaveNeverDispatched(t *testing.T) {
 func TestPostCommitKillBackfillsTheSha(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	for _, ag := range agentsOf(t, o) {
 		for _, f := range declaredFiles(t, ag["brief"].(string)) {
 			testutil.WriteFile(t, root, f, "package x\n")
 		}
 		record(t, root, int(ag["task"].(float64)), 1, "done", "ok")
 	}
-	_, o, _ = next(t, root, nil)
+	_, o, _ = drainReview(t, root, nil)
 	if code, _, errb := runIn(t, root, nil, strings.Fields(o["command"].(string))[1:]...); code != 0 {
 		t.Fatalf("close-wave: %d %s", code, errb)
 	}
@@ -1126,7 +1204,7 @@ func TestPostCommitKillBackfillsTheSha(t *testing.T) {
 	}
 	before := testutil.Git(t, root, "rev-list", "--count", "HEAD")
 
-	_, o, _ = next(t, root, nil)
+	_, o, _ = drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["wave"] != float64(1) {
 		t.Fatalf("the reconciled wave clears and the run moves on: %v", o)
 	}
@@ -1166,7 +1244,7 @@ func TestPostCommitKillBackfillsTheSha(t *testing.T) {
 func TestSliceReCloseSubjectNamesOnlyItsOwnSlice(t *testing.T) {
 	t.Parallel()
 	root, _ := wideRun(t, 2)
-	next(t, root, nil) // slice 1: tasks 1 and 2
+	drainReview(t, root, nil) // slice 1: tasks 1 and 2
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 1, "done", "a")
@@ -1179,14 +1257,14 @@ func TestSliceReCloseSubjectNamesOnlyItsOwnSlice(t *testing.T) {
 	}
 	// Slice 2 goes out, fails, and is waived — so its re-close grades
 	// nothing at all.
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	recordReport(t, root, 3, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
 	if code, out, _ := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
 		t.Fatalf("%d %v", code, out)
 	}
-	next(t, root, nil) // raises wave_failures
+	drainReview(t, root, nil) // raises wave_failures
 	waiveOne(t, root, 3, "lands with the next run")
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != true {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
@@ -1210,21 +1288,21 @@ func TestSliceReCloseSubjectNamesOnlyItsOwnSlice(t *testing.T) {
 func TestRetryCarriesTheEarlierRoundsResultsForward(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil)
+	drainReview(t, root, nil)
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	record(t, root, 1, 1, "done", "a")
 	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: ran out of ideas\nBLOCKERS: none\n")
 	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
-	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	if code, _, errb := runIn(t, root, nil,
 		"answer", "--gate", "wave_failures", "--choice", "retry", "--slug", "demo"); code != 0 {
 		t.Fatal(errb)
 	}
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || o["attempt"] != float64(2) || len(agentsOf(t, o)) != 1 {
 		t.Fatalf("retry dispatch: %v", o)
 	}
@@ -1270,7 +1348,7 @@ func TestBackfillRetiresTheParkedBaseline(t *testing.T) {
 	}
 	blankTheSha(t, bdir)
 
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || len(agentsOf(t, o)) != 1 || agentsOf(t, o)[0]["task"] != float64(3) {
 		t.Fatalf("the reconciled wave launches its next slice: %v", o)
 	}
@@ -1303,13 +1381,13 @@ func TestBackfillRetiresTheParkedBaseline(t *testing.T) {
 // behind.
 func retryLandsSliceOne(t *testing.T, root, bdir string) []byte {
 	t.Helper()
-	next(t, root, nil) // slice 1: tasks 1 and 2
+	drainReview(t, root, nil) // slice 1: tasks 1 and 2
 	recordReport(t, root, 1, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
 	recordReport(t, root, 2, "STATUS: failed\nSUMMARY: gave up\nBLOCKERS: none\n")
 	if code, out, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 || out["committed"] != false {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
-	if _, o, _ := next(t, root, nil); o["gate"] != "wave_failures" {
+	if _, o, _ := drainReview(t, root, nil); o["gate"] != "wave_failures" {
 		t.Fatalf("%v", o)
 	}
 	if code, _, errb := runIn(t, root, nil,
@@ -1320,7 +1398,7 @@ func retryLandsSliceOne(t *testing.T, root, bdir string) []byte {
 	if err != nil {
 		t.Fatalf("the retry must park a baseline: %v", err)
 	}
-	next(t, root, nil) // the retry, at attempt 2
+	drainReview(t, root, nil) // the retry, at attempt 2
 	testutil.WriteFile(t, root, "a.go", "package a\n")
 	testutil.WriteFile(t, root, "b.go", "package b\n")
 	record(t, root, 1, 2, "done", "a")
@@ -1373,7 +1451,7 @@ func TestBackfillDeclinesASubjectThatNamesNoSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "exec" || !strings.HasPrefix(o["command"].(string), "takt close-wave") {
 		t.Fatalf("an unidentifiable subject must fall back to closing the wave again: %v", o)
 	}
@@ -1388,7 +1466,7 @@ func TestBackfillDeclinesASubjectThatNamesNoSlice(t *testing.T) {
 // nothing of its own to show.
 func waiveSliceAway(t *testing.T, root string, tasks ...int) {
 	t.Helper()
-	_, o, _ := next(t, root, nil)
+	_, o, _ := drainReview(t, root, nil)
 	if o["op"] != "dispatch" || len(agentsOf(t, o)) != len(tasks) {
 		t.Fatalf("expected a dispatch of tasks %v: %v", tasks, o)
 	}
@@ -1399,9 +1477,9 @@ func waiveSliceAway(t *testing.T, root string, tasks ...int) {
 		t.Fatalf("%d %v %s", code, out, errb)
 	}
 	for _, id := range tasks {
-		next(t, root, nil) // raises wave_failures
+		drainReview(t, root, nil) // raises wave_failures
 		waiveOne(t, root, id, "out of scope")
-		next(t, root, nil) // exec close-wave
+		drainReview(t, root, nil) // exec close-wave
 		if code, _, errb := runIn(t, root, nil, "close-wave", "--slug", "demo"); code != 0 {
 			t.Fatalf("%d %s", code, errb)
 		}
@@ -1416,7 +1494,7 @@ func waiveSliceAway(t *testing.T, root string, tasks ...int) {
 func TestRecordFlagsBeatParsedTrailer(t *testing.T) {
 	t.Parallel()
 	root, bdir := executeRun(t)
-	next(t, root, nil) // dispatches wave 0 so task 1 attempt 1 is in the active wave
+	drainReview(t, root, nil) // dispatches wave 0 so task 1 attempt 1 is in the active wave
 	f := filepath.Join(t.TempDir(), "m.txt")
 	body := "STATUS: failed\nSUMMARY: parsed summary\nBLOCKERS: parsed blocker\n"
 	if err := os.WriteFile(f, []byte(body), 0o600); err != nil {

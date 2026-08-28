@@ -5,9 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/monrad/takt/internal/backend"
+	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/cli"
 	"github.com/monrad/takt/internal/testutil"
+	"github.com/monrad/takt/internal/wave"
 )
 
 func TestStatusSingleBundle(t *testing.T) {
@@ -233,5 +237,131 @@ func TestStatusShowsTheSessionHolder(t *testing.T) {
 	}
 	if out := statusText(t, root); !strings.Contains(out, "session: none") {
 		t.Fatalf("text status after unlock:\n%s", out)
+	}
+}
+
+// TestStatusInternalReviewLine covers the internal review's status line
+// through three of its four states — partial lenses, verify pending and
+// verified counts (two-layers design §5.7) — on the same reviewer fixture
+// record_reviewer_test.go's tests seed lens and internal records against.
+func TestStatusInternalReviewLine(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+
+	// No lens recorded yet for the active dispatch: 0/2.
+	if out := statusText(t, root); !strings.Contains(out, "internal review: 0/2 lenses recorded") {
+		t.Fatalf("no lenses yet:\n%s", out)
+	}
+
+	// One of the two frozen lenses recorded.
+	writeLensRecord(t, bdir, "correctness", []wave.LensFinding{
+		{Finding: backend.Finding{Severity: "major", File: "a.go", Line: 4, Title: "t1"}, Task: 3},
+	})
+	code, got, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	ir, ok := got["internal_review"].(map[string]any)
+	if !ok {
+		t.Fatalf("no internal_review block: %v", got)
+	}
+	if ir["lenses_recorded"] != float64(1) || ir["lenses_total"] != float64(2) {
+		t.Fatalf("internal_review = %v", ir)
+	}
+	if out := statusText(t, root); !strings.Contains(out, "internal review: 1/2 lenses recorded") {
+		t.Fatalf("one lens recorded:\n%s", out)
+	}
+
+	// Both lenses recorded, no internal record yet: verify pending on the
+	// merged candidates.
+	writeLensRecord(t, bdir, "intent", []wave.LensFinding{
+		{Finding: backend.Finding{Severity: "minor", File: "b.go", Line: 1, Title: "t2"}, Task: 3},
+	})
+	if out := statusText(t, root); !strings.Contains(out, "internal review: verify pending (2 candidates)") {
+		t.Fatalf("verify pending:\n%s", out)
+	}
+
+	// The internal record is written: verified candidates and confirmed
+	// counts.
+	internal := wave.InternalRecord{
+		Wave: 0, Slice: 1, Attempt: 1, Model: "sonnet", RecordedAt: time.Now().UTC(),
+		Lenses: []string{"correctness", "intent"},
+		Candidates: []wave.Candidate{
+			{ID: "c1", Finding: backend.Finding{Severity: "major", File: "a.go", Line: 4, Title: "t1"},
+				Task: 3, Lenses: []string{"correctness"}},
+			{ID: "c2", Finding: backend.Finding{Severity: "minor", File: "b.go", Line: 1, Title: "t2"},
+				Task: 3, Lenses: []string{"intent"}},
+		},
+		Verdicts: []wave.CandidateVerdict{
+			{ID: "c1", Verdict: wave.VerdictConfirmed},
+			{ID: "c2", Verdict: wave.VerdictFalsePositive},
+		},
+		Confirmed: []string{"c1"},
+	}
+	if err := wave.WriteInternalRecord(bdir, internal); err != nil {
+		t.Fatal(err)
+	}
+	code, got, errb = runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	ir, _ = got["internal_review"].(map[string]any)
+	if ir["candidates"] != float64(2) || ir["confirmed"] != float64(1) || ir["verify_pending"] != false {
+		t.Fatalf("verified internal_review = %v", ir)
+	}
+	if out := statusText(t, root); !strings.Contains(out, "candidates, ") ||
+		!strings.Contains(out, "internal review: 2 candidates, 1 confirmed") {
+		t.Fatalf("verified counts:\n%s", out)
+	}
+}
+
+// TestStatusInternalReviewSkipped covers the fourth state: skipped, which
+// takes priority over an in-progress lens count (two-layers design §5.7).
+func TestStatusInternalReviewSkipped(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	writeLensRecord(t, bdir, "correctness", []wave.LensFinding{
+		{Finding: backend.Finding{Severity: "major", File: "a.go", Line: 4, Title: "t1"}, Task: 3},
+	})
+	if err := bundle.AppendEvent(bdir, "internal_review_skipped", map[string]any{
+		"wave": 0, "slice": 1, "attempt": 1, "reason": "agent_invalid",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	code, got, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	ir, ok := got["internal_review"].(map[string]any)
+	if !ok || ir["skipped"] != true {
+		t.Fatalf("internal_review = %v", ir)
+	}
+	if out := statusText(t, root); !strings.Contains(out, "internal review: skipped") {
+		t.Fatalf("skipped:\n%s", out)
+	}
+}
+
+// TestStatusInternalReviewZeroCandidatesNotVerifyPending covers the state
+// where every lens is recorded but merged to zero candidates: no verifier
+// will ever be dispatched for this attempt (recordVerify refuses "no
+// candidates to verify"), so status must not claim one is pending.
+func TestStatusInternalReviewZeroCandidatesNotVerifyPending(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	writeLensRecord(t, bdir, "correctness", nil)
+	writeLensRecord(t, bdir, "intent", nil)
+	code, got, errb := runIn(t, root, nil, "status", "--json", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	ir, ok := got["internal_review"].(map[string]any)
+	if !ok {
+		t.Fatalf("no internal_review block: %v", got)
+	}
+	if ir["candidates"] != float64(0) || ir["verify_pending"] != false {
+		t.Fatalf("internal_review = %v", ir)
+	}
+	if out := statusText(t, root); !strings.Contains(out, "internal review: 0 candidates, 0 confirmed") {
+		t.Fatalf("zero candidates must not say verify pending:\n%s", out)
 	}
 }

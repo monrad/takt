@@ -25,12 +25,13 @@ func TestStepsAreTheFourRunStepsInLoopOrder(t *testing.T) {
 // and two agents sharing one name would make `record` ambiguous.
 func TestAgentsAreDistinct(t *testing.T) {
 	t.Parallel()
-	want := []string{"planner", "alignment-auditor", "goal-assessor", "implementer"}
+	want := []string{"planner", "alignment-auditor", "goal-assessor", "implementer", "reviewer"}
 	if got := op.Agents(); !slices.Equal(got, want) {
 		t.Fatalf("Agents() = %v, want %v", got, want)
 	}
 	if op.AgentPlanner != "planner" || op.AgentAlignmentAuditor != "alignment-auditor" ||
-		op.AgentGoalAssessor != "goal-assessor" || op.AgentImplementer != "implementer" {
+		op.AgentGoalAssessor != "goal-assessor" || op.AgentImplementer != "implementer" ||
+		op.AgentReviewer != "reviewer" {
 		t.Fatal("agent constants drifted from their JSON spellings")
 	}
 	seen := make(map[string]bool, len(want))

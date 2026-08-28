@@ -28,6 +28,47 @@ type RetroInputs struct {
 	// being acted on — an approving pass's minors, or a verdict the user
 	// overrode. The retro lists them so they reach a human (#29).
 	FollowUps []gate.FollowUp `json:"follow_ups,omitempty"`
+	// Internal instruments both review layers — the lens candidates and what
+	// the backend's scoped pass did with them (two-layers design §9). Nil
+	// when the run recorded no internal review at all.
+	Internal *InternalReview `json:"internal_review,omitempty"`
+}
+
+// LensStats is one lens's tally across the run: how many candidates it
+// reported and how many of those the verifier confirmed.
+type LensStats struct {
+	Reported  int `json:"reported"`
+	Confirmed int `json:"confirmed"`
+}
+
+// InternalReview tallies the internal review layer against the backend's own
+// grading pass, so the retro can say what each found that the other did not
+// (two-layers design §9).
+type InternalReview struct {
+	Candidates     int `json:"candidates"`
+	Confirmed      int `json:"confirmed"`
+	FalsePositives int `json:"false_positives"`
+	Unattributed   int `json:"unattributed"`
+	// ByLens is keyed by lens name: how many candidates it reported and how
+	// many of those were confirmed.
+	ByLens map[string]LensStats `json:"by_lens"`
+	// ScopedPasses is how many task reviews ran a scoped pass — a
+	// BlindReview followed by a scoped Review — over the confirmed internal
+	// findings (two-layers design §3.5).
+	ScopedPasses int `json:"scoped_passes"`
+	// ScopedChanged is how many of those scoped passes landed a different
+	// verdict than the blind pass that preceded them.
+	ScopedChanged int `json:"scoped_changed_verdict"`
+	// Overlap is how many confirmed internal findings the backend's blind
+	// pass — the one that never saw the lens candidates — also raised on its
+	// own: same file, within a few lines (a heuristic: overlapLineTolerance).
+	// The scoped pass that can follow it is graded on those very candidates,
+	// so its agreement would be an echo, not independent overlap (two-layers
+	// design §9).
+	Overlap int `json:"overlap"`
+	// Skipped is how many dispatches ran with no internal review at all
+	// (internal_review_skipped events).
+	Skipped int `json:"skipped"`
 }
 
 // RetroRetry is a task that needed more than one attempt.
@@ -68,6 +109,7 @@ const (
 func BuildRetroInputs(
 	st *bundle.State, idx plan.Index, events []bundle.Event,
 	closes []wave.CloseResult, v *VerifyRecord, g *GoalsRecord, followUps []gate.FollowUp,
+	internals []wave.InternalRecord,
 ) RetroInputs {
 	in := RetroInputs{
 		Slug: st.Slug, Topic: st.Topic, Tasks: len(idx.Tasks),
@@ -95,7 +137,112 @@ func BuildRetroInputs(
 		}
 	}
 	in.WaveTimings = waveTimings(events)
+	in.Internal = buildInternalReview(internals, closes)
+	if in.Internal != nil {
+		for _, e := range events {
+			if e.Type == "internal_review_skipped" {
+				in.Internal.Skipped++
+			}
+		}
+	}
 	return in
+}
+
+// overlapLineTolerance is how close a backend finding must be to a confirmed
+// internal finding, same file, to count as overlap — a heuristic, named as
+// one in the retro template (two-layers design §9).
+const overlapLineTolerance = 3
+
+// buildInternalReview tallies both layers so the retro can say what each
+// found that the other did not (two-layers design §9). Nil when the run
+// recorded no internal review at all.
+func buildInternalReview(internals []wave.InternalRecord, closes []wave.CloseResult) *InternalReview {
+	if len(internals) == 0 {
+		return nil
+	}
+	ir := &InternalReview{ByLens: map[string]LensStats{}}
+	for _, rec := range internals {
+		tallyInternalRecord(ir, rec)
+	}
+	for _, c := range closes {
+		for _, tr := range c.Tasks {
+			tallyScopedPass(ir, tr)
+			ir.Overlap += overlapCount(tr)
+		}
+	}
+	return ir
+}
+
+// tallyInternalRecord folds one dispatch's candidates into the running
+// totals: how many were reported and confirmed overall, per lens, and how
+// many confirmed findings named no task.
+func tallyInternalRecord(ir *InternalReview, rec wave.InternalRecord) {
+	confirmed := map[string]bool{}
+	for _, id := range rec.Confirmed {
+		confirmed[id] = true
+	}
+	ir.Candidates += len(rec.Candidates)
+	ir.Confirmed += len(rec.Confirmed)
+	ir.FalsePositives += len(rec.Candidates) - len(rec.Confirmed)
+	for _, c := range rec.Candidates {
+		if confirmed[c.ID] && c.Task == 0 {
+			ir.Unattributed++
+		}
+		for _, lens := range c.Lenses {
+			s := ir.ByLens[lens]
+			s.Reported++
+			if confirmed[c.ID] {
+				s.Confirmed++
+			}
+			ir.ByLens[lens] = s
+		}
+	}
+}
+
+// tallyScopedPass counts one task review as a scoped pass when a blind pass
+// preceded it, and as a verdict change when the scoped pass landed on a
+// different verdict than the blind one (two-layers design §3.5).
+func tallyScopedPass(ir *InternalReview, tr wave.TaskResult) {
+	if tr.BlindReview == nil {
+		return
+	}
+	ir.ScopedPasses++
+	if tr.Review != nil && tr.Review.Verdict != tr.BlindReview.Verdict {
+		ir.ScopedChanged++
+	}
+}
+
+// overlapCount is the confirmed internal findings of one task the backend's
+// blind pass also found on its own: same file, within overlapLineTolerance
+// lines. When no scoped pass ran, tr.Review is the blind pass; when one did,
+// tr.BlindReview holds it aside and tr.Review became the scoped pass — the
+// backend's adjudication of the very candidates being measured here, so it
+// must not be the one read (two-layers design §9).
+func overlapCount(tr wave.TaskResult) int {
+	blind := tr.Review
+	if tr.BlindReview != nil {
+		blind = tr.BlindReview
+	}
+	if blind == nil {
+		return 0
+	}
+	n := 0
+	for _, f := range tr.Internal {
+		for _, b := range blind.Findings {
+			if b.File == f.File && abs(b.Line-f.Line) <= overlapLineTolerance {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 // lastReasons is each task's reason from the latest close record that

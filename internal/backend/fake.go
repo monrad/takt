@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -30,8 +31,14 @@ func (f *fakeReviewer) Review(ctx context.Context, req ReviewRequest) (ReviewRes
 	}
 
 	raw := defaultFakeResult
-	if p := f.getenv("TAKT_FAKE_REVIEW_FILE"); p != "" {
+	if p := f.getenv("TAKT_FAKE_REVIEW_FILE_" + rubricEnvKey(req.Rubric)); p != "" {
 		b, err := os.ReadFile(p)
+		if err != nil {
+			return errorResult(nameFake, nameFake, err.Error(), "", 0), nil
+		}
+		raw = string(b)
+	} else if fp := f.getenv("TAKT_FAKE_REVIEW_FILE"); fp != "" {
+		b, err := os.ReadFile(fp)
 		if err != nil {
 			return errorResult(nameFake, nameFake, err.Error(), "", 0), nil
 		}
@@ -46,6 +53,12 @@ func (f *fakeReviewer) Review(ctx context.Context, req ReviewRequest) (ReviewRes
 	}
 	r.Provider, r.Model, r.Raw, r.Elapsed = nameFake, nameFake, raw, fakeElapsed
 	return r, nil
+}
+
+// rubricEnvKey turns a rubric name into its env-var suffix: upper-cased,
+// with '-' as '_', so "task-followup" reads TAKT_FAKE_REVIEW_FILE_TASK_FOLLOWUP.
+func rubricEnvKey(rubric string) string {
+	return strings.ToUpper(strings.ReplaceAll(rubric, "-", "_"))
 }
 
 // fakeDelay makes the fake reviewer take as long as TAKT_FAKE_REVIEW_SLEEP

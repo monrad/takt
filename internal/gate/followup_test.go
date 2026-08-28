@@ -56,3 +56,23 @@ func TestAppendNoFollowUpsWritesNothing(t *testing.T) {
 		t.Fatal("appending nothing must not create the file")
 	}
 }
+
+func TestFollowUpCarriesWaveTaskAndInternalSource(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	err := gate.AppendFollowUps(dir, gate.FollowUp{
+		Severity: "major", File: "a.go", Line: 4, Title: "x",
+		Source: gate.SourceInternal, Wave: 2, Task: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := gate.ReadFollowUps(dir)
+	if err != nil || len(f.Items) != 1 {
+		t.Fatalf("read: %+v, %v", f, err)
+	}
+	it := f.Items[0]
+	if it.Source != "internal" || it.Wave != 2 || it.Task != 3 || it.Gate != "" {
+		t.Fatalf("item = %+v", it)
+	}
+}

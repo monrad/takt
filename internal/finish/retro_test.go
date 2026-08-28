@@ -53,7 +53,7 @@ func TestBuildRetroInputs(t *testing.T) {
 		}},
 		{Wave: 1, Attempt: 1, Tasks: []wave.TaskResult{{Task: 3, Status: "done"}}},
 	}
-	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, nil)
+	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, nil, nil)
 	if in.Tasks != 3 || in.Waves != 2 || in.ReviewFindings != len(findings) {
 		t.Fatalf("%+v", in)
 	}
@@ -134,7 +134,7 @@ func TestBuildRetroInputsCarriesFollowUps(t *testing.T) {
 	fu := []gate.FollowUp{
 		{Gate: "spec", Severity: "minor", Title: "wording", Source: gate.SourceApprove},
 	}
-	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, fu)
+	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, fu, nil)
 	if len(in.FollowUps) != 1 {
 		t.Fatalf("want 1 follow-up, got %d", len(in.FollowUps))
 	}
@@ -171,7 +171,7 @@ func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
 		legacy(5*time.Minute, "wave_dispatched", 1, 1),
 		legacy(9*time.Minute, "wave_committed", 1, 1),
 	}
-	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil, nil)
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil, nil, nil)
 	if len(in.WaveTimings) != 2 {
 		t.Fatalf("both spans must pair: %+v", in.WaveTimings)
 	}
@@ -183,5 +183,165 @@ func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
 		if d := got.CommittedAt.Sub(got.DispatchedAt); d != 4*time.Minute {
 			t.Fatalf("timing %d spans %s", i, d)
 		}
+	}
+}
+
+// TestRetroInputsInstrumentTheInternalReview covers the retro's internal
+// review block (two-layers design §9): candidates vs confirmed, by-lens
+// tallies, the scoped-pass verdict-change count, and the overlap between a
+// confirmed internal finding and the backend's own grading pass.
+func TestRetroInputsInstrumentTheInternalReview(t *testing.T) {
+	t.Parallel()
+	st := &bundle.State{Slug: "demo", Topic: "Add a greeting"}
+	idx := plan.Index{}
+	internals := []wave.InternalRecord{{
+		Wave: 0, Slice: 1, Attempt: 1, Lenses: []string{"correctness", "intent"},
+		Candidates: []wave.Candidate{
+			{
+				ID:      "c1",
+				Finding: backend.Finding{Severity: "blocking", File: "a.go", Line: 4, Title: "x"},
+				Task:    3,
+				Lenses:  []string{"correctness"},
+			},
+			{
+				ID:      "c2",
+				Finding: backend.Finding{Severity: "minor", File: "z.go", Line: 9, Title: "y"},
+				Task:    0,
+				Lenses:  []string{"intent"},
+			},
+			{
+				ID:      "c3",
+				Finding: backend.Finding{Severity: "nit", File: "b.go", Line: 1, Title: "z"},
+				Task:    3,
+				Lenses:  []string{"intent"},
+			},
+		},
+		Confirmed: []string{"c1", "c2"},
+	}}
+	closes := []wave.CloseResult{{Wave: 0, Slice: 1, Attempt: 1, Tasks: []wave.TaskResult{
+		{
+			Task:        3,
+			Status:      "done",
+			BlindReview: &backend.ReviewResult{Verdict: "approve"},
+			Review: &backend.ReviewResult{Verdict: "rework",
+				Findings: []backend.Finding{{Severity: "blocking", File: "a.go", Line: 5, Title: "near x"}}},
+			Internal: []wave.InternalFinding{
+				{
+					Finding: backend.Finding{Severity: "blocking", File: "a.go", Line: 4, Title: "x"},
+					Lenses:  []string{"correctness"},
+				},
+			},
+		},
+	}}}
+	in := finish.BuildRetroInputs(st, idx, nil, closes, nil, nil, nil, internals)
+	ir := in.Internal
+	if ir == nil {
+		t.Fatal("no internal review block")
+	}
+	if ir.Candidates != 3 || ir.Confirmed != 2 || ir.FalsePositives != 1 || ir.Unattributed != 1 {
+		t.Fatalf("counts = %+v", ir)
+	}
+	if ir.ByLens["correctness"].Reported != 1 || ir.ByLens["correctness"].Confirmed != 1 ||
+		ir.ByLens["intent"].Reported != 2 || ir.ByLens["intent"].Confirmed != 1 {
+		t.Fatalf("by_lens = %+v", ir.ByLens)
+	}
+	if ir.ScopedPasses != 1 || ir.ScopedChanged != 1 {
+		t.Fatalf("scoped = %+v", ir)
+	}
+	// The blind pass approved with no findings; the scoped pass that
+	// followed found a.go:5, near the confirmed a.go:4 internal finding —
+	// but the scoped pass graded the very claim being measured, so its
+	// agreement must not count as overlap (two-layers design §9).
+	if ir.Overlap != 0 {
+		t.Fatalf("overlap = %d, want 0 (the blind pass raised nothing)", ir.Overlap)
+	}
+}
+
+// TestRetroInputsOverlapCountsTheBlindPassOwnFinding covers the other
+// direction TestRetroInputsInstrumentTheInternalReview does not: a blind
+// pass that itself raised a finding near a confirmed internal one counts as
+// overlap, even though a scoped pass followed it and landed a finding
+// elsewhere. Together the two tests pin overlapCount to tr.BlindReview, not
+// tr.Review, whenever a scoped pass ran (two-layers design §9).
+func TestRetroInputsOverlapCountsTheBlindPassOwnFinding(t *testing.T) {
+	t.Parallel()
+	st := &bundle.State{Slug: "demo", Topic: "Add a greeting"}
+	idx := plan.Index{}
+	internals := []wave.InternalRecord{{
+		Wave: 0, Slice: 1, Attempt: 1, Lenses: []string{"correctness"},
+		Candidates: []wave.Candidate{
+			{
+				ID:      "c1",
+				Finding: backend.Finding{Severity: "blocking", File: "a.go", Line: 4, Title: "x"},
+				Task:    3,
+				Lenses:  []string{"correctness"},
+			},
+		},
+		Confirmed: []string{"c1"},
+	}}
+	closes := []wave.CloseResult{{Wave: 0, Slice: 1, Attempt: 1, Tasks: []wave.TaskResult{
+		{
+			Task:   3,
+			Status: "done",
+			// Within 3 lines of the confirmed a.go:4 finding.
+			BlindReview: &backend.ReviewResult{Verdict: "approve",
+				Findings: []backend.Finding{{Severity: "major", File: "a.go", Line: 6, Title: "nearby"}}},
+			// The scoped pass's own finding is nowhere near a.go:4 — if
+			// overlapCount read tr.Review instead of tr.BlindReview, this
+			// case would wrongly report 0.
+			Review: &backend.ReviewResult{Verdict: "rework",
+				Findings: []backend.Finding{{Severity: "minor", File: "b.go", Line: 1, Title: "unrelated"}}},
+			Internal: []wave.InternalFinding{
+				{
+					Finding: backend.Finding{Severity: "blocking", File: "a.go", Line: 4, Title: "x"},
+					Lenses:  []string{"correctness"},
+				},
+			},
+		},
+	}}}
+	in := finish.BuildRetroInputs(st, idx, nil, closes, nil, nil, nil, internals)
+	if in.Internal == nil {
+		t.Fatal("no internal review block")
+	}
+	if in.Internal.Overlap != 1 {
+		t.Fatalf("overlap = %d, want 1 (the blind pass's own a.go:6 is within tolerance of a.go:4)",
+			in.Internal.Overlap)
+	}
+}
+
+// TestRetroInputsInternalReviewNilWithNoRecords checks that a run with no
+// internal review recorded gets no internal_review block at all, rather than
+// an all-zero one — nil is what run-retro.md's "carries internal_review"
+// gate checks.
+func TestRetroInputsInternalReviewNilWithNoRecords(t *testing.T) {
+	t.Parallel()
+	st := &bundle.State{Slug: "demo", Topic: "Add a greeting"}
+	in := finish.BuildRetroInputs(st, plan.Index{}, nil, nil, nil, nil, nil, nil)
+	if in.Internal != nil {
+		t.Fatalf("want nil internal review, got %+v", in.Internal)
+	}
+}
+
+// TestRetroInputsCountsSkippedInternalReviews checks that Skipped tallies
+// internal_review_skipped events across the run, and only when there is an
+// internal review block to attach the count to.
+func TestRetroInputsCountsSkippedInternalReviews(t *testing.T) {
+	t.Parallel()
+	st := &bundle.State{Slug: "demo", Topic: "Add a greeting"}
+	internals := []wave.InternalRecord{{Wave: 0, Slice: 1, Attempt: 1}}
+	events := []bundle.Event{
+		{
+			Type: "internal_review_skipped",
+			Data: map[string]any{"wave": float64(1), "slice": float64(1), "attempt": float64(1)},
+		},
+		{
+			Type: "internal_review_skipped",
+			Data: map[string]any{"wave": float64(2), "slice": float64(1), "attempt": float64(1)},
+		},
+		{Type: "wave_committed"},
+	}
+	in := finish.BuildRetroInputs(st, plan.Index{}, events, nil, nil, nil, nil, internals)
+	if in.Internal == nil || in.Internal.Skipped != 2 {
+		t.Fatalf("skipped = %+v", in.Internal)
 	}
 }
