@@ -2,17 +2,18 @@
 
 ## Approach
 
-Thirteen tasks, grouped by the files they must edit rather than by issue number,
-because the spec's eighteen issues land on a handful of hot files:
-`internal/cli/cmd_review.go` is wanted by #44, #43 and #45; `internal/cli/cmd_close_wave.go`
-by #53, #23 and #51; `internal/cli/cmd_next.go` by #36 and #51; `internal/decide/questions.go`
-by #43, #26, #45 and #36; `internal/brief/brief.go` by #31, #45 and #36. A per-issue split would
-serialise the sweep on those files, so each hot file has exactly one owner per wave and the
-issues that touch it ride along. Waves are computed by takt from `depends_on`; the file sets of
-tasks without an ordering edge are disjoint (takt's own `plan-disjoint` rule). The graph gives
-two waves:
+Fourteen tasks, grouped by the files they must edit rather than by issue number, because the
+spec's eighteen issues land on a handful of hot files: `internal/cli/cmd_review.go` is wanted
+by #44, #43 and #45; `internal/cli/cmd_close_wave.go` by #53, #23 and #51;
+`internal/cli/cmd_next.go` by #36 and #51; `internal/decide/questions.go` by #43, #26, #45 and
+#36; `internal/brief/brief.go` by #31, #45 and #36. A per-issue split would serialise the sweep
+on those files, so each hot file has exactly one owner per wave and the issues that touch it
+ride along. Waves are computed by takt from `depends_on`; the file sets of tasks without an
+ordering edge are disjoint (takt's own `plan-disjoint` rule), and — after the plan review — so
+are their side effects: the two generated Copilot agent files have one owner (T14), and no task
+runs `hostgen` except that one. The graph gives two waves:
 
-- **Wave 1** — T1, T2, T3, T4, T5, T6, T7, T8, T9. Nine independent tasks, no shared files
+- **Wave 1** — T1, T2, T3, T4, T5, T6, T7, T8, T9, T14. Ten independent tasks, no shared files
   (`max_parallel` is 8, so takt will run them as two slices).
 - **Wave 2** — T10 (after T1 and T2), T11 (after T1), T12 (after T6), T13 (after T1).
 
@@ -24,6 +25,10 @@ explanations), and catching it per task is cheaper than at finish. T10 and T12 a
 repo-wide gates (`go test -race ./...`, `golangci-lint run ./...`, `task hosts:check`) as fast
 feedback for G13; what proves G13 is `takt verify` at finish, which runs the union of every
 task's verify commands on the assembled tree after the last wave has committed.
+
+Every committed wave is self-consistent: wave 1 lands the whole `retry`-on-error path except
+the one thing it cannot have yet (the backend's reason on a freshly written receipt, which is
+`runReview`'s in wave 2), and the question renders a receipt without a reason honestly.
 
 Everything below was verified against the tree at `55e4431` (this branch's HEAD at planning
 time); line numbers are where the code stands today, not a contract.
@@ -54,22 +59,28 @@ whole document from `renderFindings` plus its two sections and writes it once th
 pointer to compile (`assertApproveFollowUps`, `TestRecordVerifyWritesInternalRecordAndCarriesUnattributed`);
 T13 later strengthens them, which is why T13 depends on this task. Seven files.
 
-### T2 — decide: the error-verdict question, a recommendation the user can choose, "twelve" (#43.2 question half, #26, #45, #36 option text) — `implement`
+### T2 — the errored gate review, end to end minus the writer: question, `retry` answer, and the reason's plumbing; a choosable branch_finish; "twelve" (#43.2, #26, #45, #36 option text) — `implement`
 
-`questionGateReview` gains an `error` branch: narration `<g> review errored`, question "The
-<g> review errored: <reason>. reviews/<g>.md still describes the previous pass. How do you want
-to proceed?", options `retry` (Recommended: "Re-run the reviewer: `takt review <g> --slug
-<slug>`, then `takt next`"), `accept`, `stop` — no `revise`, since nothing was reviewed. The
-rework/reject wording is untouched. `GateStatus` gains `Reason` and both `gate_review` asks
-(`decideBrainstorm`, `decidePlan`) carry `"reason"` in their context. `questionBranchFinish`
-orders `pr` (Recommended), `keep`, `merge` (disabled, with its reason), `discard` when merge is
-blocked, and leaves the allowed order alone; exactly one option ever carries "(Recommended)"
-and it is first and enabled — the `pr` description now names `--title '<title>' --body-file
-<path>` instead of `--fill`. The doc comment's "eleven ids" becomes "twelve" in both places.
-Tests in the two decide test files; the existing error case of
-`TestGateReviewTellsTheUserWhatReviseWillActuallyDo` moves to the new test. The scripted
-op-loop driver already picks the first *enabled* option, so the reorder changes no existing
-loop test. Four files; T10 depends on it for `GateStatus.Reason`.
+The plan review's point stands: a wave must not offer a choice the binary rejects. So this task
+lands the whole `retry` path except what `runReview` writes (T10): `gate.Receipt` and
+`gate.Status` gain `Reason`, `Compute` copies it, `decide.GateStatus` gains `Reason`,
+`gatherGateFacts` copies it, both `gate_review` asks carry `"reason"`, `questionGateReview`
+renders the error branch — narration `<g> review errored`, question "The <g> review errored:
+<reason>. reviews/<g>.md still describes the previous pass. How do you want to proceed?",
+options `retry` (Recommended, naming `takt review <g> --slug <slug>` then `takt next`),
+`accept`, `stop`, no `revise` — with `(no reason recorded)` standing in for an empty reason (a
+receipt written before the field existed, or by wave 1's `runReview`), and `answerGateReview`
+accepts `retry` (writes nothing; `cmdAnswer` clears the gate and commits). The rework/reject
+wording is untouched. `questionBranchFinish` orders `pr` (Recommended), `keep`, `merge`
+(disabled, with its reason), `discard` when merge is blocked and leaves the allowed order alone;
+exactly one option ever carries "(Recommended)" and it is first and enabled — the `pr`
+description names `--title '<title>' --body-file <path>` instead of `--fill`. "eleven ids" →
+"twelve" in both places. Tests in the two decide test files, plus a new cli test file that
+plants an error receipt (with a reason) at the current hash and drives `next` → `answer retry`
+→ `next`, proving the reason reaches the question, the answer writes no event, and the gate
+returns until the review is re-run. The scripted op-loop driver already picks the first
+*enabled* option, so the branch_finish reorder changes no existing loop test. Eight files; T10
+depends on it.
 
 ### T3 — doctor `review-record` check (#43.3) — `bounded`
 
@@ -93,26 +104,31 @@ of three hints — the branch hint when the error is `fs.ErrNotExist` and `takt/
 anything else. Four files; the unlock test lives in a new `cmd_unlock_test.go` so nothing else
 in this wave needs `cmd_next_test.go`.
 
-### T5 — goal-assessor citations are checked against the tree (#24) — `implement`
+### T5 — goal-assessor citations are checked against the tree (#24, code and brief template) — `implement`
 
 `finish.CheckCitations(vs, root)` returns one problem per bad citation — grammar
-(`path:line` / `path:start-end`), repo-relative path (no leading `/`, no `..` segment),
-symlink-resolved containment (`filepath.EvalSymlinks` on both the joined path and the root),
-regular file, `1 ≤ start ≤ end ≤` line count — and `readVerdicts` appends them to
-`ParseVerdicts`'s problems so a bad citation is rejected like any unusable reply: no record, one
-`goals_invalid` event. The brief template and the agent definition state the grammar and that
-citations are checked; the host file is regenerated. The CLI test is a new file so
-`finish_test.go` stays free for T12. Seven files.
+(`path:line` / `path:start-end`), repo-relative path (no leading `/`, no `..` *segment*),
+symlink-resolved containment (`filepath.EvalSymlinks` on both the joined path and the root; the
+resolved path is outside when `filepath.Rel` is exactly `..` or starts with `..` followed by the
+path separator — a plain prefix test would wrongly reject a file named `..foo.go`), regular
+file, `1 ≤ start ≤ end ≤` line count — and `readVerdicts` appends them to `ParseVerdicts`'s
+problems so a bad citation is rejected like any unusable reply: no record, one `goals_invalid`
+event. The brief template states the grammar and that citations are checked; the agent
+definition is T14's. The CLI rejection test builds one fresh fixture per malformed citation
+(subtests), so no run ever approaches the three-rejection cap that would turn the next `next`
+into an `agent_invalid` ask — each case asserts exactly one `goals_invalid` and the assessor
+re-dispatched with the problem quoted. The test file is new so `finish_test.go` stays free for
+T12. Five files.
 
 ### T6 — the task brief names the spec by path; brief-package polish (#31, #45 brief items) — `implement`
 
 `ImplementerData.SpecExcerpt` becomes `SpecPath`; `renderImplementer` passes the bundle's
 absolute `spec.md`; `implementer.md`'s Context section says to read it as data and the
-`spec-excerpt` quote block is gone; `agents/implementer.md` loses its "spec excerpt" mention
-and the Copilot file is regenerated. Same package, so this task also lands `PriorFindingLines`
+`spec-excerpt` quote block is gone. Same package, so this task also lands `PriorFindingLines`
 flattening newlines inside a `Detail`, and the `review-spec-followup.md` reject clause. A new
-cli test dispatches a wave and asserts the brief holds the path and not the spec's body. Eight
-files; T12 depends on it because both need `brief.go` (`RunData`).
+cli test dispatches a wave and asserts the brief holds the path and not the spec's body. The
+agent definition's "spec excerpt" mention and its generated host file are T14's. Six files; T12
+depends on it because both need `brief.go` (`RunData`).
 
 ### T7 — copilot `--no-custom-instructions` (#49 item 1) — `bounded`
 
@@ -139,20 +155,30 @@ inspect bundle files by absolute path — never `cd` into the bundle. Both sente
 drifts. Independent of T12's template change: the prose describes the op T12 emits, and the
 spec fixes the wording. Three files.
 
-### T10 — `runReview`'s write order, the reason, and the hash on the findings file (#44 item 3, #43.1–3 code half, #45 review items) — `implement`
+### T14 — the two agent definitions and their generated Copilot files (#24 and #31 agent text) — `bounded`
+
+*Runs in wave 1. Numbered last because it was split out of T5 and T6 after the plan review:
+both ran `task hosts:gen`, which rewrites every stale generated file, so two concurrent tasks
+could each write the other's output.* One owner for `agents/goal-assessor.md` (the citation
+grammar and the check, short form), `agents/implementer.md` (no more "spec excerpt"; the brief
+names the spec by path, to be read as data) and the two `hosts/copilot/agents/*.agent.md` files
+regenerated from them. The agent text is fixed by the spec, not derived from T5's or T6's code,
+so this task needs neither. Its verify is `task hosts:check` plus the prompt parity tests. Four
+files.
+
+### T10 — `runReview`'s write order, the reason on receipt and event, hash and round on the findings file (#44 item 3, #43.1–3 writer half, #45 review items) — `implement`
 
 Depends on T1 (owns `cmd_review.go`'s `renderFindings` and the idempotent carry the reorder
-relies on) and T2 (`GateStatus.Reason`). `runReview` writes findings → carry (on approve) →
-`gate_reviewed` event (now checked; exits 1 on failure) → receipt → commit, so any failure
-leaves no receipt and the next call re-runs instead of returning `cachedReceipt` with the carry
-lost; the function comment states the order and why. `gate.Receipt` and `gate.Status` gain
-`Reason`; the event carries `reason` when non-empty; `gatherGateFacts` copies it.
+relies on) and T2 (`Receipt.Reason`, `GateStatus.Reason`, the `retry` answer). `runReview`
+writes findings → carry (on approve) → `gate_reviewed` event (now checked; exits 1 on failure)
+→ receipt → commit, so any failure leaves no receipt and the next call re-runs instead of
+returning `cachedReceipt` with the carry lost; the function comment states the order and why.
+The receipt carries `Reason: res.Reason`; the event carries `reason` when non-empty.
 `reviews/<gate>.json` gains `hash` and `round` (`gate.Rounds` before the pass, plus one);
-`readReviewResult` returns them; `priorFindingsForScopedPass` is unchanged. `answerGateReview`
-accepts `retry` (writes nothing; `cmdAnswer` clears and commits). `writeResultJSON` drops its
-`MkdirAll` (with T1's change, `cmd_review.go` then holds exactly one — `preserveEvidence`'s),
-and every verdict comparison uses `gate.Verdict*`. The `overrideGate` comment is rewritten for
-the idempotent carry. Seven files. Carries the repo-wide gates.
+`readReviewResult` returns them; `priorFindingsForScopedPass` is unchanged. `writeResultJSON`
+drops its `MkdirAll` (with T1's change, `cmd_review.go` then holds exactly one —
+`preserveEvidence`'s), and every verdict comparison uses `gate.Verdict*`. The `overrideGate`
+comment is rewritten for the idempotent carry. Five files. Carries the repo-wide gates.
 
 ### T11 — retro inputs: count every review once, one timing per dispatched attempt (#23, #25, #45 fixture) — `implement`
 
@@ -173,46 +199,53 @@ Depends on T6 (`brief.go`, `brief_test.go`). A pure `finish.BuildPR` derives the
 spec's H1, else the topic's first 72 runes) and body (first prose paragraph, `## Goals` with
 each goal's verdict / `waived (<reason>)` / `not assessed`, `## Run` bundle pointer); the
 `push_pr` `run` op writes `finish/pr.md` on every call and passes `inputs.pr_title` and
-`inputs.pr_body_path`; `RunData` gains the two fields and a `PRTitleQuoted` method (`'` →
-`'\''`); `run-push_pr.md` says `--title '<title>' --body-file <path>`. Same file, so the three
-`cmd_next.go` polish items land here: `writeStableBrief` renders once and hands
-`writeStableBriefAt` the text, `verifyBrief` calls `ensureSliceDiff` before building its
-closure, `lensTasks` loses its dead parameter. Eight files. Carries the repo-wide gates.
+`inputs.pr_body_path`. `not assessed` is what a goal gets when the record does not exist or
+has no verdict for it — never what an unreadable or malformed `finish/goals.json` (or
+`goals.md`, or `spec.md`) turns into: those errors fail the `next` call, and a test pins it.
+`RunData` gains the two fields and a `PRTitleQuoted` method (`'` → `'\''`); `run-push_pr.md`
+says `--title '<title>' --body-file <path>`. Same file, so the three `cmd_next.go` polish items
+land here: `writeStableBrief` renders once and hands `writeStableBriefAt` the text,
+`verifyBrief` calls `ensureSliceDiff` before building its closure, `lensTasks` loses its dead
+parameter. Eight files. Carries the repo-wide gates.
 
-### T13 — the polish tests (#45 and #51 test items) — `test`
+### T13 — the polish tests, and the fake backend records its calls (#45 and #51 test items) — `bounded`
 
-Depends on T1 (two of its files). `gate_test.go`: a malformed `gate_revision_accepted` (non-string
-`gate`/`hash`) neither panics nor satisfies; a receipt with `Severities == nil` at the current
-hash computes `Blocking == false`. `oploop_test.go`: the scoped-pass test reads the prompt by
-its `review-spec-` LogID prefix instead of scanning every file under `logs/`.
+Depends on T1 (two of its files). `gate_test.go`: a malformed `gate_revision_accepted`
+(non-string `gate`/`hash`) neither panics nor satisfies; a receipt with `Severities == nil` at
+the current hash computes `Blocking == false`. `oploop_test.go`: the scoped-pass test reads the
+second spec call's prompt by its exact LogID — the fake reviewer appends each call's rubric and
+`LogID` to the file `TAKT_FAKE_REVIEW_CALLS` names, so the test knows the id `runReview` minted
+and reads exactly `logs/<id>.prompt`, no directory scan and no glob a stale file could satisfy.
 `close_internal_test.go`: a marker planted in a confirmed internal finding is absent from the
 *blind* task-review prompt (the twin of the scoped-pass leak test). `record_reviewer_test.go`:
 `Candidates` and `Verdicts` asserted on the on-disk record; a nothing-written assertion on the
 "no verdict for c2" sub-case. `cmd_answer_test.go`: `internal_review_skipped` carries
-`reason: agent_invalid`. Five files, no production code.
+`reason: agent_invalid`. Six files: five test files and the fake backend's recording hook.
 
 ## Risks
 
-- **Same-worktree wave concurrency.** Wave 1 has six tasks compiling `internal/cli` (T1, T4,
-  T5, T6 directly; T3 and T9 through their cli/prompt tests), so one task's verify can observe
-  another's half-written edit and fail transiently; takt re-attempts, and the wave is graded on
-  the committed tree. This is the accepted residual risk of the previous sweep, adopted again.
-  The two `task hosts:check` verifies (T5, T6) are the most exposed: both tasks edit an agent
-  definition, so each is told to run `task hosts:gen` first, which regenerates every stale host
-  file — including the other task's, which is in the wave's scope.
-- **T2 lands before T10.** Between waves the `gate_review` question offers `retry` on an error
-  verdict while `answerGateReview` does not yet accept it. No existing test drives an errored
-  gate through `next` and `answer`, and the wave-1 commit is graded by each task's own verify;
-  T10 closes the gap in wave 2.
+- **Same-worktree wave concurrency.** Wave 1 has six tasks compiling `internal/cli` (T1, T2,
+  T4, T5, T6 directly; T3 through its cli test) and two whose tests read the agent files (T9,
+  T14), so one task's verify can observe another's half-written edit and fail transiently;
+  takt re-attempts, and the wave is graded on the committed tree. This is the accepted residual
+  risk of the previous sweep, adopted again. What the plan review found — two tasks running
+  `hostgen` and writing each other's generated files — is not a transient failure but an
+  out-of-scope write, and is removed by giving T14 sole ownership of the generated files.
+- **Wave 1 offers `retry` before `runReview` writes a reason.** The question renders
+  `(no reason recorded)` for such a receipt and the `retry` answer already works, so the
+  intermediate tree is honest rather than contradictory; T10 fills the reason in wave 2.
 - **Failure injection in T10's write-order test** relies on a read-only `events.jsonl`
   refusing `O_APPEND` — the seam the existing streak-loss tests already use — which does not
   hold as root; the test skips when `os.Geteuid() == 0`.
+- **T5's rejection test costs one full scripted run per malformed citation** (six fixtures,
+  parallel subtests). That is the price of never approaching the attempt cap; the finish tests
+  already build one run each, so the cost is in line with the suite.
 - **`wave_closed` becomes load-bearing for timings.** Bundles whose `wave_closed` events
   predate `slice`/`review_findings` are floored (slice 1) or count zero, the status quo the spec
   accepts; the retro fixtures that pair only through `wave_committed` must gain `wave_closed`
   events, which T11's description calls out.
-- **Prose tripwires.** T8's and T9's greps anchor on phrases the spec itself uses; they are
-  tripwires against the edit landing in the wrong file, not oracles for meaning — the wave
+- **Prose tripwires.** T8's, T9's and T14's greps anchor on phrases the spec itself uses; they
+  are tripwires against the edit landing in the wrong file, not oracles for meaning — the wave
   review and G12's assessment judge the prose.
 
 ## Class justifications (below `implement`)
@@ -222,5 +255,10 @@ its `review-spec-` LogID prefix instead of scanning every file under `logs/`.
 - **T7 `bounded`** — one flag, one assertion, wording given.
 - **T9 `bounded`** — two prose files plus two string literals appended to an existing test
   table; the sentences are quoted in the spec.
+- **T13 `bounded`** — tests against existing behaviour, plus a five-line recording hook in the
+  fake reviewer (a test double that lives in production code so the CLI runs without a
+  vendor); every assertion is named, so it is small and fully specified rather than `test`
+  in the strict sense.
+- **T14 `bounded`** — two prose edits quoted in the spec and one regeneration command, with
+  `task hosts:check` as the oracle.
 - **T8 `docs`** — prose only, every passage named with its location.
-- **T13 `test`** — tests against existing behaviour only; T1 owns the two shared files first.

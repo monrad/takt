@@ -1,48 +1,34 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition broadly covers the spec, but several execution and verification defects must be corrected before starting.",
+  "summary": "The decomposition is broadly complete, but Tasks 10 and 12 contain correctness gaps that must be resolved before execution.",
   "findings": [
     {
-      "severity": "blocking",
-      "file": "plan.md",
+      "severity": "major",
+      "file": "",
       "line": 0,
-      "title": "T5 and T6 are not actually file-disjoint",
-      "detail": "Both run `task hosts:gen`, which may rewrite both generated agent files while the tasks execute concurrently in wave 1. This violates the claimed disjoint scopes and can produce out-of-scope edits or races. Serialize them or assign all generated outputs to one task."
+      "title": "T12 silently treats a missing goals.md as goals being disabled",
+      "detail": "T12 maps fs.ErrNotExist for goals.md to nil goals even when Config.Goals is true. The spec omits the Goals section only when goals are disabled, and plan.md itself says goals.md read errors must fail. This would silently generate an incomplete PR body. Require goals.md when goals are enabled and add a missing-file test."
     },
     {
       "severity": "major",
-      "file": "plan.md",
+      "file": "",
       "line": 0,
-      "title": "T2 exposes an unsupported retry choice for an entire wave",
-      "detail": "T2 adds `retry` to the question, but handling it is deferred to T10. The plan explicitly acknowledges that the wave-1 tree offers a choice `answerGateReview` rejects. Move the handler into T2 or restructure the dependency so no committed wave has contradictory behavior."
+      "title": "T10's write order does not prove its claimed failure guarantee",
+      "detail": "T10 claims any failure leaves the receipt unwritten, but commitBundle runs after gate.WriteReceipt. A commit failure therefore leaves a cacheable receipt, and the next review need not rerun. The proposed test injects only an event-append failure. Specify recovery or narrower semantics for commit failure and verify that behavior."
     },
     {
       "severity": "major",
-      "file": "plan.md",
+      "file": "",
       "line": 0,
-      "title": "T13 does not address the scoped log by LogID",
-      "detail": "T13 replaces `ReadDir` with a broad `review-spec-*.prompt` glob and selects the newest file. That is still a directory-wide heuristic, not lookup using the second call's LogID as required, and stale files can satisfy the assertion. Capture the call's actual LogID and read its exact prompt path."
-    },
-    {
-      "severity": "major",
-      "file": "plan.md",
-      "line": 0,
-      "title": "T5's invalid-citation test conflicts with the attempt cap",
-      "detail": "The proposed test submits six invalid replies against one run while expecting one `goals_invalid` event for each. The spec says invalid replies reach `agent_invalid` at the cap, so later cases cannot reliably exercise citation validation. Use a fresh run per malformed citation or otherwise reset the attempt state."
-    },
-    {
-      "severity": "major",
-      "file": "plan.md",
-      "line": 0,
-      "title": "T12 silently treats goals-record read failures as missing verdicts",
-      "detail": "T12 says any `finish.ReadGoals` error may become nil and therefore `not assessed`. The spec permits `not assessed` when no verdict exists, not when an existing record is unreadable or malformed. Ignore only an explicit not-found result and propagate other errors."
+      "title": "T5's '..' segment validation is not filepath-safe",
+      "detail": "Checking strings.Split(path, \"/\") misses native backslash separators on Windows. A citation such as dir\\..\\a.go:1 can contain the forbidden segment yet resolve inside the repository, so containment checking will accept it. Use filepath-aware segment validation and add a platform-appropriate regression case."
     },
     {
       "severity": "minor",
-      "file": "plan.md",
+      "file": "",
       "line": 0,
-      "title": "T5's containment predicate rejects valid repository paths",
-      "detail": "Testing whether `filepath.Rel` merely starts with `..` rejects contained names such as `..foo`. Check `rel == \"..\"` or a `..` plus path-separator prefix instead, and add a regression case."
+      "title": "T10 has an unexplained file scope",
+      "detail": "internal/cli/cmd_next_test.go is declared in T10's files but no change to it is described or required by the listed tests. Remove it or state the precise necessary edit so the task cannot silently widen its scope."
     }
   ],
   "provider": "copilot",
