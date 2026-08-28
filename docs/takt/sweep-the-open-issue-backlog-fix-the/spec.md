@@ -85,12 +85,18 @@ nothing is ever removed. The `overrideGate` comment that argues its ordering fro
 "follow-ups.json has no de-duplication" is rewritten to say the carry is now
 idempotent and the event-first order is kept for the inert-duplicate reason alone.
 
-`runReview` reorders its writes so that any failure leaves the receipt unwritten
-and the next `takt review` re-runs the pass instead of returning `cachedReceipt`
-with work lost: `storeFindings` → carry (on `approve`) → `gate_reviewed` event →
-`WriteReceipt` → commit. A retry after a failure re-carries idempotently and may
-count one extra round — fail-closed, which is the direction the cap should fail.
-The function's comment states this order and why. #44's item 4 (asserting the
+`runReview` reorders its writes so that any failure *before the receipt* leaves it
+unwritten and the next `takt review` re-runs the pass instead of returning
+`cachedReceipt` with work lost: `storeFindings` → carry (on `approve`) →
+`gate_reviewed` event → `WriteReceipt` → commit. A retry after such a failure
+re-carries idempotently and may count one extra round — fail-closed, which is the
+direction the cap should fail. A failure *at the commit*, after the receipt, is the
+one step that is not lost work: the receipt and everything before it are on disk,
+uncommitted, and the next takt command's bundle commit sweeps them up, so the next
+`takt review` correctly returns that receipt as cached. A `--force` pass removes the
+prior receipt before the backend is called, so the same guarantee holds for it: a
+forced pass that fails before its own receipt leaves none. The function's comment
+states this order and both halves of the guarantee. #44's item 4 (asserting the
 session lock at entry) is out of scope.
 
 ### B. The spec gate's failure paths (#43)
@@ -314,7 +320,7 @@ brief with a path and no excerpt; the copilot flag; and the tests #45/#51 list.
 | #43.2: how does a user get past an `error` verdict? | A `retry` choice on `gate_review` for error verdicts; `revise` is not offered there. | Showing the reason next to "revise the spec" would still name the wrong action; retry names the right one and writes nothing. | assumed |
 | #43.3: is the findings-file hash enforced or reported? | Reported: a `review-record` doctor WARN. `priorFindingsForScopedPass` is unchanged. | Its content-first reasoning was argued in the fixed-point design; a WARN makes a mismatch visible without re-litigating it. | assumed |
 | #44: what is a follow-up's identity? | The JSON array `[gate, wave, task, severity, file, line, title]`; `approve` → `override` upgrades in place; nothing else is rewritten. | The issue's own tuple, encoded so that it is injective — a delimiter-joined string is not, since file names and titles may contain the delimiter. The upgrade is the one case where the later source is strictly more decisive. | assumed |
-| #44 item 3: reorder `runReview`'s writes? | Yes: findings, carry, event, receipt, commit. | Any failure leaves no receipt, so the next call re-runs instead of returning cached with the carry lost; duplicates are idempotent (carry) or fail-closed (round). | assumed |
+| #44 item 3: reorder `runReview`'s writes? | Yes: findings, carry, event, receipt, commit; a `--force` pass drops the prior receipt first. | Any failure before the receipt leaves none, so the next call re-runs instead of returning cached with the carry lost; duplicates are idempotent (carry) or fail-closed (round). A commit failure after the receipt loses nothing — the next bundle commit picks the files up — so the receipt is correctly cached then. | assumed |
 | #44 item 4: assert the session lock in `runReview`/`overrideGate`? | Out of scope. | A separate concern from identity; nothing in this run changes the locking. | assumed |
 | #23: count from events or keep the close-record sum? | Events, with `review_findings` on `wave_closed`; the close record also stores its own count. | The retired attempt's record is deleted at the next close; the event log is the only append-only record of every attempt. | assumed |
 | #23: rename `review_findings`? | Keep it as the total; add `gate_review_findings` and `task_review_findings`. | The retro template already names it; the split says what it counts. | assumed |

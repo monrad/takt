@@ -52,12 +52,17 @@ follow-up lives in `record_reviewer.go` (`carryUnattributed`) and `cmd_close_wav
 follow-up, `&n` a wave-`n` one, so wave 0 serialises as `"wave": 0` instead of vanishing.
 `FollowUp.Key()` is the JSON encoding of `[gate, wave, task, severity, file, line, title]` —
 `wave` as `null` when nil, strings trimmed — which is injective because JSON escapes every
-delimiter a file name or title could smuggle in. `AppendFollowUps` keeps its read-modify-write
-shape but becomes idempotent on that key, with the one upgrade the spec allows: a stored
-`approve` item met by an `override` repeat has its `source` rewritten in place, `ts` kept;
-nothing else is ever rewritten and nothing is removed. The three wave-follow-up constructors set
-the pointer (`new(rec.Wave)`, `new(waveN)` — `new(expr)` is already used in this tree). This task
-also owns the two findings-file writers because both files are already its own: `writeFindings`
+delimiter a file name or title could smuggle in. The identity test is a table, not two
+examples: starting from one base item, each of the seven elements is mutated on its own —
+including `wave` nil versus `0` versus `1` — and every mutation must change the key, while a
+file or title that differs only by surrounding whitespace must not; the delimiter and quote
+collision cases stay. An implementation that dropped any element, or failed to trim, cannot
+pass it. `AppendFollowUps` keeps its read-modify-write shape but becomes idempotent on that
+key, with the one upgrade the spec allows: a stored `approve` item met by an `override` repeat
+has its `source` rewritten in place, `ts` kept; nothing else is ever rewritten and nothing is
+removed. The three wave-follow-up constructors set the pointer (`new(rec.Wave)`,
+`new(waveN)` — `new(expr)` is already used in this tree). This task also owns the two
+findings-file writers because both files are already its own: `writeFindings`
 (cmd_review.go) is split into `renderFindings` + one `bundle.WriteFileAtomic` (which creates
 the directory, so its `MkdirAll` goes), and `writeTaskFindings` (cmd_close_wave.go) builds the
 whole document from `renderFindings` plus its two sections and writes it once through
@@ -177,22 +182,23 @@ Depends on T1 (owns `cmd_review.go`'s `renderFindings` and the idempotent carry 
 relies on) and T2 (`Receipt.Reason`, `GateStatus.Reason`, the `retry` answer; and `gate.go`,
 which this task extends with `RemoveReceipt`). `runReview` writes findings → carry (on approve)
 → `gate_reviewed` event (now checked; exits 1 on failure) → receipt → commit. The guarantee is
-stated precisely, in the plan and in the function's comment, because it has two halves: any
-failure *before* `WriteReceipt` leaves no receipt, so the next `takt review` re-runs the pass
-instead of returning `cachedReceipt` with the carry lost (a retry re-carries idempotently and
-may count one extra round — fail-closed); a failure *at the commit*, after the receipt, leaves
-the receipt on disk uncommitted, which the next takt command's `commitBundle` — it stages the
-whole bundle directory — sweeps up, so nothing is lost and the next `takt review` correctly
-returns the cached receipt. The first half must also hold for `--force`, which the plan review
-caught: a forced pass runs against a receipt that already answers at the hash, so a failure
-before its own receipt would otherwise leave the *old* one for the next unforced call to return.
-So a forced pass removes `gates/<gate>.json` — whatever hash it is at — immediately before the
-backend is called (`gate.RemoveReceipt`, not-exist ignored), and from that point the guarantee
-reads the same as for any pass. All three shapes are tested: the event append made to fail
-(read-only `events.jsonl`) on a plain pass and on a forced pass over a good receipt, and the
-commit made to fail (`.git/index.lock`). The receipt carries `Reason: res.Reason`; the event
-carries `reason` when non-empty. `reviews/<gate>.json` gains `hash` and `round` (`gate.Rounds`
-before the pass, plus one); `readReviewResult` returns them; `priorFindingsForScopedPass` is
+the one the amended spec §A states, and it is stated in the same two halves in the function's
+comment: a failure *before the receipt* — findings, carry, event — leaves no receipt, so the
+next `takt review` re-runs the pass instead of returning `cachedReceipt` with the carry lost (a
+retry re-carries idempotently and may count one extra round — fail-closed); a failure *at the
+commit*, after the receipt, loses nothing — the receipt sits on disk uncommitted, the next takt
+command's `commitBundle` (it stages the whole bundle directory) sweeps it up, and the next
+`takt review` correctly returns it cached, because it is the record of a review that really
+happened. The first half must also hold for `--force`, which the plan review caught: a forced
+pass runs against a receipt that already answers at the hash, so a failure before its own
+receipt would otherwise leave the *old* one for the next unforced call to return. So a forced
+pass removes `gates/<gate>.json` — whatever hash it is at — immediately before the backend is
+called (`gate.RemoveReceipt`, not-exist ignored), and from that point the guarantee reads the
+same as for any pass. All three shapes are tested: the event append made to fail (read-only
+`events.jsonl`) on a plain pass and on a forced pass over a good receipt, and the commit made
+to fail (`.git/index.lock`). The receipt carries `Reason: res.Reason`; the event carries
+`reason` when non-empty. `reviews/<gate>.json` gains `hash` and `round` (`gate.Rounds` before
+the pass, plus one); `readReviewResult` returns them; `priorFindingsForScopedPass` is
 unchanged. `writeResultJSON` drops its `MkdirAll` (with T1's change, `cmd_review.go` then holds
 exactly one — `preserveEvidence`'s), and every verdict comparison uses `gate.Verdict*`. The
 `overrideGate` comment is rewritten for the idempotent carry. Five files — every new test goes
