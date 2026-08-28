@@ -216,18 +216,39 @@ func resolveTaskResults(
 		}
 	}
 	reviewTasks(ctx, env, tgt, idx, res, review)
+	carryApprovedFindings(tgt.bdir, aw.N, res)
+	return nil
+}
+
+// carryApprovedFindings runs every task's follow-up carry serially, once
+// reviewTasks' concurrent fan-out (bounded by max_parallel) has finished
+// entirely. gate.AppendFollowUps is an unsynchronized read-modify-write of
+// follow-ups.json — running the carry inside reviewOne's per-task goroutine,
+// as an earlier version of this function did, let two tasks approving
+// concurrently silently lose one another's items (review finding, two-layers
+// design §3.7, D11). One writer, one place: a task the backend approved
+// carries its internal and backend findings; a task no backend graded at all
+// (review.tasks off, or its review skipped) but that still holds confirmed
+// internal findings carries those alone. A carry error grades that one task
+// review_error, exactly as an error from any other part of its review would
+// — it does not abort the other tasks' carries.
+func carryApprovedFindings(bdir string, waveN int, res *wave.CloseResult) {
 	for i := range res.Tasks {
 		tr := &res.Tasks[i]
-		if tr.Status == bundle.StatusDone && tr.Review == nil && len(tr.Internal) > 0 {
+		switch {
+		case tr.Review != nil && tr.Review.Verdict == backend.VerdictApprove:
+			if err := carryTaskFindings(bdir, waveN, tr); err != nil {
+				tr.Status, tr.Reason = statusReviewError, err.Error()
+			}
+		case tr.Status == bundle.StatusDone && tr.Review == nil && len(tr.Internal) > 0:
 			// No backend graded this task (review.tasks off, or its review
 			// was skipped) — the confirmed lens findings' only route to a
 			// human is follow-ups (two-layers design §3.7).
-			if err := carryInternalOnly(tgt.bdir, aw.N, tr); err != nil {
-				return err
+			if err := carryInternalOnly(bdir, waveN, tr); err != nil {
+				tr.Status, tr.Reason = statusReviewError, err.Error()
 			}
 		}
 	}
-	return nil
 }
 
 // taskOutcome grades one task from its digest: a done digest that changed
@@ -685,9 +706,9 @@ func reviewOne(
 		fmt.Sprintf("%s task %d", tgt.slug, tr.Task), tr)
 	switch tr.Review.Verdict {
 	case backend.VerdictApprove:
-		if cerr := carryTaskFindings(tgt.bdir, waveN, tr); cerr != nil {
-			tr.Status, tr.Reason = statusReviewError, cerr.Error()
-		}
+		// Carried by carryApprovedFindings, serially, after every task's
+		// review has finished (see its doc comment) — not here, where this
+		// function runs concurrently across the wave's reviewed tasks.
 	case backend.VerdictRework:
 		tr.Status, tr.Reason = statusRework, tr.Review.Summary
 	case backend.VerdictReject:

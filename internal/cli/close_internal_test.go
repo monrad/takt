@@ -10,6 +10,7 @@ import (
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gate"
+	"github.com/monrad/takt/internal/testutil"
 	"github.com/monrad/takt/internal/wave"
 )
 
@@ -362,5 +363,109 @@ func TestRetryBriefCarriesLensLines(t *testing.T) {
 	}
 	if !strings.Contains(brief, "[lens:correctness] major a.go:4 — internal title: internal detail") {
 		t.Fatalf("retry brief lacks the lens finding: %s", brief)
+	}
+}
+
+// twoTaskReviewerRun is reviewerRun (record_reviewer_test.go) extended to two
+// tasks (3 and 4, each its own file) instead of one, both already dispatched
+// and recorded done at attempt 1. The carry race the fix in
+// carryApprovedFindings addresses only manifests with more than one task
+// approving in the same close — reviewerRun's single task can never exercise
+// it.
+func twoTaskReviewerRun(t *testing.T) (string, string) {
+	t.Helper()
+	root, bdir := setupRunWith(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	idx := `{"schema":1,"spec_hash":"x","tasks":[
+ {"id":3,"title":"c","description":"create a.go","files":["a.go"],"verify":["true"],"depends_on":[],"goals":[],"class":"docs"},
+ {"id":4,"title":"d","description":"create d.go","files":["d.go"],"verify":["true"],"depends_on":[],"goals":[],"class":"docs"}]}`
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", idx)
+	testutil.WriteFile(t, root, "docs/takt/demo/plan.md", "# plan\n")
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Phase = bundle.PhaseExecute
+	st.Tasks = []bundle.Task{
+		{ID: 3, Wave: 0, Status: bundle.StatusPending, Files: []string{"a.go"}, Class: "docs", Attempt: 1},
+		{ID: 4, Wave: 0, Status: bundle.StatusPending, Files: []string{"d.go"}, Class: "docs", Attempt: 1},
+	}
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Slice: 1, Attempt: 1, Tasks: []int{3, 4}, StartedAt: time.Now().UTC()}
+	if err = bundle.SaveState(bdir, st); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Commit(t, root, "two-task reviewer fixture")
+	testutil.WriteFile(t, root, "a.go", "package a\n")
+	testutil.WriteFile(t, root, "d.go", "package d\n")
+	record(t, root, 3, 1, "done", "wrote a.go")
+	record(t, root, 4, 1, "done", "wrote d.go")
+	return root, bdir
+}
+
+// TestCloseCarriesFollowUpsForEveryApprovedTaskConcurrently is the assertion
+// that would have caught the lost update: reviewTasks reviews multiple tasks
+// concurrently (bounded by max_parallel, default 8 here), and
+// gate.AppendFollowUps is an unsynchronized read-modify-write of
+// follow-ups.json. Carrying the confirmed internal finding for both tasks
+// must not let one task's carry silently drop the other's.
+func TestCloseCarriesFollowUpsForEveryApprovedTaskConcurrently(t *testing.T) {
+	t.Parallel()
+	root, bdir := twoTaskReviewerRun(t)
+	rec := wave.InternalRecord{
+		Wave: 0, Slice: 1, Attempt: 1, Model: "sonnet", RecordedAt: time.Now().UTC(),
+		Lenses: []string{"correctness"},
+		Candidates: []wave.Candidate{
+			{
+				Finding: backend.Finding{
+					Severity: "major",
+					File:     "a.go",
+					Line:     1,
+					Title:    "t3 title",
+					Detail:   "t3 detail",
+				},
+				ID:     "c1",
+				Task:   3,
+				Lenses: []string{"correctness"},
+			},
+			{
+				Finding: backend.Finding{
+					Severity: "major",
+					File:     "d.go",
+					Line:     1,
+					Title:    "t4 title",
+					Detail:   "t4 detail",
+				},
+				ID:     "c2",
+				Task:   4,
+				Lenses: []string{"correctness"},
+			},
+		},
+		Verdicts: []wave.CandidateVerdict{
+			{ID: "c1", Verdict: wave.VerdictConfirmed, Evidence: "e1"},
+			{ID: "c2", Verdict: wave.VerdictConfirmed, Evidence: "e2"},
+		},
+		Confirmed: []string{"c1", "c2"},
+	}
+	if err := wave.WriteInternalRecord(bdir, rec); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"approve","summary":"ok"}`}
+	code, o, errb := runIn(t, root, env, "close-wave", "--slug", "demo")
+	if code != 0 || o["committed"] != true {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	items := followUps(t, bdir)
+	byTask := map[int]int{}
+	for _, f := range items {
+		if f.Source != gate.SourceInternal {
+			t.Fatalf("unexpected follow-up source: %+v", f)
+		}
+		byTask[f.Task]++
+	}
+	if byTask[3] != 1 || byTask[4] != 1 {
+		t.Fatalf("follow-ups must hold both tasks' internal findings — got %v from %+v", byTask, items)
+	}
+	if len(items) != 2 {
+		t.Fatalf("want exactly 2 follow-ups, got %d: %+v", len(items), items)
 	}
 }
