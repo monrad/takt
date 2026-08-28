@@ -199,7 +199,7 @@
     {
       "id": 8,
       "wave": 0,
-      "status": "pending",
+      "status": "waived",
       "files": [
         "docs/superpowers/specs/2026-08-24-takt-design.md",
         "docs/superpowers/plans/2026-08-26-takt-hardening.md",
