@@ -56,10 +56,12 @@ func clearLensConfig(t *testing.T, bdir string) {
 }
 
 // writeInternalRecordForTask3 writes an internal record for wave 0 slice 1
-// attempt 1 — the dispatch reviewerRun builds — with one candidate confirmed
-// for task 3, at the given severity and lens.
-func writeInternalRecordForTask3(t *testing.T, bdir, id, severity, lens, file, title, detail string, line int) {
+// attempt 1 — the dispatch reviewerRun builds — with one candidate (id c1,
+// lens correctness, file a.go:4) confirmed for task 3, at the given
+// severity/title/detail.
+func writeInternalRecordForTask3(t *testing.T, bdir, severity, title, detail string) {
 	t.Helper()
+	const id, lens, file, line = "c1", "correctness", "a.go", 4
 	rec := wave.InternalRecord{
 		Wave: 0, Slice: 1, Attempt: 1, Model: "sonnet", RecordedAt: time.Now().UTC(),
 		Lenses: []string{lens},
@@ -196,7 +198,7 @@ func TestCloseAttachesInternalAndCarriesOnApprove(t *testing.T) {
 	t.Parallel()
 	root, bdir := reviewerRun(t)
 	bumpTask3Attempt(t, bdir)
-	writeInternalRecordForTask3(t, bdir, "c1", "major", "correctness", "a.go", "lens title", "lens detail", 4)
+	writeInternalRecordForTask3(t, bdir, "major", "lens title", "lens detail")
 	env := map[string]string{
 		"TAKT_FAKE_REVIEW": `{"verdict":"approve","summary":"ok",` +
 			`"findings":[{"severity":"minor","file":"a.go","line":1,"title":"nit title","detail":"nit detail"}]}`,
@@ -236,7 +238,7 @@ func TestCloseRunsTheScopedPassOnBlockingDisagreement(t *testing.T) {
 	t.Parallel()
 	root, bdir := reviewerRun(t)
 	bumpTask3Attempt(t, bdir)
-	writeInternalRecordForTask3(t, bdir, "c1", "blocking", "correctness", "a.go", "unchecked error", "swallowed err", 4)
+	writeInternalRecordForTask3(t, bdir, "blocking", "unchecked error", "swallowed err")
 	followupFile := filepath.Join(t.TempDir(), "followup.json")
 	followupBody := `{"verdict":"rework","summary":"still bad",` +
 		`"findings":[{"severity":"blocking","file":"b.go","line":9,"title":"not fixed","detail":"do it"}]}`
@@ -293,6 +295,56 @@ func TestCloseRunsTheScopedPassOnBlockingDisagreement(t *testing.T) {
 	}
 }
 
+// TestCloseScopedPassErrorLeavesNoStaleCarry covers the two fix-round
+// findings: a scoped pass that itself errors must not let the task's still
+// approve-shaped tr.Review (the blind pass, deliberately left in place —
+// see carryApprovedFindings) get carried into follow-ups.json — the task
+// was never actually approved, only the blind pass was, and a later
+// close-wave retry that does succeed would otherwise carry the same
+// findings a second time. It must also still leave a findings.md: the blind
+// pass genuinely completed, so the human resolving the review_error gets
+// the full story even though the second call failed.
+func TestCloseScopedPassErrorLeavesNoStaleCarry(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	bumpTask3Attempt(t, bdir)
+	writeInternalRecordForTask3(t, bdir, "blocking", "unchecked error", "swallowed err")
+	followupFile := filepath.Join(t.TempDir(), "followup.json")
+	followupBody := `{"verdict":"error","summary":"review failed","reason":"boom"}`
+	if err := os.WriteFile(followupFile, []byte(followupBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"TAKT_FAKE_REVIEW":                    `{"verdict":"approve","summary":"initial ok"}`,
+		"TAKT_FAKE_REVIEW_FILE_TASK_FOLLOWUP": followupFile,
+	}
+	code, o, errb := runIn(t, root, env, "close-wave", "--slug", "demo")
+	if code != 0 {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	tr := closeTask3(t, bdir)
+	if tr.Status != "review_error" {
+		t.Fatalf("status = %q, want review_error: %+v", tr.Status, tr)
+	}
+	if tr.Review == nil || tr.Review.Verdict != backend.VerdictApprove {
+		t.Fatalf("the blind pass must still be recorded (informative in the close record): %+v", tr.Review)
+	}
+	if items := followUps(t, bdir); len(items) != 0 {
+		t.Fatalf("an errored scoped pass must carry nothing — got: %+v", items)
+	}
+	md := taskFindingsMD(t, bdir)
+	if !strings.Contains(md, "# Review: demo task 3 — approve") {
+		t.Fatalf("findings.md must still show the blind verdict: %s", md)
+	}
+	if !strings.Contains(md, "## Internal findings (confirmed)") ||
+		!strings.Contains(md, "- [lens:correctness] blocking a.go:4 — unchecked error: swallowed err") {
+		t.Fatalf("findings.md lacks the internal findings section: %s", md)
+	}
+	if strings.Contains(md, "## Scoped pass") {
+		t.Fatalf("no scoped verdict was ever reached, findings.md must not claim one: %s", md)
+	}
+}
+
 // TestCloseWithoutInternalRecordIsTodaysBehaviour covers the "no internal
 // record on disk" fallback (two-layers design §3.7): with nothing verified,
 // close-wave behaves exactly as it did before this layer existed.
@@ -332,7 +384,7 @@ func TestRetryBriefCarriesLensLines(t *testing.T) {
 	// otherwise still expect per-lens records for — turning it off keeps
 	// `next` from redispatching lenses this fixture never ran.
 	clearLensConfig(t, bdir)
-	writeInternalRecordForTask3(t, bdir, "c1", "major", "correctness", "a.go", "internal title", "internal detail", 4)
+	writeInternalRecordForTask3(t, bdir, "major", "internal title", "internal detail")
 	env := map[string]string{
 		"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"needs fix",` +
 			`"findings":[{"severity":"major","file":"a.go","line":2,"title":"backend title","detail":"backend detail"}]}`,

@@ -232,11 +232,18 @@ func resolveTaskResults(
 // internal findings carries those alone. A carry error grades that one task
 // review_error, exactly as an error from any other part of its review would
 // — it does not abort the other tasks' carries.
+//
+// Both cases require tr.Status == bundle.StatusDone, not just an approving
+// tr.Review: a scoped pass that errors leaves tr.Review holding the blind
+// pass's approve (informative in the close record) but sets tr.Status to
+// review_error, and that task must not be carried — it was never actually
+// approved, and a later close-wave retry that does succeed would otherwise
+// carry the same findings a second time (review finding).
 func carryApprovedFindings(bdir string, waveN int, res *wave.CloseResult) {
 	for i := range res.Tasks {
 		tr := &res.Tasks[i]
 		switch {
-		case tr.Review != nil && tr.Review.Verdict == backend.VerdictApprove:
+		case tr.Status == bundle.StatusDone && tr.Review != nil && tr.Review.Verdict == backend.VerdictApprove:
 			if err := carryTaskFindings(bdir, waveN, tr); err != nil {
 				tr.Status, tr.Reason = statusReviewError, err.Error()
 			}
@@ -689,10 +696,18 @@ func reviewOne(
 	}
 	tr.Review = &res
 	tr.Internal = internal
+	findingsPath := filepath.Join(tgt.bdir, "reviews", "wave-"+strconv.Itoa(waveN), fmt.Sprintf("task-%d.md", tr.Task))
+	findingsTitle := fmt.Sprintf("%s task %d", tgt.slug, tr.Task)
 	if res.Verdict == backend.VerdictApprove && hasBlockingInternal(internal) {
 		scoped, serr := scopedTaskReview(ctx, tgt, reviewer, be, pt, tr)
 		if serr != nil {
 			tr.Status, tr.Reason = statusReviewError, serr.Error()
+			// The blind pass genuinely completed — tr.Review still holds it,
+			// left there deliberately (see carryApprovedFindings) — so the
+			// human resolving this review_error still gets the full story:
+			// the blind verdict and the confirmed internal findings that
+			// bought the scoped pass which then failed to answer.
+			_ = writeTaskFindings(findingsPath, findingsTitle, tr)
 			return
 		}
 		_ = bundle.AppendEvent(tgt.bdir, "review_scoped", map[string]any{
@@ -701,9 +716,7 @@ func reviewOne(
 		tr.BlindReview = tr.Review
 		tr.Review = &scoped
 	}
-	_ = writeTaskFindings(
-		filepath.Join(tgt.bdir, "reviews", "wave-"+strconv.Itoa(waveN), fmt.Sprintf("task-%d.md", tr.Task)),
-		fmt.Sprintf("%s task %d", tgt.slug, tr.Task), tr)
+	_ = writeTaskFindings(findingsPath, findingsTitle, tr)
 	switch tr.Review.Verdict {
 	case backend.VerdictApprove:
 		// Carried by carryApprovedFindings, serially, after every task's
