@@ -556,10 +556,20 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	if ag.Mode != "" {
 		record += " --mode " + ag.Mode
 	}
+	o := op.Op{Op: op.Dispatch, Narration: ag.Label, Agents: []op.Agent{ag}, Record: record}
 	if ag.Agent == op.AgentReviewer {
-		record += fmt.Sprintf(" --attempt %d", r.st.ActiveWave.Attempt)
+		aw := r.st.ActiveWave
+		record += fmt.Sprintf(" --attempt %d", aw.Attempt)
+		o.Record = record
+		// The verify dispatch names its wave and attempt exactly as the lens
+		// fan-out's op does (dispatchLenses), both for the op to be
+		// self-describing and because a driver answering it needs
+		// o["attempt"] to build the `takt record` call — omitted here, it was
+		// absent from the JSON (op.Op.Attempt is omitempty) and any caller
+		// reading it panicked instead of running (review finding).
+		o.Wave, o.Attempt = new(aw.N), aw.Attempt
 	}
-	return printOp(r.env, op.Op{Op: op.Dispatch, Narration: ag.Label, Agents: []op.Agent{ag}, Record: record})
+	return printOp(r.env, o)
 }
 
 // writeStableBrief renders a non-task brief under briefs/, reusing the

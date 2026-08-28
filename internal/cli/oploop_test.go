@@ -15,6 +15,7 @@ import (
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
+	"github.com/monrad/takt/internal/wave"
 )
 
 // driver executes the ops `takt next` returns exactly as the command prompt
@@ -51,6 +52,23 @@ type driver struct {
 	// real `claude -p` run in here. Nil keeps the scripted stand-in, which
 	// writes the declared files itself.
 	implement func(brief, repo, model string) (string, error)
+	// lensFinding, when set, is one finding the driver's scripted reply for
+	// this lens reports on every dispatch of it — real coverage for the
+	// verifier dispatch, which only fires once the merged candidate list is
+	// non-empty (decide.InternalFacts.Done, two-layers design §4.2). Every
+	// other lens, and every driver that leaves this nil, keeps reporting
+	// none, so this is opt-in per test.
+	lensFinding *lensFindingScript
+}
+
+// lensFindingScript is one finding playReviewer's scripted lens reply
+// reports, so a test can force a real candidate — and so a real verifier
+// dispatch — instead of the driver's default zero-findings reply, which
+// leaves the merged candidate list empty and the verifier never dispatched.
+type lensFindingScript struct {
+	lens                          string
+	severity, file, title, detail string
+	line                          int
 }
 
 func (d *driver) cmd(args ...string) (int, map[string]any, string) {
@@ -499,7 +517,12 @@ func (d *driver) playReviewer(o, ag map[string]any) {
 		}
 		body = "```json\n{\"mode\":\"verify\",\"verdicts\":[" + strings.Join(verdicts, ",") + "]}\n```\n"
 	} else {
-		body = fmt.Sprintf("```json\n{\"lens\":%q,\"findings\":[]}\n```\n", mode)
+		findings := ""
+		if f := d.lensFinding; f != nil && f.lens == mode {
+			findings = fmt.Sprintf(`{"severity":%q,"file":%q,"line":%d,"title":%q,"detail":%q}`,
+				f.severity, f.file, f.line, f.title, f.detail)
+		}
+		body = fmt.Sprintf("```json\n{\"lens\":%q,\"findings\":[%s]}\n```\n", mode, findings)
 	}
 	msg := d.message(body)
 	attempt := strconv.Itoa(int(o["attempt"].(float64)))
@@ -715,6 +738,50 @@ func TestOpLoopEndToEndWithFakeReviewer(t *testing.T) {
 		}
 	}
 	t.Logf("ops: %s", joined)
+}
+
+// TestVerifierDispatchRunsThroughTheDriver covers a review finding: the
+// verify op dispatchAgent prints for the reviewer used to carry no Wave or
+// Attempt (op.Op's Attempt is omitempty, and only dispatchLenses set it), so
+// any driver answering it the way playReviewer/drainReview do — reading
+// o["attempt"].(float64) to build the `takt record` call — panicked on a nil
+// type assertion instead of running. Every other driver-based test masks
+// this: the scripted lens reply reports zero findings, so the merged
+// candidate list stays empty and the verifier is never dispatched
+// (decide.InternalFacts.Done). Scripting one real finding on wave 0's
+// correctness lens, on task 1's own declared file (a.go), forces a genuine
+// candidate — and with it a genuine verifier dispatch the driver must
+// answer without panicking, all the way to an archived run.
+func TestVerifierDispatchRunsThroughTheDriver(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	d := &driver{
+		t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"},
+		lensFinding: &lensFindingScript{
+			lens: "correctness", severity: "major", file: "a.go", line: 1,
+			title: "looks off", detail: "scripted finding for coverage",
+		},
+	}
+
+	if reason := d.play(80); reason != stopArchived {
+		t.Fatalf("the run must still end archived, stopped %q (ops: %v)", reason, d.ops)
+	}
+	if joined := strings.Join(d.ops, " "); !strings.Contains(joined, "dispatch/reviewer") {
+		t.Fatalf("the reviewer must have been dispatched at all: %s", joined)
+	}
+	rec, err := wave.ReadInternalRecord(bdir, 0, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec == nil {
+		t.Fatal("the scripted finding must have driven a real verifier dispatch and record")
+	}
+	if len(rec.Candidates) != 1 || rec.Candidates[0].ID != "c1" || rec.Candidates[0].File != "a.go" {
+		t.Fatalf("candidates = %+v", rec.Candidates)
+	}
+	if len(rec.Verdicts) != 1 || rec.Verdicts[0].Verdict != wave.VerdictFalsePositive {
+		t.Fatalf("verdicts = %+v", rec.Verdicts)
+	}
 }
 
 // TestSpecGateSpendsOneReviewOnANonBlockingRework is the fixed point, end to
