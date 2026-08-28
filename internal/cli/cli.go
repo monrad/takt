@@ -74,6 +74,7 @@ const (
 	keyStep          = "step"
 	keyProvider      = "provider"
 	keyWarnings      = "warnings"
+	keyHint          = "hint"
 )
 
 // state.gates values: spec §4.3's pending | ok | skipped, plus `disabled`
@@ -155,7 +156,7 @@ func writeJSON(w io.Writer, v any) error {
 
 // fail prints a structured error to stderr and returns code.
 func fail(w io.Writer, code int, msg, hint string) int {
-	_ = writeJSON(w, map[string]string{"error": msg, "hint": hint})
+	_ = writeJSON(w, map[string]string{"error": msg, keyHint: hint})
 	return code
 }
 

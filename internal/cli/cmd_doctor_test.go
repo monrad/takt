@@ -26,6 +26,11 @@ func TestDoctorTextAndExitCode(t *testing.T) {
 	if !strings.Contains(out.String(), "PASS  state-schema") {
 		t.Fatalf("output = %s", out.String())
 	}
+	// A clean workspace's PASS rows are not findings: the summary must not
+	// read as "something needs attention" when nothing does (#34).
+	if !strings.Contains(out.String(), "all PASS") || strings.Contains(out.String(), "finding(s)") {
+		t.Fatalf("clean summary = %s", out.String())
+	}
 	testutil.WriteFile(t, root, "docs/takt/demo/plan.index.json", `{"schema":1,"spec_hash":"x","tasks":[
 	  {"id":1,"title":"a","description":"d","files":["a.go"],"verify":["true"]},
 	  {"id":2,"title":"b","description":"d","files":["a.go"],"verify":["true"]}]}`)
@@ -35,6 +40,9 @@ func TestDoctorTextAndExitCode(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "ERROR plan-disjoint") || !strings.Contains(out.String(), "fix:") {
 		t.Fatalf("output = %s", out.String())
+	}
+	if !strings.Contains(out.String(), "1 finding(s), 1 error(s)") {
+		t.Fatalf("summary counts only WARN/ERROR rows as findings: %s", out.String())
 	}
 	code, got, _ := runIn(t, root, nil, "doctor", "--json")
 	if code != 1 || got["errors"] != float64(1) {

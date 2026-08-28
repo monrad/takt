@@ -50,11 +50,19 @@ func cmdAnswer(env Env) int {
 	if *g == "owner" {
 		return printJSON(env, map[string]any{
 			keyGate: "owner", keyChoice: *choice,
-			"hint": "takeover = `takt next --force`; abort/readonly = nothing to do",
+			keyHint: "takeover = `takt next --force`; abort/readonly = nothing to do",
 		})
 	}
 	if tgt.st.PendingGate == nil || tgt.st.PendingGate.ID != *g {
-		return printJSON(env, map[string]any{keyIgnored: true, keyReason: "no pending gate " + *g})
+		// Ignored at exit 0 is the contract (spec §5.4, same as a stale
+		// digest) — but a session that read reviews/<gate>.md itself and
+		// answered before `takt next` armed the gate would otherwise take
+		// that exit code as "answered" and find the same gate back on the
+		// next call. The hint names the missing step (#27).
+		return printJSON(env, map[string]any{
+			keyIgnored: true, keyReason: "no pending gate " + *g,
+			keyHint: "run `takt next` first: a gate is answerable only once its ask op has been emitted",
+		})
 	}
 	keep, err := applyAnswer(ctx, tgt, *g, *choice, *reason, *file, *confirm)
 	if err != nil {

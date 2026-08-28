@@ -33,15 +33,20 @@ type Input struct {
 	// logs/session.json (spec §4.6); nil when the run is free — and also
 	// when the file could not be read, which runBundle reports as its own
 	// WARN rather than passing a half-known holder to a check.
-	Session        *bundle.Session
-	ValidateOpts   plan.ValidateOpts
-	Now            time.Time
-	WaveStaleAfter time.Duration
-	LockTTL        time.Duration
-	RepoRoot       string
-	CurrentBranch  string
-	Resolve        func(ref string) bool
-	Dirty          func(rel string) bool
+	Session *bundle.Session
+	// SessionUnreadable is set when logs/session.json exists but could not
+	// be parsed, so a check can tell "nobody holds the run" (Session nil)
+	// from "takt cannot tell who holds it" and not reason from the
+	// former when it is the latter (#7).
+	SessionUnreadable bool
+	ValidateOpts      plan.ValidateOpts
+	Now               time.Time
+	WaveStaleAfter    time.Duration
+	LockTTL           time.Duration
+	RepoRoot          string
+	CurrentBranch     string
+	Resolve           func(ref string) bool
+	Dirty             func(rel string) bool
 }
 
 // Check is one named health check. RepoWide marks a check that judges the
@@ -182,8 +187,9 @@ func runBundle(ctx context.Context, dir bundle.Dir, slug string, o Options, chec
 		})
 	}
 	in := Input{
-		Dir: dir, Slug: slug, BundleDir: bdir, State: st, Session: sess, ValidateOpts: o.ValidateOpts(bdir),
-		Now: o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL, RepoRoot: o.RepoRoot,
+		Dir: dir, Slug: slug, BundleDir: bdir, State: st, Session: sess, SessionUnreadable: serr != nil,
+		ValidateOpts: o.ValidateOpts(bdir),
+		Now:          o.Now, WaveStaleAfter: o.WaveStaleAfter, LockTTL: o.LockTTL, RepoRoot: o.RepoRoot,
 		CurrentBranch: o.CurrentBranch, Resolve: o.Resolve, Dirty: o.Dirty,
 	}
 	if st.Phase == bundle.PhaseArchived && !o.All {

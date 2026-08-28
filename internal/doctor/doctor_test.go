@@ -233,6 +233,50 @@ func TestDoctorWarnsOnAnUnreadableSessionSidecar(t *testing.T) {
 	}
 }
 
+// TestStaleWaveOverAnUnreadableSidecarDoesNotHintRecover: an unreadable
+// logs/session.json over a long wave already earns a session WARN telling
+// the user to unlock. The stale-wave check must not add "its session is
+// gone — run `takt next --recover`" on top, because the session is not
+// known to be gone: the wave's agents may still be running, and recovering
+// under them is exactly what the two hints together would push a user
+// into (#7).
+func TestStaleWaveOverAnUnreadableSidecarDoesNotHintRecover(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("w")
+	old := time.Now().Add(-2 * time.Hour)
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: old, SessionID: "S", Tasks: []int{1}}
+	if err := bundle.SaveState(d.Bundle("w"), st); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(d.Bundle("w"), "logs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundle.SessionPath(d.Bundle("w")), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := doctor.Options{
+		Now: time.Now(), WaveStaleAfter: 30 * time.Minute, LockTTL: 10 * time.Minute,
+		ValidateOpts: noOpts, Resolve: func(string) bool { return true },
+	}
+	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
+	var stale *doctor.Finding
+	for i := range fs {
+		if fs[i].Check == "stale-wave" {
+			stale = &fs[i]
+		}
+	}
+	if stale == nil || stale.Level != "WARN" {
+		t.Fatalf("a long wave over an unreadable sidecar still warns: %+v", fs)
+	}
+	if strings.Contains(stale.Fix, "--recover") || strings.Contains(stale.Message, "gone") {
+		t.Fatalf("the recover hint presumes a dead session doctor cannot see: %+v", *stale)
+	}
+	if !strings.Contains(stale.Message, "session unknown") || !strings.Contains(stale.Fix, "takt unlock") {
+		t.Fatalf("expected an unlock-first finding, got %+v", *stale)
+	}
+}
+
 func TestIndexStalenessAndBranch(t *testing.T) {
 	t.Parallel()
 	d := newDir(t)
