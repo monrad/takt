@@ -42,6 +42,24 @@ type nextRun struct {
 	genID   bool // takt invented r.session; nothing persisted it
 	force   bool
 	recover bool
+	// warnings names the optional writes this call lost without failing —
+	// today only info/exclude (the warnings contract). Every op printed
+	// after the lock is taken carries them, which is what [nextRun.emit] is
+	// for.
+	warnings []string
+}
+
+// opPrinter prints one op and returns the command's exit code. applyAndStop
+// takes one rather than printing for itself because it serves both the
+// post-lock archive and the pre-lock replay of an already-archived run, and
+// only the first of those can have lost anything.
+type opPrinter func(op.Op) int
+
+// plainOp is the printer for a path that cannot have lost anything: an
+// already-archived run is answered before the lock is taken, so there is no
+// warning to carry.
+func plainOp(env Env) opPrinter {
+	return func(o op.Op) int { return printOp(env, o) }
 }
 
 // cmdNext implements the op trampoline (spec §5.1): take the session lock,
@@ -76,7 +94,7 @@ func cmdNext(env Env) int {
 		if code = recommitArchive(ctx, env, tgt); code != 0 {
 			return code
 		}
-		return applyAndStop(ctx, env, tgt)
+		return applyAndStop(ctx, env, tgt, plainOp(env))
 	}
 	id, generated := sessionID(env.Getenv)
 	r := &nextRun{
@@ -116,7 +134,7 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 			keySlug: r.slug, "holder": held.ID, "host": held.Host,
 			"heartbeat": held.Heartbeat.Format(time.RFC3339),
 		})
-		return printOp(r.env, q), true
+		return r.emit(q), true
 	}
 	// Both rules that keep the bundle's untracked area out of git go in
 	// first, every time. A bundle created before they existed has a logs/
@@ -128,11 +146,18 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 	// exclude is repository state, so init — which runs once, and already
 	// ran — is the one place it could never be repaired from. Neither call
 	// writes anything when the rule is already there.
+	//
+	// The two are not equally load-bearing, and they fail differently. The
+	// tracked .gitignore is what keeps the lock out of the commit this run
+	// is going to make, so losing it is fatal. info/exclude only keeps the
+	// sidecar invisible from another branch — cosmetic — so its loss is
+	// reported on the op this call is about to print and the run carries on
+	// (the warnings contract).
 	if err = writeLogsIgnore(r.bdir); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
 	if err = excludeLogsDir(ctx, r.ws, r.bdir); err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), ""), true
+		r.warnings = append(r.warnings, excludeWarning(err))
 	}
 	if err = bundle.WriteSession(r.bdir, next); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
@@ -170,6 +195,21 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 		})
 	}
 	return 0, false
+}
+
+// emit prints one of this run's ops, carrying whatever optional write the
+// call lost. Every op a `takt next` that took the lock can print goes
+// through here — including the stop op the archive path builds in
+// archive.go, which is reached from r.archive and would otherwise drop a
+// warning on the one call that ends the run well. Routing them all through
+// one helper is what stops a future exit path from losing one; the only op
+// printed outside it belongs to an already-archived run, which is answered
+// before any lock is taken and so has nothing to report (plainOp).
+func (r *nextRun) emit(o op.Op) int {
+	if len(r.warnings) > 0 {
+		o.Warnings = append(slices.Clone(o.Warnings), r.warnings...)
+	}
+	return printOp(r.env, o)
 }
 
 // loop decides, performs the side effects whose preconditions are met, and
@@ -210,7 +250,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 		case decide.ActRun:
 			return r.run(*d.Op)
 		case decide.ActExec, decide.ActStop:
-			return printOp(r.env, *d.Op)
+			return r.emit(*d.Op)
 		case decide.ActArchive:
 			return r.archive(ctx)
 		default:
@@ -569,7 +609,7 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 		// reading it panicked instead of running (review finding).
 		o.Wave, o.Attempt = new(aw.N), aw.Attempt
 	}
-	return printOp(r.env, o)
+	return r.emit(o)
 }
 
 // writeStableBrief renders a non-task brief under briefs/, reusing the
@@ -610,10 +650,7 @@ func writeStableBriefAt(p string, render func(tok string) (text, name string, er
 	if reused != "" {
 		text = reused
 	}
-	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return "", err
-	}
-	return p, os.WriteFile(p, []byte(text), 0o600)
+	return p, bundle.WriteFileAtomic(p, []byte(text))
 }
 
 // reuseBriefToken re-renders the brief at p with the delimiter token already
@@ -666,10 +703,7 @@ func (r *nextRun) ensureSliceDiff(ctx context.Context) (string, error) {
 		}
 	}
 	p := sliceDiffPath(r.bdir, aw.N, sliceOf(aw), aw.Attempt)
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return "", err
-	}
-	return p, os.WriteFile(p, []byte(taskDiff(ctx, r.ws, files)), 0o600)
+	return p, bundle.WriteFileAtomic(p, []byte(taskDiff(ctx, r.ws, files)))
 }
 
 // dispatchLenses emits row 15a: one reviewer agent per unrecorded lens over
@@ -709,7 +743,7 @@ func (r *nextRun) dispatchLenses(ctx context.Context, d decide.Decision) int {
 			Brief: p, Cwd: r.ws.Repo.Root, Label: "lens: " + lens,
 		})
 	}
-	return printOp(r.env, op.Op{
+	return r.emit(op.Op{
 		Op:        op.Dispatch,
 		Narration: fmt.Sprintf("wave %d: internal review, %d lenses", aw.N, len(agents)),
 		Wave:      new(aw.N), Attempt: aw.Attempt, Agents: agents,
@@ -879,7 +913,7 @@ func (r *nextRun) ask(o op.Op) int {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
 	}
-	return printOp(r.env, o)
+	return r.emit(o)
 }
 
 // run fills a run op's instructions from the step's template (spec §5.2)
@@ -915,7 +949,7 @@ func (r *nextRun) run(o op.Op) int {
 	}
 	o.Instructions = text
 	o.Inputs = inputs
-	return printOp(r.env, o)
+	return r.emit(o)
 }
 
 // writeRetroInputs re-derives finish/retro-inputs.json from the run's own

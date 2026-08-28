@@ -324,9 +324,10 @@ func (r *Repo) CommonDir(ctx context.Context) (string, error) {
 // literal path, so escaping it is the caller's business. A path holding a
 // glob metacharacter (`*`, `?`, `[`) would match more than itself, and one
 // opening with `#` or `!` would be read as a comment or a negation. takt's
-// only caller — excludeLogsDir in internal/cli — builds the pattern from a
-// bundle slug, which bundle.ValidSlug holds to a-z, 0-9 and `-`, so the only
-// way to reach any of them is a `--dir` naming such a directory.
+// only caller — excludeLogsDir in internal/cli — runs the bundle's
+// repo-relative path through [EscapeIgnorePattern] and composes each rule's
+// own syntax around the escaped result, which is what keeps a `--dir`
+// naming such a directory matching itself and nothing else.
 func (r *Repo) EnsureExclude(ctx context.Context, lines ...string) error {
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -366,6 +367,44 @@ func (r *Repo) EnsureExclude(ctx context.Context, lines ...string) error {
 		return err
 	}
 	return f.Close()
+}
+
+// EscapeIgnorePattern escapes a literal path so gitignore reads it as
+// itself. [Repo.EnsureExclude] writes a rule exactly as it is given, so a
+// caller composing a rule out of a path someone else chose is the one that
+// has to do this: `*`, `?` and `[` are glob metacharacters, a leading `#` or
+// `!` opens a comment or a negation, and git strips an unescaped trailing
+// space. A `]` is left alone: it is special only as the end of a character
+// class, and the `[` that could have opened one is escaped here.
+//
+// The backslash is escaped before anything else. It is gitignore's own
+// escape character and a perfectly legal character in a Unix directory
+// name, so escaping it afterwards would re-process the backslashes this
+// function itself inserted — turning `\*` back into a literal backslash
+// followed by a live wildcard. The single pass below is what makes that
+// hold by construction: every byte it looks at came from the input, and
+// nothing it writes is ever examined again.
+//
+// Only a path goes through here, never a rule that is already composed. The
+// `!` that negates a pattern and the `*` that makes one match a directory's
+// contents are syntax, and escaping those would turn the rule into a
+// literal that matches nothing.
+func EscapeIgnorePattern(p string) string {
+	var b strings.Builder
+	b.Grow(len(p))
+	for i := range len(p) {
+		c := p[i]
+		switch {
+		case c == '\\', c == '*', c == '?', c == '[':
+			b.WriteByte('\\')
+		case (c == '#' || c == '!') && i == 0:
+			b.WriteByte('\\')
+		case c == ' ' && i == len(p)-1:
+			b.WriteByte('\\')
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // excludeHas reports whether content already carries rule as a line of its

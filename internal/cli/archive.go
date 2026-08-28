@@ -74,7 +74,7 @@ func (r *nextRun) archive(ctx context.Context) int {
 	if _, _, err := commitBundle(ctx, r.ws, r.bdir, r.slug, "archive"); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
-	return applyAndStop(ctx, r.env, &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st})
+	return applyAndStop(ctx, r.env, &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st}, r.emit)
 }
 
 // recommitArchive finishes an archive whose commit never landed. archive
@@ -126,7 +126,14 @@ func recommitArchive(ctx context.Context, env Env, tgt *runTarget) int {
 // command the session can actually run. Row 25 and every later `takt next` on
 // the archived run share it, so an effect that could not be applied the first
 // time is simply applied the next.
-func applyAndStop(ctx context.Context, env Env, tgt *runTarget) int {
+//
+// The stop op goes out through the caller's printer rather than through
+// printOp directly: row 25 reaches here from a `takt next` that has already
+// taken the lock and may have lost an optional write on the way, and a
+// warning that vanished on a run which ended well would be the one place
+// the contract leaked (the warnings contract). The later call on an
+// archived run takes no lock, so it passes plainOp.
+func applyAndStop(ctx context.Context, env Env, tgt *runTarget, emit opPrinter) int {
 	// An archived run holds nothing: the lock is released here rather than
 	// in archive() so that every later `takt next` on the archived run —
 	// which re-derives the disposition's git effects and lands right here —
@@ -143,7 +150,7 @@ func applyAndStop(ctx context.Context, env Env, tgt *runTarget) int {
 		// do about it now, and the next `takt next` tries again.
 		details["error"] = err.Error()
 	}
-	return printOp(env, op.Op{
+	return emit(op.Op{
 		Op: op.Stop, Reason: reasonArchived,
 		Narration: fmt.Sprintf("run %s archived (%s)", tgt.slug, dispositionChoice(tgt.st)),
 		Context:   details, Cleanup: cleanup,

@@ -87,6 +87,81 @@
       "detail": "The case named \"a run at the very start of the body is even (zero)\" uses value `\"\\\\\"b\"` (body `\\\\\"b`), where the backslash run preceding the quote at body index 2 is 2, not 0 — it exercises the loop's j\u003e=0 boundary (the run extends to the start of body) rather than a zero-length run. The assertion itself is correct (byte 3), so this is a naming/comment nit, not a functional gap — but the parenthetical is confusing for a future maintainer reading it as documentation of what's being pinned.",
       "source": "internal",
       "ts": "2026-08-28T12:17:23.401421769Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1150,
+      "wave": 1,
+      "title": "§13 'Atomic writes' bullet is now stale: it only names state.json/events.jsonl",
+      "detail": "§13 says: 'Atomic writes. state.json is written to a temp file and renamed; events are appended with O_APPEND.' This wave generalizes atomic writes to four more file kinds — the stable brief (internal/cli/cmd_next.go writeStableBriefAt), the slice diff (ensureSliceDiff), the task brief (internal/cli/launch.go renderTaskBrief) and logs/.gitignore (internal/cli/cmd_init.go writeLogsIgnore) — all now going through the new bundle.WriteFileAtomic (internal/bundle/write.go:21). The new doc comment on WriteFileAtomic (internal/bundle/write.go:12-13) explicitly attributes a much broader guarantee to this section — 'which is what spec §13's \"every bundle write is atomic\" asks for' — but the spec text as written does not say that; it names only two files. A reader of §13 would not learn that agent briefs and the slice diff are now atomic too. The bullet should be broadened (or the file list under §4.2 annotated) to match what the code now claims of it.",
+      "source": "internal",
+      "ts": "2026-08-28T13:00:56.136303041Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1152,
+      "wave": 1,
+      "title": "New degrade-and-warn error category is unmentioned in §13's error-handling model",
+      "detail": "§13's 'Fail loud' bullet describes takt's only failure mode as exit 1 with a structured error, and says takt never repairs state silently. This wave (via the warnings contract wired up here for the first time in real command output — internal/cli/cmd_init.go:127-128, internal/cli/cmd_next.go's r.emit) introduces a second, deliberate category: an optional write (info/exclude) that can fail without failing the command, reported instead as a `warnings` array on `init`'s document and on every post-lock `next` op. Nothing in §13 (or §5.1/§5.2's op-kind documentation, none of which mention a `warnings` field) describes this. Since this diff is the first to make the field observable in real output (wave 0 only added the struct field/serialization), the spec update for it is still owed.",
+      "source": "internal",
+      "ts": "2026-08-28T13:00:56.136303097Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/bundle/write_test.go",
+      "line": 75,
+      "wave": 1,
+      "task": 2,
+      "title": "New assertNoTemp helper duplicates an existing inline check instead of consolidating it",
+      "detail": "write_test.go adds `assertNoTemp` to check no `.tmp` file survives a failed rename (lines 74-83). The exact same loop (`os.ReadDir` + `strings.Contains(e.Name(), \".tmp\")` + `t.Fatalf(\"temp file left behind: %s\", e.Name())`) already exists inline in internal/bundle/state_test.go:88-93 (TestSaveIsAtomic), which is in the same package and could call the new helper. WriteFileAtomic's own doc comment argues for exactly one implementation of the atomicity rule 'rather than one per package' (internal/bundle/write.go:54-57); the test suite doesn't apply that same consolidation to itself, leaving two copies of the same assertion that can now drift.",
+      "source": "internal",
+      "ts": "2026-08-28T13:03:24.604000341Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_init.go",
+      "line": 359,
+      "wave": 1,
+      "task": 2,
+      "title": "writeLogsIgnore's still-fatal failure path has no test, even though the function's body was rewritten this wave",
+      "detail": "The brief states writeLogsIgnore's own failure must stay fatal (only info/exclude's loss becomes a warning), and this wave rewrote the function's internals (dropped the manual MkdirAll+os.WriteFile in favor of bundle.WriteFileAtomic). No test in cmd_init_test.go forces writeLogsIgnore itself to fail (e.g. an unwritable logs/ directory) and checks that init still exits non-zero and rolls back — unlike the parallel, now-thorough coverage added for excludeLogsDir's new non-fatal path. This is a pre-existing gap, but it intersects code that was directly changed in this diff.",
+      "source": "internal",
+      "ts": "2026-08-28T13:03:24.604000787Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_init_test.go",
+      "line": 533,
+      "wave": 1,
+      "task": 2,
+      "title": "keyWarningsJSON duplicates cli.go's keyWarnings under a different name",
+      "detail": "cmd_init_test.go declares `const keyWarningsJSON = \"warnings\"`, duplicating the value of the unexported `keyWarnings` constant already defined in internal/cli/cli.go:76. This is necessary because cmd_init_test.go/cmd_next_test.go live in the external `cli_test` package and can't reach the unexported constant, but the diverging name (`keyWarningsJSON` vs `keyWarnings`) for the identical wire key is a small naming inconsistency a reader has to reconcile across the package boundary.",
+      "source": "internal",
+      "ts": "2026-08-28T13:03:24.604000873Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_next.go",
+      "line": 46,
+      "wave": 1,
+      "task": 2,
+      "title": "warnings field's doc comment overstates the emit scope",
+      "detail": "The `nextRun.warnings` doc comment says 'Every op printed after the lock is taken carries them' and the `emit` method's own comment (line 201) repeats 'Every op a `takt next` that took the lock can print goes through here'. But acquireLock's LockBlocked branch also routes its 'owner' question through r.emit (cmd_next.go:137) before the lock is actually acquired — the call that returns early precisely because the lock could not be taken. It's harmless (r.warnings is still empty at that point), but the comment's 'after the lock is taken' framing doesn't literally describe that call site.",
+      "source": "internal",
+      "ts": "2026-08-28T13:03:24.604000958Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next_test.go",
+      "line": 1699,
+      "wave": 1,
+      "task": 2,
+      "title": "Acceptance-note regression test for the WriteFileAtomic migration is missing",
+      "detail": "Task 2A's acceptance note explicitly calls for a test that the four call sites (writeStableBriefAt, ensureSliceDiff, renderTaskBrief, writeLogsIgnore) were actually converted, by asserting `os.WriteFile` no longer appears at all in cmd_next.go, cmd_init.go and launch.go — specifically warning that a positive grep for `WriteFileAtomic` alone would pass even if one of cmd_next.go's two occurrences were left unconverted. No such test was added in cmd_next_test.go, cmd_init_test.go or elsewhere in this wave's diff. I confirmed by grep that the production migration is currently complete (no `os.WriteFile` remains in those three files), but nothing in the test suite would catch a future regression where one call site reverts to `os.WriteFile` — exactly the false-positive scenario the brief called out.",
+      "source": "internal",
+      "ts": "2026-08-28T13:03:24.604001055Z"
     }
   ]
 }

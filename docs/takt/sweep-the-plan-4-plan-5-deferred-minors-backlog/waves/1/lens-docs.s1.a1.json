@@ -1,0 +1,26 @@
+{
+  "lens": "docs",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T12:54:34.637147495Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1150,
+      "title": "§13 'Atomic writes' bullet is now stale: it only names state.json/events.jsonl",
+      "detail": "§13 says: 'Atomic writes. state.json is written to a temp file and renamed; events are appended with O_APPEND.' This wave generalizes atomic writes to four more file kinds — the stable brief (internal/cli/cmd_next.go writeStableBriefAt), the slice diff (ensureSliceDiff), the task brief (internal/cli/launch.go renderTaskBrief) and logs/.gitignore (internal/cli/cmd_init.go writeLogsIgnore) — all now going through the new bundle.WriteFileAtomic (internal/bundle/write.go:21). The new doc comment on WriteFileAtomic (internal/bundle/write.go:12-13) explicitly attributes a much broader guarantee to this section — 'which is what spec §13's \"every bundle write is atomic\" asks for' — but the spec text as written does not say that; it names only two files. A reader of §13 would not learn that agent briefs and the slice diff are now atomic too. The bullet should be broadened (or the file list under §4.2 annotated) to match what the code now claims of it.",
+      "task": 0
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1152,
+      "title": "New degrade-and-warn error category is unmentioned in §13's error-handling model",
+      "detail": "§13's 'Fail loud' bullet describes takt's only failure mode as exit 1 with a structured error, and says takt never repairs state silently. This wave (via the warnings contract wired up here for the first time in real command output — internal/cli/cmd_init.go:127-128, internal/cli/cmd_next.go's r.emit) introduces a second, deliberate category: an optional write (info/exclude) that can fail without failing the command, reported instead as a `warnings` array on `init`'s document and on every post-lock `next` op. Nothing in §13 (or §5.1/§5.2's op-kind documentation, none of which mention a `warnings` field) describes this. Since this diff is the first to make the field observable in real output (wave 0 only added the struct field/serialization), the spec update for it is still owed.",
+      "task": 0
+    }
+  ]
+}

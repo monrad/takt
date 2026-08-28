@@ -1,0 +1,34 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T12:53:19.618501399Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/bundle/write_test.go",
+      "line": 75,
+      "title": "New assertNoTemp helper duplicates an existing inline check instead of consolidating it",
+      "detail": "write_test.go adds `assertNoTemp` to check no `.tmp` file survives a failed rename (lines 74-83). The exact same loop (`os.ReadDir` + `strings.Contains(e.Name(), \".tmp\")` + `t.Fatalf(\"temp file left behind: %s\", e.Name())`) already exists inline in internal/bundle/state_test.go:88-93 (TestSaveIsAtomic), which is in the same package and could call the new helper. WriteFileAtomic's own doc comment argues for exactly one implementation of the atomicity rule 'rather than one per package' (internal/bundle/write.go:54-57); the test suite doesn't apply that same consolidation to itself, leaving two copies of the same assertion that can now drift.",
+      "task": 2
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_init_test.go",
+      "line": 533,
+      "title": "keyWarningsJSON duplicates cli.go's keyWarnings under a different name",
+      "detail": "cmd_init_test.go declares `const keyWarningsJSON = \"warnings\"`, duplicating the value of the unexported `keyWarnings` constant already defined in internal/cli/cli.go:76. This is necessary because cmd_init_test.go/cmd_next_test.go live in the external `cli_test` package and can't reach the unexported constant, but the diverging name (`keyWarningsJSON` vs `keyWarnings`) for the identical wire key is a small naming inconsistency a reader has to reconcile across the package boundary.",
+      "task": 2
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_next.go",
+      "line": 46,
+      "title": "warnings field's doc comment overstates the emit scope",
+      "detail": "The `nextRun.warnings` doc comment says 'Every op printed after the lock is taken carries them' and the `emit` method's own comment (line 201) repeats 'Every op a `takt next` that took the lock can print goes through here'. But acquireLock's LockBlocked branch also routes its 'owner' question through r.emit (cmd_next.go:137) before the lock is actually acquired — the call that returns early precisely because the lock could not be taken. It's harmless (r.warnings is still empty at that point), but the comment's 'after the lock is taken' framing doesn't literally describe that call site.",
+      "task": 2
+    }
+  ]
+}

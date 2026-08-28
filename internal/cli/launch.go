@@ -162,7 +162,7 @@ func launchWave(ctx context.Context, r *nextRun, d decide.Decision) int {
 	_ = bundle.AppendEvent(r.bdir, "wave_dispatched", map[string]any{
 		keyWave: d.Wave, keySlice: slice, keyAttempt: attempt, keyTasks: ids,
 	})
-	return printOp(r.env, dispatchOp(r, d.Wave, slice, attempt, agents))
+	return r.emit(dispatchOp(r, d.Wave, slice, attempt, agents))
 }
 
 // dispatchOp is the wave's dispatch op: one agent per task, and the exact
@@ -298,10 +298,7 @@ func renderTaskBrief(r *nextRun, pt *plan.Task, t *bundle.Task, waveN, slice, at
 		return op.Agent{}, err
 	}
 	p := filepath.Join(waveDir(r.bdir, waveN), fmt.Sprintf("task-%d.a%d.md", t.ID, attempt))
-	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return op.Agent{}, err
-	}
-	if err = os.WriteFile(p, []byte(text), 0o600); err != nil {
+	if err = bundle.WriteFileAtomic(p, []byte(text)); err != nil {
 		return op.Agent{}, err
 	}
 	t.Attempt = attempt

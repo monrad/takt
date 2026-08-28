@@ -1699,3 +1699,106 @@ func TestLensBriefIsStableAcrossReplays(t *testing.T) {
 		t.Fatalf("the slice diff must be byte-stable across replays:\n%s\n%s", firstDiff, secondDiff)
 	}
 }
+
+// TestNextDoesNotRewriteAMatchingLogsIgnore is the other half of
+// TestNextRestoresADeletedLogsIgnore, and the case #15 found missing:
+// writeLogsIgnore compares before it writes, because re-writing identical
+// content would churn an mtime — and a watcher, and a backup — on every
+// call of the busiest command takt has. The inode is checked too: the write
+// is atomic now, so a rewrite would rename a fresh file into place and the
+// path would be a different file even if the clock had not moved.
+func TestNextDoesNotRewriteAMatchingLogsIgnore(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	ign := filepath.Join(bdir, "logs", ".gitignore")
+	// A stamp in the past, rather than whatever init left: comparing
+	// against "now" would depend on the filesystem's timestamp granularity.
+	past := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(ign, past, past); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(ign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, o, e := next(t, root, map[string]string{"TAKT_SESSION": "S"}); c != 0 || o["op"] != "run" {
+		t.Fatalf("%d %v %s", c, o, e)
+	}
+	after, err := os.Stat(ign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("next must not rewrite an ignore file whose bytes already match: %v → %v",
+			before.ModTime(), after.ModTime())
+	}
+	if !os.SameFile(before, after) {
+		t.Fatal("next must not replace an ignore file whose bytes already match")
+	}
+	b, err := os.ReadFile(ign)
+	if err != nil || string(b) != "*\n!.gitignore\n" {
+		t.Fatalf("and the rule is still the rule: %q %v", b, err)
+	}
+}
+
+// TestNextReportsALostExcludeOnTheOpItPrints pins #6's other half: a
+// failure to record info/exclude no longer fails `takt next`. The run is
+// driveable — the tracked logs/.gitignore, which is the load-bearing rule,
+// was written — so the loss rides out on the op as a warning and the exit
+// code stays 0.
+func TestNextReportsALostExcludeOnTheOpItPrints(t *testing.T) {
+	t.Parallel()
+	root, _ := setupRun(t)
+	env := map[string]string{"TAKT_SESSION": "S"}
+	c, clean, e := next(t, root, env)
+	if c != 0 || clean["op"] != "run" {
+		t.Fatalf("%d %v %s", c, clean, e)
+	}
+	if _, ok := clean[keyWarningsJSON]; ok {
+		t.Fatalf("a clean next must print no warnings key: %v", clean)
+	}
+	repair := breakExclude(t, root)
+	c, o, e := next(t, root, env)
+	repair()
+	if c != 0 {
+		t.Fatalf("a lost info/exclude must not fail next: exit %d: %s", c, e)
+	}
+	if o["op"] != "run" {
+		t.Fatalf("and the op is the one the run was going to get: %v", o)
+	}
+	w := warningsOf(t, o)
+	if len(w) != 1 || !strings.Contains(w[0], "info/exclude") {
+		t.Fatalf("the warning must name what was not written: %v", w)
+	}
+}
+
+// TestNextCarriesALostExcludeOntoTheArchiveStopOp is why archive.go routes
+// its stop op through the run's printer. Row 25 builds that op in
+// applyAndStop, a function `next` reaches after the lock is taken — so a
+// warning collected during acquireLock would have vanished on exactly the
+// call that ends the run well, which is the last moment a reader has to
+// learn the rule was never recorded.
+func TestNextCarriesALostExcludeOntoTheArchiveStopOp(t *testing.T) {
+	t.Parallel()
+	d, _, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "keep", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	repair := breakExclude(t, d.root)
+	code, o, errb := d.cmd("next", "--slug", "demo")
+	repair()
+	if code != 0 {
+		t.Fatalf("archiving must not fail over a lost info/exclude: exit %d: %s", code, errb)
+	}
+	if o["op"] != "stop" || o["reason"] != "archived" {
+		t.Fatalf("%v", o)
+	}
+	w := warningsOf(t, o)
+	if len(w) != 1 || !strings.Contains(w[0], "info/exclude") {
+		t.Fatalf("the archive's stop op must carry the warning too: %v", w)
+	}
+	st, err := bundle.LoadState(d.bdir)
+	if err != nil || st.Phase != bundle.PhaseArchived {
+		t.Fatalf("and the run really did archive: %+v %v", st, err)
+	}
+}

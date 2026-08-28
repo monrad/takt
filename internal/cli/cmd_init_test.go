@@ -527,3 +527,216 @@ func TestInitRefusesTheRepoRootAsBundleDir(t *testing.T) {
 		t.Fatalf("tree must be untouched: %q", st)
 	}
 }
+
+// keyWarningsJSON is the key init and next report an optional write they
+// lost under (the warnings contract).
+const keyWarningsJSON = "warnings"
+
+// warningsOf reads a command's warnings array, insisting on the wire shape
+// the contract names: an array of strings, absent when nothing was lost and
+// never present-but-empty.
+func warningsOf(t *testing.T, got map[string]any) []string {
+	t.Helper()
+	raw, ok := got[keyWarningsJSON]
+	if !ok {
+		return nil
+	}
+	list, ok := raw.([]any)
+	if !ok || len(list) == 0 {
+		t.Fatalf("warnings must be a non-empty array of strings, got %#v", raw)
+	}
+	out := make([]string, 0, len(list))
+	for _, x := range list {
+		s, sok := x.(string)
+		if !sok {
+			t.Fatalf("warnings must hold strings, got %#v", x)
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// breakExclude makes the repository's info/exclude unreadable and returns
+// the repair. Reading it is the first thing EnsureExclude does, so this is
+// the whole of the failure — and git itself only *warns* about an exclude
+// file it cannot read, so everything else the command does still works,
+// which is exactly the situation the degradation is for. The repair is
+// called before the test asks git anything, because testutil.Git folds
+// stderr into the output it returns and those warnings would land in it.
+func breakExclude(t *testing.T, root string) func() {
+	t.Helper()
+	p := filepath.Join(root, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	repaired := false
+	repair := func() {
+		if !repaired {
+			repaired = true
+			_ = os.Chmod(p, 0o600)
+		}
+	}
+	t.Cleanup(repair)
+	if _, err := os.ReadFile(p); err == nil {
+		repair()
+		t.Skip("this user can read a mode-000 file, so the lost-exclude path cannot be provoked")
+	}
+	return repair
+}
+
+// TestInitReportsALostExcludeAndRollsNothingBack pins #6's decision: the
+// info/exclude pair is a convenience — the tracked logs/.gitignore is what
+// protects a commit and a clone — so losing it reports a warning and exits
+// 0. In particular the rollback must not run: deleting a freshly created
+// branch and the bundle on it over an ignore rule would destroy real work.
+func TestInitReportsALostExcludeAndRollsNothingBack(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	repair := breakExclude(t, root)
+	code, got, errb := runIn(t, root, nil, "init", "--slug", "demo", "Add a greeting")
+	repair()
+	if code != 0 {
+		t.Fatalf("a lost info/exclude must not fail init: exit %d: %s", code, errb)
+	}
+	w := warningsOf(t, got)
+	if len(w) != 1 || !strings.Contains(w[0], "info/exclude") {
+		t.Fatalf("the warning must name what was not written: %v", w)
+	}
+	// Everything init did is still there: the branch, the bundle, the
+	// commit, and the tracked rule that does the load-bearing half.
+	if b := testutil.Git(t, root, "rev-parse", "--abbrev-ref", "HEAD"); b != "takt/demo" {
+		t.Fatalf("the run branch must survive a lost exclude, on %s", b)
+	}
+	bdir := filepath.Join(root, "docs", "takt", "demo")
+	if _, err := bundle.LoadState(bdir); err != nil {
+		t.Fatal("the bundle must survive a lost exclude:", err)
+	}
+	if got["committed"] != true {
+		t.Fatalf("the bundle is still committed: %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(bdir, "logs", ".gitignore")); err != nil {
+		t.Fatal("the tracked ignore rule is the one that matters, and it is written:", err)
+	}
+}
+
+// TestInitPrintsNoWarningsKeyOnACleanRun is the other half of the contract:
+// absent when nothing was lost, so a clean run's document is what it has
+// always been.
+func TestInitPrintsNoWarningsKeyOnACleanRun(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	code, got, errb := runIn(t, root, nil, "init", "--slug", "demo", "Add a greeting")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if _, ok := got[keyWarningsJSON]; ok {
+		t.Fatalf("a clean init must print no warnings key: %v", got)
+	}
+}
+
+// TestInitEscapesAGlobBearingBundleDir covers #12's first shape: a --dir
+// whose name holds a glob metacharacter. Unescaped, `/docs/[takt]/…` is a
+// character class matching `docs/t`, `docs/a` and `docs/k` and never the
+// directory it was built from.
+func TestInitEscapesAGlobBearingBundleDir(t *testing.T) {
+	t.Parallel()
+	assertExcludeMatchesTheBundle(t, "docs/[takt]", `docs/\[takt]/demo`)
+}
+
+// TestInitEscapesABackslashBearingBundleDir covers the other shape, and the
+// one that fixes the escaper's order: `\` is a legal character in a Unix
+// directory name *and* gitignore's own escape character, so it has to be
+// doubled — and doubled first, or it would re-escape the escapes the
+// metacharacter rules inserted.
+func TestInitEscapesABackslashBearingBundleDir(t *testing.T) {
+	t.Parallel()
+	assertExcludeMatchesTheBundle(t, `docs/ta\kt`, `docs/ta\\kt/demo`)
+}
+
+// assertExcludeMatchesTheBundle inits a run under dir and checks the two
+// rules init recorded are the escaped path with each rule's own syntax
+// composed around it — and, because an escape is only ever as good as what
+// git makes of it, that git reads them as this bundle's logs and nothing
+// else. The reading is done from the base branch: that is where the tracked
+// logs/.gitignore is not on disk, so info/exclude is the only rule left and
+// the answer is unambiguously its.
+func assertExcludeMatchesTheBundle(t *testing.T, dir, escaped string) {
+	t.Helper()
+	root := testutil.NewRepo(t)
+	code, _, errb := runIn(t, root, nil, "init", "--dir", dir, "--slug", "demo", "Add a greeting")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	excl, err := os.ReadFile(filepath.Join(root, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, ignore := "/"+escaped+"/logs/*", "!/"+escaped+"/logs/.gitignore"
+	for _, want := range []string{payload, ignore} {
+		if !strings.Contains(string(excl), want+"\n") {
+			t.Fatalf("init must record %q:\n%s", want, excl)
+		}
+	}
+	rel := dir + "/demo"
+	testutil.Git(t, root, "checkout", "main")
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("the sidecar must be invisible from the base branch:\n%s", out)
+	}
+	// check-ignore -v names the file, line and pattern that decided, so it
+	// says which rule answered and not merely that something did.
+	if out := testutil.Git(t, root, "check-ignore", "-v", rel+"/logs/session.json"); !strings.Contains(
+		out, "info/exclude",
+	) || !strings.Contains(out, payload) {
+		t.Fatalf("the escaped rule must be what ignores the payload: %q", out)
+	}
+	if out := testutil.Git(t, root, "check-ignore", "-v", rel+"/logs/.gitignore"); !strings.Contains(
+		out, "info/exclude",
+	) || !strings.Contains(out, ignore) {
+		t.Fatalf("the escaped negation must be what re-includes the ignore file: %q", out)
+	}
+}
+
+// TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile is the composition,
+// not the escaping: the escaper runs over the path alone, and the rules'
+// own syntax is built around the result. Escaping a whole composed rule
+// instead would escape the second rule's leading `!` — required negation —
+// and the first's trailing `*` — a required wildcard — leaving two literals
+// that match nothing, which is a failure no unit test of the escaper can
+// see.
+func TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile(t *testing.T) {
+	t.Parallel()
+	root := testutil.NewRepo(t)
+	if code, _, errb := runIn(t, root, nil, "init", "--slug", "demo", "Add a greeting"); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	const rel = "docs/takt/demo"
+	testutil.WriteFile(t, root, rel+"/logs/reviewer.stdout.log", "quoted repo content\n")
+	testutil.Git(t, root, "checkout", "main")
+	if out := testutil.Git(t, root, "status", "--porcelain"); out != "" {
+		t.Fatalf("a log payload under the bundle must be ignored from the base branch:\n%s", out)
+	}
+	if out := testutil.Git(t, root, "check-ignore", "-v", rel+"/logs/reviewer.stdout.log"); !strings.Contains(
+		out, "info/exclude",
+	) || !strings.Contains(out, "/"+rel+"/logs/*") {
+		t.Fatalf("the first rule must ignore a log payload: %q", out)
+	}
+	if out := testutil.Git(t, root, "check-ignore", "-v", rel+"/logs/.gitignore"); !strings.Contains(
+		out, "info/exclude",
+	) || !strings.Contains(out, "!/"+rel+"/logs/.gitignore") {
+		t.Fatalf("the second rule must re-include the ignore file itself: %q", out)
+	}
+	// And the ignore file really is committed, which is the whole point of
+	// re-including it: a clone with no info/exclude still has the rule.
+	testutil.Git(t, root, "checkout", "takt/demo")
+	if files := testutil.Git(t, root, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(
+		files, rel+"/logs/.gitignore",
+	) {
+		t.Fatalf("the ignore file must ride into the init commit:\n%s", files)
+	}
+}

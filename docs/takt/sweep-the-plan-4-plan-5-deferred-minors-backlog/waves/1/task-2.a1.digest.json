@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "bundle.WriteFileAtomic` now backs all four brief/sidecar writes, `gitx.EscapeIgnorePattern` escapes the bundle path (backslash first) with the exclude rules' syntax composed around it, and a lost `info/exclude` degrades to a `warnings` entry on init and on every post-lock `next` op including the archive's stop.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T12:46:24.821036404Z"
+}

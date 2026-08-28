@@ -1,0 +1,141 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "tasks": [
+    {
+      "task": 2,
+      "status": "done",
+      "files_changed": [
+        "internal/bundle/write.go",
+        "internal/bundle/write_test.go",
+        "internal/cli/archive.go",
+        "internal/cli/cmd_init.go",
+        "internal/cli/cmd_init_test.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/cmd_next_test.go",
+        "internal/cli/launch.go",
+        "internal/gitx/git.go",
+        "internal/gitx/git_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func WriteFileAtomic' internal/bundle/write.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c 'os\\.WriteFile' internal/cli/cmd_next.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c 'os\\.WriteFile' internal/cli/cmd_init.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c 'os\\.WriteFile' internal/cli/launch.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestInitEscapesABackslashBearingBundleDir' internal/cli/cmd_init_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile' internal/cli/cmd_init_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/op/... ./internal/bundle/... ./internal/gitx/... ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/op\t1.008s\nok  \tgithub.com/monrad/takt/internal/bundle\t1.032s\nok  \tgithub.com/monrad/takt/internal/gitx\t6.549s\nok  \tgithub.com/monrad/takt/internal/cli\t7.893s",
+          "elapsed_ms": 8121
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The implementation satisfies the task requirements, with appropriate atomic writes, escaping, warning propagation, and behavioral coverage. No substantive findings.",
+        "findings": null,
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "internal/bundle/write_test.go",
+          "line": 75,
+          "title": "New assertNoTemp helper duplicates an existing inline check instead of consolidating it",
+          "detail": "write_test.go adds `assertNoTemp` to check no `.tmp` file survives a failed rename (lines 74-83). The exact same loop (`os.ReadDir` + `strings.Contains(e.Name(), \".tmp\")` + `t.Fatalf(\"temp file left behind: %s\", e.Name())`) already exists inline in internal/bundle/state_test.go:88-93 (TestSaveIsAtomic), which is in the same package and could call the new helper. WriteFileAtomic's own doc comment argues for exactly one implementation of the atomicity rule 'rather than one per package' (internal/bundle/write.go:54-57); the test suite doesn't apply that same consolidation to itself, leaving two copies of the same assertion that can now drift.",
+          "lenses": [
+            "consistency"
+          ]
+        },
+        {
+          "severity": "minor",
+          "file": "internal/cli/cmd_init.go",
+          "line": 359,
+          "title": "writeLogsIgnore's still-fatal failure path has no test, even though the function's body was rewritten this wave",
+          "detail": "The brief states writeLogsIgnore's own failure must stay fatal (only info/exclude's loss becomes a warning), and this wave rewrote the function's internals (dropped the manual MkdirAll+os.WriteFile in favor of bundle.WriteFileAtomic). No test in cmd_init_test.go forces writeLogsIgnore itself to fail (e.g. an unwritable logs/ directory) and checks that init still exits non-zero and rolls back — unlike the parallel, now-thorough coverage added for excludeLogsDir's new non-fatal path. This is a pre-existing gap, but it intersects code that was directly changed in this diff.",
+          "lenses": [
+            "tests"
+          ]
+        },
+        {
+          "severity": "nit",
+          "file": "internal/cli/cmd_init_test.go",
+          "line": 533,
+          "title": "keyWarningsJSON duplicates cli.go's keyWarnings under a different name",
+          "detail": "cmd_init_test.go declares `const keyWarningsJSON = \"warnings\"`, duplicating the value of the unexported `keyWarnings` constant already defined in internal/cli/cli.go:76. This is necessary because cmd_init_test.go/cmd_next_test.go live in the external `cli_test` package and can't reach the unexported constant, but the diverging name (`keyWarningsJSON` vs `keyWarnings`) for the identical wire key is a small naming inconsistency a reader has to reconcile across the package boundary.",
+          "lenses": [
+            "consistency"
+          ]
+        },
+        {
+          "severity": "nit",
+          "file": "internal/cli/cmd_next.go",
+          "line": 46,
+          "title": "warnings field's doc comment overstates the emit scope",
+          "detail": "The `nextRun.warnings` doc comment says 'Every op printed after the lock is taken carries them' and the `emit` method's own comment (line 201) repeats 'Every op a `takt next` that took the lock can print goes through here'. But acquireLock's LockBlocked branch also routes its 'owner' question through r.emit (cmd_next.go:137) before the lock is actually acquired — the call that returns early precisely because the lock could not be taken. It's harmless (r.warnings is still empty at that point), but the comment's 'after the lock is taken' framing doesn't literally describe that call site.",
+          "lenses": [
+            "consistency"
+          ]
+        },
+        {
+          "severity": "major",
+          "file": "internal/cli/cmd_next_test.go",
+          "line": 1699,
+          "title": "Acceptance-note regression test for the WriteFileAtomic migration is missing",
+          "detail": "Task 2A's acceptance note explicitly calls for a test that the four call sites (writeStableBriefAt, ensureSliceDiff, renderTaskBrief, writeLogsIgnore) were actually converted, by asserting `os.WriteFile` no longer appears at all in cmd_next.go, cmd_init.go and launch.go — specifically warning that a positive grep for `WriteFileAtomic` alone would pass even if one of cmd_next.go's two occurrences were left unconverted. No such test was added in cmd_next_test.go, cmd_init_test.go or elsewhere in this wave's diff. I confirmed by grep that the production migration is currently complete (no `os.WriteFile` remains in those three files), but nothing in the test suite would catch a future regression where one call site reverts to `os.WriteFile` — exactly the false-positive scenario the brief called out.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    }
+  ],
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "closed_at": "2026-08-28T13:01:00.779525572Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

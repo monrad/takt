@@ -58,7 +58,7 @@
     {
       "id": 2,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/bundle/write.go",
         "internal/bundle/write_test.go",
@@ -72,7 +72,16 @@
         "internal/cli/archive.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "bundle.WriteFileAtomic` now backs all four brief/sidecar writes, `gitx.EscapeIgnorePattern` escapes the bundle path (backslash first) with the exclude rules' syntax composed around it, and a lost `info/exclude` degrades to a `warnings` entry on init and on every post-lock `next` op including the archive's stop.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T12:46:24.821036404Z"
+      }
     },
     {
       "id": 3,
@@ -208,13 +217,13 @@
     }
   ],
   "active_wave": {
-    "n": 0,
+    "n": 1,
     "slice": 1,
-    "attempt": 2,
-    "started_at": "2026-08-28T12:18:07.528748082Z",
+    "attempt": 1,
+    "started_at": "2026-08-28T12:28:28.166616006Z",
     "session_id": "5f195b71-8dc9-4fad-b3a9-3b05335b2dc9",
     "tasks": [
-      5
+      2
     ],
     "baseline": []
   },
