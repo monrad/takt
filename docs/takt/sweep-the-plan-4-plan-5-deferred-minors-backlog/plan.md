@@ -62,6 +62,17 @@ protects commits and clones. The writeLogsIgnore already-present test closes
 that slice of #15. Twelve files — at the cap, which is the argument for not
 splitting further: any split would put two wave-1 tasks in the same file.
 
+### Bookkeeping outside the task graph
+
+Two acts in this run are not tasks and produce no diff, because closing a GitHub
+issue is outward-facing and does not belong in an implementer's commit: issue #19
+(fixed by PR #22, never closed) and issue #9 (fixed by `config.Validate` and
+pinned by `TestValidateRejectsNonPositiveDurations`) are closed by the driving
+session. G12 — the anchor's fourteen listed issues resolving to eleven fixes, two
+rulings and one closure — is evidenced by spec.md's "#9 is already fixed" section
+and its Scope list, both already in the bundle. No task edits them, and T3 carries
+the goal only as its recorded owner.
+
 ### T3 — `lock_taken` on an explicit `--force` (#4, #2, G12) — `implement`
 
 Depends on T2 (both edit `cmd_next.go` and its test file). The event switch in
@@ -112,6 +123,10 @@ emits no binary), keeping a plain `go build ./...` beside it as a compile check.
 `/takt` is already gitignored, so the built binary never dirties the tree; local
 `go build` / `go test` keep reporting `0.0.0-dev`, which the handshake's dev
 exception exists for.
+
+Both binary checks remove `./takt` before building. It is gitignored and may
+already exist from a hand-run `go build ./cmd/takt`, so a stale artifact could
+otherwise satisfy them while the build task still emitted nothing.
 
 That exception is also why the verify cannot use `takt version --expect`:
 `ManifestMatches` returns `(true, true)` for a `0.0.0-dev` binary, so an

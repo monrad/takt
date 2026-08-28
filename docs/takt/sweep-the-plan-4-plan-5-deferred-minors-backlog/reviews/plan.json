@@ -1,41 +1,41 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition is broadly sound, but execution should not start: several acceptance commands can pass with required fixes missing, and #9’s mandated bookkeeping closure has no task.",
+  "summary": "The plan is close, but it has an incomplete warning propagation path, contradictory T8 coverage, and unmapped/out-of-scope bookkeeping.",
   "findings": [
     {
-      "severity": "major",
-      "file": "",
+      "severity": "blocking",
+      "file": "plan.md",
       "line": 0,
-      "title": "T6 can validate a stale binary",
-      "detail": "T6 runs `task build` without first removing `./takt`. Because that artifact is gitignored and may preexist, the version checks can pass even if the build task emits no binary. Remove the artifact before building or otherwise prove it was recreated."
+      "title": "T2 drops next warnings on the archive path",
+      "detail": "T2 propagates warnings only through cmd_next.go and launch.go, but a post-lock next can call nextRun.archive, whose stop op is constructed in archive.go. archive.go is absent from T2's scope, so an info/exclude failure can still disappear from successful next JSON. Include and test this path or centralize all post-lock op output through a warning-aware helper."
     },
     {
       "severity": "major",
-      "file": "",
+      "file": "plan.md",
       "line": 0,
-      "title": "T2 does not prove all four atomic-write migrations",
-      "detail": "T2 requires two migrations in `cmd_next.go`, but its grep proves only one occurrence. Normal-path tests and helper tests cannot detect a remaining `os.WriteFile`. Verify both call sites explicitly."
+      "title": "T8 has contradictory and insufficient caller coverage",
+      "detail": "T8 first requires coverage of only one caller per file, then says all four callers need individual tests. The lint and grep checks prove only that an error result is syntactically consumed, not that each command emits warnings. Require warning-output tests for all four callers. Also, replacing events.jsonl with a directory exercises ReadEvents failure, not the specified AppendEvent failure; use a deterministic append-failure setup or seam."
     },
     {
       "severity": "major",
-      "file": "",
+      "file": "plan.md",
       "line": 0,
-      "title": "T1 does not prove single manifest evaluation",
-      "detail": "T1’s grep and behavioral tests can pass while `ManifestMatches` is still called twice, leaving issue #10 unfixed. Add an acceptance check or test that establishes one evaluation per handshake."
+      "title": "T3 claims G12 without performing the required #9 bookkeeping",
+      "detail": "The spec says issue #9 is closed as part of this run, but the plan leaves that action outside the task graph. T3 merely declares G12 and has no action or verification for closure, so every task can pass while the requirement remains undone."
     },
     {
       "severity": "major",
-      "file": "",
+      "file": "plan.md",
       "line": 0,
-      "title": "T8 tests can leave two callers swallowing errors",
-      "detail": "T8 requires all four callers to propagate `endAttemptStreak` errors, but explicitly tests only one caller in each source file. The signature grep and package tests can pass with the other two callers still discarding the result."
+      "title": "The plan widens scope to issue #19",
+      "detail": "The bookkeeping section and T3 introduce closing issue #19, which is absent from the spec's in-scope list. This outward-facing action must be removed from this plan."
     },
     {
-      "severity": "major",
-      "file": "",
+      "severity": "minor",
+      "file": "plan.md",
       "line": 0,
-      "title": "No task performs the required #9 closure",
-      "detail": "The spec says #9 is closed as part of this run’s bookkeeping. T3 claims G12 without any corresponding action, while plan.md explicitly leaves issue closing outside the tasks. Add an explicit bookkeeping task or make the closure an enforceable completion step."
+      "title": "T2 leaves gitignore negation escaping ambiguous",
+      "detail": "T2 says the escaper must escape a leading ! and that both rules pass through it, but the second rule's leading ! is required negation syntax. Specify that the literal relative path is escaped before the syntactic ! prefix is added, and behaviorally verify that log payloads are ignored while logs/.gitignore is re-included."
     }
   ],
   "provider": "copilot",
