@@ -8,3 +8,5 @@
 {"ts":"2026-08-28T15:51:24.801531494Z","type":"gate_reviewed","data":{"findings":0,"gate":"spec","hash":"sha256:e95ce3cf862c373a5566c3e19825ad73e3cf22689a5758e02ecd53cd79767021","provider":"copilot","verdict":"approve"}}
 {"ts":"2026-08-28T15:51:30.444606635Z","type":"phase","data":{"from":"brainstorm","to":"plan"}}
 {"ts":"2026-08-28T16:20:49.701975168Z","type":"gate_reviewed","data":{"findings":6,"gate":"plan","hash":"sha256:663e011ea59910cdb55b2b9aa28e01819133f7acca12e08946f43cea1f2e7394","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-28T16:20:55.562996169Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-28T16:22:48.52325591Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
