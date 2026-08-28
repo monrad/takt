@@ -1,7 +1,7 @@
 # takt
 
 takt runs long, multi-step coding work as a resumable **brainstorm → plan → execute → finish** loop on a
-durable run bundle. It is a Claude Code plugin (a command prompt plus four agent definitions) and a Go
+durable run bundle. It is a Claude Code plugin (a command prompt plus five agent definitions) and a Go
 binary: Claude Code drives every phase, but the binary decides and records every state change, subagents
 implement, and headless reviewers judge. Every phase is resumable — a crash, a compaction, or a brand new
 session picks the run back up with `/takt` and nothing is lost or done twice.
@@ -68,7 +68,7 @@ report wrong.
 
 ## Install the plugin
 
-The plugin (the `/takt` command and its four agent definitions) is installed from the same repository, via
+The plugin (the `/takt` command and its five agent definitions) is installed from the same repository, via
 its own marketplace. In Claude Code:
 
 ```
@@ -97,7 +97,7 @@ part of installing `takt`.
 
 ## GitHub Copilot CLI
 
-The same op loop runs under the Copilot CLI (1.0.80 or newer) as a skill plus four custom agents. Install
+The same op loop runs under the Copilot CLI (1.0.80 or newer) as a skill plus five custom agents. Install
 the binary as above, then:
 
 ```sh
@@ -155,7 +155,8 @@ shipped default:
 {
   "dir": "docs/takt",
   "autonomy": "auto",
-  "review": { "spec": true, "plan": true, "tasks": true },
+  "review": { "spec": true, "plan": true, "tasks": true,
+              "lenses": ["correctness", "intent", "tests", "simplicity", "consistency", "docs"] },
   "goals": true,
   "alignment": true,
   "max_parallel": 8,
@@ -178,7 +179,8 @@ shipped default:
     },
     "planner": { "model": "fable" },
     "goal-assessor": { "model": "sonnet" },
-    "alignment-auditor": { "model": "sonnet" }
+    "alignment-auditor": { "model": "sonnet" },
+    "reviewer": { "model": "sonnet" }
   }
 }
 ```
@@ -190,6 +192,7 @@ shipped default:
 | `review.spec` | `true` | Headless review gate on the brainstormed spec before planning. |
 | `review.plan` | `true` | Headless review gate on the plan index before execution. |
 | `review.tasks` | `true` | Per-task cross-vendor review at the end of each wave. |
+| `review.lenses` | `["correctness","intent","tests","simplicity","consistency","docs"]` | Internal reviewer lenses dispatched on every wave slice; empty disables the internal layer. |
 | `goals` | `true` | goal-assessor verdict per goal at finish, before disposition. |
 | `alignment` | `true` | End-of-planning audit of the merged plan against the original request. |
 | `max_parallel` | `8` | Most tasks dispatched as concurrent subagents in one wave. |
@@ -212,6 +215,7 @@ shipped default:
 | `agents.planner.model` | `"fable"` | Model for the planner agent — set to `opus` on an account without Claude Fable 5. |
 | `agents.goal-assessor.model` | `"sonnet"` | Model for the goal-assessor agent. |
 | `agents.alignment-auditor.model` | `"sonnet"` | Model for the alignment-auditor agent. |
+| `agents.reviewer.model` | `"sonnet"` | Model for the reviewer agent — every lens and the verifier alike. |
 
 `autonomy`, `review.*`, `goals`, `alignment`, `max_parallel` and `max_rework` are frozen into the bundle's
 `state.json` at `init`, so editing `.takt.json` mid-run never changes that run's behaviour.
@@ -230,6 +234,14 @@ separate, deliberate command, not something the failed review does on its own:
 `takt review spec|plan --skip --reason "<why>" --evidence <file>`, where `<file>` holds the failing
 backend's error output. Both `--reason` and `--evidence` are required, and the evidence file is copied into
 the bundle's receipt (spec §9) so the skip stays auditable.
+
+Since the two-review-layers change, the backend chain is the *attested* layer, not the only one: when
+`review.lenses` is non-empty, each wave slice is first read by internal lens subagents (session-side,
+same vendor as the implementer) whose merged findings a verifier subagent confirms or refutes; the
+backend then reviews blind, and Go merges the layers — confirmed findings ride retry briefs and
+`follow-ups.json`, and a blocking finding the backend missed buys one scoped second backend pass. Only
+the backend's verdict can change a task's status. Design:
+`docs/superpowers/specs/2026-08-27-two-review-layers-design.md`.
 
 ## Releasing
 

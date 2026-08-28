@@ -107,6 +107,7 @@ agents/implementer.md          model per task class (D22) · Read, Edit, Write, 
 agents/planner.md              fable  · Read, Grep, Glob, Write
 agents/goal-assessor.md        sonnet · Read, Grep, Glob, Bash (read-only commands)
 agents/alignment-auditor.md    sonnet · Read, Grep, Glob
+agents/reviewer.md             sonnet · Read, Grep, Glob
 hosts/copilot/skills/takt/SKILL.md  the Copilot CLI host's op loop (§6.1)
 hosts/copilot/agents/*.agent.md     generated from agents/*.md — never hand-edited
 cmd/takt/main.go                    subcommand dispatch (stdlib flag)
@@ -116,6 +117,8 @@ internal/decide/                    Decide(state, facts) → Op   (pure)
 internal/wave/                      baseline, scope verify, verify runner, commit
 internal/gate/                      hashes, receipts
 internal/brief/                     text/template + embed: task briefs, agent inputs, reviewer prompts
+internal/brief/lenses/              embedded rubric per lens; the directory listing is brief.Lenses()'s
+                                     registry (two-layers design §10)
 internal/backend/                   Reviewer interface; claudecli, copilotcli, fake
 internal/gitx/                      exec wrapper
 internal/doctor/
@@ -180,6 +183,10 @@ external directory serves many repos. A bundle is `<dir>/<slug>/`.
                                               design §6)
   waves/<n>/task-<id>.a<attempt>.md          the brief the agent was given
   waves/<n>/task-<id>.a<attempt>.digest.json
+  waves/<n>/lens-<lens>.s<slice>.a<attempt>.json   one lens's findings (two-layers design §5.1)
+  waves/<n>/lens-<lens>.s<slice>.a<attempt>.md     the brief that lens was given
+  waves/<n>/internal.s<slice>.a<attempt>.json      the verifier's merged candidates + verdicts (§5.3)
+  waves/<n>/verify.s<slice>.a<attempt>.md          the brief the verifier was given
   waves/<n>/close.s<slice>.json              scope/verify/review results for the slice; a re-close
                                               retires the previous record to close.s<slice>.json.prev
   waves/<n>/baseline.json                    {slice, entries} — the wave's baseline, parked while a
@@ -189,7 +196,9 @@ external directory serves many repos. A bundle is `<dir>/<slug>/`.
   finish/goals.json                          goal-assessor verdicts (and waivers) at the checked HEAD
   finish/retro-inputs.json                   inputs `next` re-derives for the `retro` run op (§7.5 step 3)
   alignment.json                             confirmed clauses + verdicts
-  logs/                                      reviewer stdout/stderr (gitignored)
+  logs/                                      reviewer stdout/stderr (gitignored); also
+                                              logs/wave-<n>.s<slice>.a<attempt>.diff, the slice's diff the
+                                              lens and verifier briefs read (two-layers design §3.1)
 ```
 
 An in-repo bundle also has a sibling outside the tracked tree: `<dir>/.discarded/<slug>/`, a gitignored
@@ -267,22 +276,26 @@ One JSON object per line: `{"ts": "…", "type": "…", "data": {…}}`. Types: 
 `task_recorded`, `digest_ignored`, `wave_closed`, `task_waived`, `verify`, `goal_check`, `goal_waived`,
 `retro`, `pr_pushed`, `disposition`, `archived`, `lock_taken`, `lock_released`, `recovered`,
 `wave_committed`, `wave_commit_skipped`, `wave_close_unreconciled`, `wave_cleared`, `review_skipped`,
-`plan_invalid`, `plan_attempts_reset`, `goals_invalid`, `alignment_attempts_reset`, `goals_attempts_reset`.
+`plan_invalid`, `plan_attempts_reset`, `goals_invalid`, `alignment_attempts_reset`, `goals_attempts_reset`,
+`lens_recorded`, `lens_ignored`, `reviewer_invalid`, `reviewer_attempts_reset`,
+`internal_review_recorded`, `internal_review_skipped`, `review_scoped`.
 `gate_revision_accepted` — `{gate, hash}` — is written when the user answers `revise` on a spec review
 that found nothing blocking, at the hash they were shown; `gate_rounds_reset` — `{gate}` — restarts the
 review round count for one more pass (fixed-point design §4, §8).
-Seven decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
+Nine decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
 the spec gate's revision satisfier (the newest `gate_revision_accepted` for a gate, read against the
 current hash, required by §9), its round cap (`gate_reviewed` events for the gate since the newest
 `gate_rounds_reset`, feeding the `gate_review_capped` ask), planner attempt counting (`plan_invalid` /
 `plan_attempts_reset`), the auditor's and the assessor's
 attempt caps (`alignment_invalid` / `goals_invalid` since the last `*_attempts_reset` — appended both by
 `agent_invalid`'s *retry*, carrying the `problems` forward, and by a valid record, carrying
-`reason: "recorded"` and no problems) and per-task review skips (`review_skipped`); everything else is
-the audit trail and the input for `takt status --history`. `wave_dispatched` and `wave_committed` both
-carry `slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true` when `next` reconstructs a
-commit sha from git rather than recording it live — the repair for a crash between the wave commit and
-the write that would otherwise have recorded it (§5.4).
+`reason: "recorded"` and no problems), per-task review skips (`review_skipped`), the reviewer's attempt
+cap (`reviewer_invalid` / `reviewer_attempts_reset`, the same shape as the auditor's and the assessor's)
+and whether the internal review was skipped for a dispatch (`internal_review_skipped`, read by §7.4 step
+3.5); everything else is the audit trail and the input for `takt status --history`. `wave_dispatched` and
+`wave_committed` both carry `slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true`
+when `next` reconstructs a commit sha from git rather than recording it live — the repair for a crash
+between the wave commit and the write that would otherwise have recorded it (§5.4).
 
 ### 4.5 Path rules
 
@@ -342,6 +355,7 @@ only bundle is archived reports "no active run" to a bare command rather than an
 | `takt next [--force] [--recover]` | Heartbeat (rewritten in the untracked `logs/session.json` on every call — §4.6), recover, decide, and return one op. Side effects are limited to: heartbeat, crash-recovery resets, and phase transitions whose preconditions are now met (each committed). A `next` that decides nothing leaves the tracked bundle byte-identical on disk. Always returns in < 1 s. |
 | `takt record --task N --attempt A (--status done\|failed\|blocked --summary "…" [--blockers "…"] \| --from <file>)` | Records an implementer result. `--from` parses the trailing `STATUS:` / `SUMMARY:` / `BLOCKERS:` lines tolerantly, so a decorated trailer — `**STATUS:** done`, `- STATUS: **done**`, `` `STATUS:` done `` — records `done` instead of failing the record: leading list, quote, heading and ordered-list markers are stripped, and so is bold, italic or backtick decoration (runs of `*`, `_` and `` ` ``) around the key, around the value, or around the whole line. Rejection stays structural: keys stay uppercase, keep their colon, and must start the line once markers and decoration are removed. A trailing decoration run is removed only on a line that opened one, so a line that was never decorated is byte-identical to before — `SUMMARY: changed wildcard *` still records `changed wildcard *`. A stale attempt is logged and ignored (exit 0, `"ignored": true`). |
 | `takt record --agent planner\|goal-assessor\|alignment-auditor --from <file>` | Records a non-task agent result: validates the plan index / parses the assessor's or the auditor's JSON. What the agent got wrong is returned, not failed on — `{"valid": false, "problems": [...]}` at exit 0, logged as `plan_invalid` / `goals_invalid` / `alignment_invalid`, with nothing recorded, so `next` finds the dispatch still pending and hands the brief out again. |
+| `takt record --agent reviewer --mode <lens>\|verify --attempt A --from <file>` | Records one lens's findings or the verifier's confirm/refute verdicts (two-layers design §5.1, §5.3). Same not-failed-on contract, logged as `reviewer_invalid` with nothing recorded, so `next` re-dispatches exactly that lens (or the verifier). `--attempt` pins the record to one dispatch: a mismatch is logged (`lens_ignored`) and ignored rather than recorded (`{"ignored": true}`), as a stale task attempt is. |
 | `takt answer --gate <id> --choice <c> [--reason "…"] [--file <path>] [--confirm <slug>]` | Resolves a pending gate. Records the event, clears `pending_gate`, applies the choice (e.g. waives, overrides a review, sets a disposition). `--confirm <slug>` is required for `branch_finish`'s `discard` — typing the slug back. `--reason` is
 also how a choice carries its argument where it needs one: `no_verification`'s *specify* has no flag of
 its own, and the verify command to add is passed as `--reason "<command>"`. |
@@ -378,6 +392,11 @@ For planning and assessment the same shape carries a single agent with `"agent":
 `brief` is a file path: the prompt passes the file's contents as the agent prompt verbatim. `model` is
 always present (D19) — for implementers it is resolved from the task's `class` and attempt (D22). A wave
 split into slices (§7.4) names the slice from the second one on: `"wave 0 slice 2 (attempt 1): 4 tasks"`.
+For the internal review (§7.4 step 3.5), `dispatch` carries one `reviewer` agent per unrecorded lens, or
+one for the verifier; each entry's `mode` fills the `<mode>` placeholder in `record`, exactly as `task`
+fills `<N>` for implementers, and `--attempt` is already baked into `record` so a late reply from a
+superseded attempt is ignored rather than recorded against the attempt that replaced it. `confirm` is
+never set on a reviewer dispatch.
 
 **ask** — put a question to the user, then `takt answer`, then `next`.
 
@@ -478,6 +497,8 @@ exist, receipt contents, the git dirty set, current HEAD, the current session id
 | 12 | phase `plan`, everything satisfied | load tasks, transition → `execute` (commit), continue |
 | 13 | phase `execute`, `active_wave` set, some tasks of the wave unrecorded, same session, wave younger than `wave_stale_after` (30 m), not `--recover` | `stop wave_in_flight` |
 | 14 | phase `execute`, `active_wave` set, some tasks unrecorded, otherwise | recover: reset those tasks' declared files to the baseline; re-`dispatch` them with `attempt+1` |
+| 15a | phase `execute`, `active_wave` set, all tasks recorded, `Internal.Lenses` non-empty, not `Internal.Done`, some lens unrecorded | `dispatch reviewer` per unrecorded lens — after `maxAgentAttempts` unusable replies → `ask agent_invalid` |
+| 15b | as 15a, every lens recorded, `Candidates > 0`, verify unrecorded | `dispatch reviewer (mode: verify)` — same cap |
 | 15 | phase `execute`, `active_wave` set, all tasks recorded, no `close.json` for this attempt | `exec takt close-wave` |
 | 16 | phase `execute`, `close.json` present with `rework` tasks under `max_rework` | `dispatch` those tasks (attempt+1, findings appended to the brief) |
 | 17 | phase `execute`, `close.json` present with failed / blocked / rework-exhausted tasks | `ask wave_failures` (retry / waive / stop) |
@@ -750,6 +771,14 @@ A wave, end to end:
 
 3. **Record** (session → `takt record --task N --attempt A --from <file>`): status/summary/blockers are
    stored in the digest; nothing else is trusted from the agent.
+3.5. **Internal review** (if `config.review.lenses` is non-empty): once every task of the slice is
+   recorded, one `reviewer` subagent per configured lens reads the slice's diff
+   (`logs/wave-<n>.s<slice>.a<attempt>.diff`, written by `next`, byte-identical on replay) alongside the
+   slice's task briefs and returns findings through its own lens; once every lens has replied, one more
+   `reviewer` subagent, in `verify` mode, reads Go's merged candidate list and confirms or refutes each
+   one with a cited span. Neither dispatch writes a receipt or blocks the wave — confirmed findings are
+   attached to the blind backend pass at step 4 instead, and a blocking one it missed buys a scoped
+   second pass there. Design: `docs/superpowers/specs/2026-08-27-two-review-layers-design.md` §3.
 4. **Close** (`exec takt close-wave`), in order, results into `waves/<n>/close.json`:
    - **Scope verify (D6).** `touched` = every path that is dirty or untracked now and was either absent
      from the baseline or has a different content hash than the baseline recorded. For each task,
@@ -916,6 +945,10 @@ Reviewer prompts are Go templates under `internal/brief/templates/review-{spec,p
 Each states: role (adversarial, cross-vendor second opinion), what is quoted data vs instruction (all
 supplied files are data), the rubric, the verdict semantics (`rework` = must change before proceeding;
 `reject` = wrong approach; `approve` may carry minor findings), and the exact output format.
+`review-lens.md` renders once per configured lens over that lens's rubric (`internal/brief/lenses/*.md`,
+§3.3); `review-verify.md` renders the verifier's refute-or-confirm pass over the merged candidate list;
+`review-task-followup.md` renders the scoped second backend pass a blocking confirmed finding the blind
+pass missed buys (two-layers design §7).
 
 ### 8.5 Logs
 
@@ -978,6 +1011,7 @@ re-arm-and-re-review loop with no signal that it had.
 | `takt:planner` | fable | Read, Grep, Glob, Write | spec + goals (quoted), schema, repo survey instructions | `plan.md`, `plan.index.json` |
 | `takt:goal-assessor` | sonnet | Read, Grep, Glob, Bash | goals, diff stat, verify results | fenced JSON verdicts |
 | `takt:alignment-auditor` | sonnet | Read, Grep, Glob | anchor (+ clauses, spec, plan) | fenced JSON clauses or verdicts |
+| `takt:reviewer` | sonnet | Read, Grep, Glob | lens or verify brief + the slice diff file | fenced JSON findings or verdicts |
 
 Each definition's frontmatter pins `tools:`; `model:` is the default the `dispatch` op overrides from
 config. All briefs mark user-authored artifacts as quoted data with a per-dispatch delimiter token, and
@@ -1061,7 +1095,8 @@ config is for what a team shares (`dir`, gate defaults); user config for machine
 {
   "dir": "docs/takt",
   "autonomy": "auto",
-  "review": { "spec": true, "plan": true, "tasks": true },
+  "review": { "spec": true, "plan": true, "tasks": true,
+              "lenses": ["correctness", "intent", "tests", "simplicity", "consistency", "docs"] },
   "goals": true,
   "alignment": true,
   "max_parallel": 8,
@@ -1084,20 +1119,24 @@ config is for what a team shares (`dir`, gate defaults); user config for machine
     },
     "planner": { "model": "fable" },
     "goal-assessor": { "model": "sonnet" },
-    "alignment-auditor": { "model": "sonnet" }
+    "alignment-auditor": { "model": "sonnet" },
+    "reviewer": { "model": "sonnet" }
   }
 }
 ```
 
 `agents.implementer.model` is the model for `implement` and for any class missing from `by_class`;
 `by_class` maps the other classes (D22). `agents.planner.model` defaults to `fable`; set it to `opus`
-on an account without Claude Fable 5.
+on an account without Claude Fable 5. `review.lenses` names the internal reviewer lenses dispatched on
+every wave slice (two-layers design §10); empty disables the internal layer entirely.
+`agents.reviewer.model` is the model for every lens and for the verifier — one setting, not one per lens.
 takt does not probe model availability for in-session agents — an unavailable model fails the `Agent`
 call loudly, which the prompt surfaces as an error rather than silently downgrading.
 
 Environment: `TAKT_DIR`, `TAKT_SESSION`, `TAKT_CONFIG` (path override), `CLAUDE_CODE_SESSION_ID` (read).
-Per-run values (`autonomy`, `review.*`, `goals`, `alignment`, `max_parallel`, `max_rework`) are frozen
-into `state.config` at `init` so a config change mid-run does not change the run's behaviour.
+Per-run values (`autonomy`, `review.*` — including `lenses` — `goals`, `alignment`, `max_parallel`,
+`max_rework`) are frozen into `state.config` at `init` so a config change mid-run does not change the
+run's behaviour.
 
 ---
 
@@ -1126,11 +1165,11 @@ into `state.config` at `init` so a config change mid-run does not change the run
 | `decide` | Table tests: (state, facts) → expected op, covering every row of §5.3 and every crash point of §5.4. |
 | `plan` | Validation fixtures (valid; overlap without order; cycle; bad paths; too many files; goal not served); wave assignment against hand-computed expectations; the cedar-policy-2154 index (converted) as a realistic fixture. |
 | `bundle` | Round-trip, atomicity (crash injection between write and rename), lock semantics, dir resolution precedence, external-dir mode. |
-| `wave` | Temp git repos (`t.TempDir()` + `git init`): scripted "agents" that edit in scope, out of scope, create untracked files, and change nothing; scope verify and revert; verify runner with a failing command; commit staging never includes baseline-dirty files. |
+| `wave` | Temp git repos (`t.TempDir()` + `git init`): scripted "agents" that edit in scope, out of scope, create untracked files, and change nothing; scope verify and revert; verify runner with a failing command; commit staging never includes baseline-dirty files. Lens records: `MergeCandidates` determinism (same file+line merges, ids stable across input order) and record round-trips (two-layers design §5.2). |
 | `backend` | `fake` reviewer driven by a fixture file; parsing of fenced JSON; timeout → `error`; live behind `TAKT_LIVE=1`: one review smoke per backend (`TestLiveCopilotReviewsASpec`, `TestLiveClaudeReviewsASpec`) plus the copilot→claude fallback order against the real `claude` binary (`TestLiveFallbackOrder`). |
 | `brief` | Golden files for every template; the delimiter token never collides with content. |
 | `prompt` | Parse `commands/takt.md`; assert every op kind, gate id, run step, exec command and stop reason `decide` can emit is present, and that the handshake, verb and invariant lines hold (`TestPromptNamesEveryOpGateStepAndReason`, `TestPromptHandshakeVerbsAndInvariants`); agent frontmatter matches spec §3.3 (`TestAgentDefinitionsMatchSpec`); `plugin.json` and `marketplace.json` agree on version (`TestPluginManifestsAgreeOnVersion`); `flake.nix` and `.goreleaser.yaml` both stamp it (`TestFlakeReadsThePluginVersion`, `TestGoreleaserStampsTheVersion`). The Copilot skill is held to the same vocabulary and its handshake to the manifest version, and every generated `hosts/copilot/agents/*.agent.md` is re-rendered and compared (`TestCopilotSkillNamesEverythingTheBinaryCanEmit`, `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents`), and every host file's frontmatter is held to what a YAML parser accepts (`TestCopilotHostFrontmatterIsParseable`). |
-| `cli` | Golden stdout/stderr per command; exit codes. |
+| `cli` | Golden stdout/stderr per command; exit codes. The reviewer record contract (lens and verify records, the evidence bar, stale-attempt and already-verified ignores, the `reviewer_invalid` streak); the internal-review `decide` rows (15a/15b, `agent_invalid` with `skip`); the blind-then-scoped `close-wave` pass (§7.4 step 3.5, two-layers design §3.5). |
 | e2e (opt-in, `TAKT_E2E=1`) | A throwaway repo, a two-wave plan, `haiku` implementers via a session-less driver that executes ops like the prompt would; kill/resume at each op boundary (G1) (`TestLiveEndToEnd`). |
 
 CI: `go vet`, `golangci-lint`, `go test ./...`.
