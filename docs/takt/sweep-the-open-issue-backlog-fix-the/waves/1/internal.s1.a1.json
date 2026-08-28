@@ -1,0 +1,313 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:15:35.603226211Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "title": "Claude Code command doc still tells the host to `gh pr create --fill`",
+      "detail": "Same staleness as the Copilot skill: the `run` row's push_pr example still reads \"then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", unchanged by this diff even though the actual op instructions (and the branch_finish option description in internal/decide/questions.go) now use `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the op's `pr_title`/`pr_body_path` inputs.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "title": "Copilot skill still tells the host to `gh pr create --fill`",
+      "detail": "This diff replaces `gh pr create --base \u003cbase\u003e --fill` with a run-generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` everywhere it is produced (run-push_pr.md template, the branch_finish `pr` option's Description in internal/decide/questions.go, cmd_next.go's preparePushPR). The Copilot skill's op-table row for `run`/`push_pr` still spells out the literal old command: \"push_pr (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`)\". A host following this contract literally would run the old `--fill` command, discarding the run-derived title/body the rest of the diff exists to produce.",
+      "id": "c2",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/brief/brief.go",
+      "line": 274,
+      "title": "PRTitleQuoted duplicates the existing shellQuote escaping helper",
+      "detail": "internal/cli/archive.go:354 already has shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" } for the identical purpose — escaping a string for a POSIX single-quoted word inside an instruction a session runs verbatim through a shell (used there for `git clean -fd -- \u003cpath\u003e`). PRTitleQuoted re-implements the same close-escape-reopen algorithm (minus the surrounding quotes, left to the template) in a different package instead of factoring one shared helper, so the same shell-quoting rule now lives in two places that could drift independently.",
+      "id": "c3",
+      "task": 12,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 1,
+      "title": "Retro instructions still say \"dispatch→commit timings\" after WaveTiming became dispatch→close",
+      "detail": "Task 11 changes WaveTiming from one entry per committed attempt to one entry per dispatched attempt that *closed*, with `closed_at` always present and `committed`/`committed_at` only when the attempt actually committed (internal/finish/retro.go's WaveTiming doc comment now reads \"one per dispatched attempt that closed\"). The retro-writing op's own instructions, run-retro.md line 1, still describe the inputs as \"per-wave dispatch→commit timings\" — unchanged except for the review-findings clause the task explicitly edited. A reworked attempt's timing entry has no `committed_at` at all, which the stale phrasing does not prepare the retro-writing agent for.",
+      "id": "c4",
+      "task": 11,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 163,
+      "title": "reviewFindingsOf's summation is only ever exercised with one reviewed task",
+      "detail": "reviewFindingsOf sums len(tr.Review.Findings) across every task in the close. The only test that reaches it, TestWaveClosedEventCarriesSliceAndReviewFindings (internal/cli/close_events_test.go), bumps a single task (task 3) with one finding, so the accumulation (n += ...) across two-or-more reviewed tasks in the same close is never proved. TestRetroInputsCountEveryReviewOnce (internal/finish/retro_test.go) tests the downstream retro math but constructs its wave_closed events with a hard-coded review_findings value rather than calling reviewFindingsOf, so it doesn't cover this function either. A silent regression here (e.g. assignment instead of accumulation) would produce quietly wrong review_findings counts in the retro with no failing test.",
+      "id": "c5",
+      "task": 11,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 577,
+      "title": "dispatchAgent's hoisted ensureSliceDiff call has no test proving it runs once",
+      "detail": "Task 12(F) hoists r.ensureSliceDiff(ctx) out of the reviewer's render closure in dispatchAgent so the slice diff isn't recomputed on every render (the same #51 problem TestWriteStableBriefRendersOnce pins for writeStableBrief). No comparable test counts ensureSliceDiff invocations or diff-file writes for a reviewer dispatch, so a regression that put the call back inside the closure (or dropped the hoist) would not be caught by any test — it would only cost extra idempotent writes, but the fix itself is otherwise unverified.",
+      "id": "c6",
+      "task": 12,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 779,
+      "title": "dispatchLenses reimplements the writeDispatchBrief helper it should call",
+      "detail": "Task 12 introduces r.writeDispatchBrief(dest, render) (lines 639-650) precisely to pair renderFresh with writeStableBriefAt once (#51). dispatchLenses's per-lens loop (lines 772-785) inlines exactly that sequence — text, _, rerr := renderFresh(lensBrief); ...; writeStableBriefAt(p, text, lensBrief) — instead of calling r.writeDispatchBrief(p, lensBrief), which would do the same thing since dest (p) is always non-empty here. The new helper is used at one of its two natural call sites and duplicated at the other, within the same task's own diff.",
+      "id": "c7",
+      "task": 12,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1017,
+      "title": "preparePushPR's own ReadGoals error-wrap is never actually exercised by any test",
+      "detail": "preparePushPR (cmd_next.go:1008-1020) calls finish.ReadGoals(r.bdir) a second time and wraps any error as fmt.Errorf(\"%s: %w\", finish.GoalsPath(r.bdir), err) — the behaviour task 12 calls out explicitly (\"an unreadable record is a failure, not not assessed\"). But finish.ReadGoals(bdir) for the same finish/goals.json is already called earlier in the same `next` invocation by goalFacts (internal/cli/finish_facts.go:185-189), from gatherFinishFacts, from gatherFacts, from loop() (cmd_next.go:237-240) — and loop() returns fail() and never reaches decide.Decide/run() if that first call errors. So the malformed-JSON case in TestPushPRBodyListsGoalVerdicts (internal/cli/finish_test.go:661-665, asserting only exit 1 and stderr containing \"JSON\") is satisfied by goalFacts's earlier, unrelated failure — preparePushPR's own error branch at cmd_next.go:1017-1020 is never reached by this test. Deleting that whole `if err != nil { return fmt.Errorf(...) }` check (e.g. replacing with `rec, _ := finish.ReadGoals(r.bdir)`) would not fail any existing test, since for every scenario the tests exercise ReadGoals either succeeds or the run already stopped earlier. The test comment even acknowledges the ambiguity (\"Either way the run stops\") but the assertion doesn't distinguish which code path produced the failure, so it doesn't actually pin the new code.",
+      "id": "c8",
+      "task": 12,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1042,
+      "title": "prGoals's goals.Parse error path is untested",
+      "detail": "prGoals (cmd_next.go:1042) reads goals.md and requires goals.Parse to succeed, returning a wrapped error naming the file on failure. TestPushPRBodyListsGoalVerdicts (internal/cli/finish_test.go) only exercises the missing-file branch (os.ReadFile error, by renaming goals.md away); it never writes a syntactically-invalid goals.md to exercise the goals.Parse failure branch and its error-wrapping.",
+      "id": "c9",
+      "task": 12,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_review.go",
+      "line": 389,
+      "title": "priorFindingsForScopedPass's doc comment now contradicts the struct it sits above",
+      "detail": "The comment says \"the findings file carries no hash and no pass identity, so pairing it with the receipt was convention, not a checkable invariant\" (lines 388-390), but this same diff adds exactly that — Hash and Round — to reviews/\u003cgate\u003e.json via the new reviewRecord type documented two paragraphs above (lines 359-365: \"tagged with the gate hash it reviewed and the round it was\"). The stated justification for reading both the verdict and the blocking flag from one artifact is now factually wrong about the artifact's own shape, even though the conclusion (read from reviews/\u003cgate\u003e.json, not the receipt) may still be correct for other reasons.",
+      "id": "c10",
+      "task": 10,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro.go",
+      "line": 118,
+      "title": "retro.go re-declares gate.EvReviewed under a different local name",
+      "detail": "evGateReviewed = \"gate_reviewed\" duplicates the exported gate.EvReviewed (internal/gate/gate.go:47, also \"gate_reviewed\") even though retro.go already imports internal/gate (used elsewhere in the file, e.g. gate.FollowUp, gate.SourceApprove). Task 10's cmd_review.go uses gate.EvReviewed directly for the same event type; task 11 instead re-declares the same string under a new unexported name rather than reusing the existing constant it could import.",
+      "id": "c11",
+      "task": 11,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 211,
+      "title": "RemoveReceipt's not-exist branch has no direct or indirect test coverage",
+      "detail": "RemoveReceipt (gate.go:211) is new and has two branches: delete an existing receipt, or treat fs.ErrNotExist as success. Every test that calls `takt review --force` (TestForcedReviewFailureLeavesNoStaleReceipt and TestFindingsFileCarriesTheGateHashAndRound in internal/cli/cmd_review_failure_test.go) does so only after a prior successful review already wrote a receipt, so the deletion always removes an existing file. No test — neither a direct unit test in internal/gate/gate_test.go nor a CLI test doing `review \u003cgate\u003e --force` as the very first review of a gate — exercises the fs.ErrNotExist-is-ok branch, even though that is a realistic first-use case for --force.",
+      "id": "c12",
+      "task": 10,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 212,
+      "title": "RemoveReceipt uses fs.ErrNotExist where the rest of gate.go uses os.ErrNotExist",
+      "detail": "ReadReceipt (line 179) and artifactHash (line 125) both check errors.Is(err, os.ErrNotExist) for the identical sentinel. The new RemoveReceipt checks errors.Is(err, fs.ErrNotExist) instead, which required adding a new \"io/fs\" import solely for a spelling that os.ErrNotExist (== fs.ErrNotExist) already covers via the package's existing \"os\" import. Minor departure from the file's own established convention.",
+      "id": "c13",
+      "task": 10,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "commands/takt.md line 31 still reads: '`run` — Do the step yourself per `instructions` and `inputs`: ... `push_pr` (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`).' This is unchanged by the diff even though run-push_pr.md, questions.go's branch_finish option, and cmd_next.go's preparePushPR now produce `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with pr_title/pr_body_path inputs instead of `--fill`.",
+      "citations": [
+        "commands/takt.md:31"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "hosts/copilot/skills/takt/SKILL.md line 32 still reads the identical stale example: '`push_pr` (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`).' Not touched by this diff, while the actual generated instructions and questions.go's branch_finish description were updated to `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e`.",
+      "citations": [
+        "hosts/copilot/skills/takt/SKILL.md:32"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "internal/brief/brief.go:274 defines `func (d RunData) PRTitleQuoted() string { return strings.ReplaceAll(d.PRTitle, \"'\", `'\\''`) }`. internal/cli/archive.go:353-354 already has `func shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` — the identical close-escape-reopen substitution, just with the surrounding quotes added in shellQuote vs left to the template in PRTitleQuoted. Same escaping rule duplicated in two packages.",
+      "citations": [
+        "internal/brief/brief.go:274",
+        "internal/cli/archive.go:353-354"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "internal/brief/templates/run-retro.md line 1 still reads '...task and wave counts, per-wave dispatch→commit timings, retries...' even though WaveTiming's own doc comment in internal/finish/retro.go was changed to 'dispatch → close for one dispatched attempt that closed' with CommittedAt now optional/omitted for reworked attempts that never committed. The diff only edited the review-findings clause later in the same sentence, leaving 'dispatch→commit' unchanged.",
+      "citations": [
+        "internal/brief/templates/run-retro.md:1",
+        "internal/finish/retro.go:92-95"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "reviewFindingsOf (internal/cli/cmd_close_wave.go:163) sums len(tr.Review.Findings) over tasks. Its only test, TestWaveClosedEventCarriesSliceAndReviewFindings (internal/cli/close_events_test.go), uses reviewerRun(t) which sets up exactly one task (id 3, see record_reviewer_test.go:37-39 `st.Tasks = []bundle.Task{{ID: 3, ...}}`), so the accumulation across 2+ reviewed tasks is never exercised. TestRetroInputsCountEveryReviewOnce in internal/finish/retro_test.go builds its wave_closed events with a hard-coded review_findings value via a closedEv helper rather than calling reviewFindingsOf, confirming it doesn't cover this function either.",
+      "citations": [
+        "internal/cli/cmd_close_wave.go:163",
+        "internal/cli/close_events_test.go:16-54",
+        "internal/cli/record_reviewer_test.go:37-39"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "dispatchAgent (internal/cli/cmd_next.go:577-595) hoists r.ensureSliceDiff(ctx) to line 592, once, before building the render closure. No test in internal/cli greps for ensureSliceDiff invocation counts or diff-write counts for the reviewer dispatch path — only brief_stable_test.go's TestWriteStableBriefRendersOnce counts renders, and that is for the planner brief, not ensureSliceDiff.",
+      "citations": [
+        "internal/cli/cmd_next.go:577",
+        "internal/cli/cmd_next.go:592"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/cmd_next.go:772-785 in dispatchLenses inlines `text, _, rerr := renderFresh(lensBrief); ...; if p, err = writeStableBriefAt(p, text, lensBrief); err != nil {...}` — exactly the body of r.writeDispatchBrief(dest, render) defined at cmd_next.go:625-636, which for a non-empty dest does `text, _, err := renderFresh(render); ...; return writeStableBriefAt(dest, text, render)`. Since p (built via filepath.Join at line 770-771) is never empty, `r.writeDispatchBrief(p, lensBrief)` would be equivalent but isn't called.",
+      "citations": [
+        "internal/cli/cmd_next.go:779",
+        "internal/cli/cmd_next.go:783"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "preparePushPR's own ReadGoals wrap at cmd_next.go:1017-1019 (`rec, err := finish.ReadGoals(r.bdir); if err != nil { return fmt.Errorf(...) }`) is reached only from r.run(), which is only reached after loop() (cmd_next.go:236-244) calls gatherFacts → gatherFinishFacts (finish_facts.go:83, goalFacts) → finish.ReadGoals(bdir) (finish_facts.go:186) and returns fail() on error before ever calling decide.Decide or r.run. TestPushPRBodyListsGoalVerdicts (finish_test.go:661-665) writes malformed finish/goals.json and asserts only exit 1 + stderr containing 'JSON' — satisfied by goalFacts's earlier failure. The test's own comment (finish_test.go:656-660) acknowledges this ambiguity.",
+      "citations": [
+        "internal/cli/cmd_next.go:1017-1019",
+        "internal/cli/finish_facts.go:83-89",
+        "internal/cli/finish_facts.go:185-189",
+        "internal/cli/cmd_next.go:236-244",
+        "internal/cli/finish_test.go:656-665"
+      ]
+    },
+    {
+      "id": "c9",
+      "verdict": "confirmed",
+      "evidence": "prGoals (cmd_next.go:1042-1055) has two failure branches: os.ReadFile(p) at line 1047 and goals.Parse(b) at line 1051, wrapped `fmt.Errorf(\"%s: %w\", p, err)`. TestPushPRBodyListsGoalVerdicts (finish_test.go:617-666) only renames goals.md away to hit the ReadFile branch; grepping finish_test.go for 'goals.Parse' or any WriteFile to goals.md with invalid content finds nothing, so the goals.Parse failure branch and its error wrap are never exercised.",
+      "citations": [
+        "internal/cli/cmd_next.go:1042-1055",
+        "internal/cli/finish_test.go:644-654"
+      ]
+    },
+    {
+      "id": "c10",
+      "verdict": "confirmed",
+      "evidence": "priorFindingsForScopedPass's comment at cmd_review.go:388-390 states 'the findings file carries no hash and no pass identity, so pairing it with the receipt was convention, not a checkable invariant' — but this same diff adds exactly Hash and Round fields to reviews/\u003cgate\u003e.json via the reviewRecord type documented two paragraphs above (cmd_review.go:355-356, 359-360: 'tagged with the gate hash it reviewed and the round it was'). The diff hunk shows this comment block as unchanged context (only the `backend.VerdictRework`→`gate.VerdictRework` line below it was edited), so the justification is now factually wrong about the artifact's own shape.",
+      "citations": [
+        "internal/cli/cmd_review.go:388-390",
+        "internal/cli/cmd_review.go:355-360"
+      ]
+    },
+    {
+      "id": "c11",
+      "verdict": "confirmed",
+      "evidence": "internal/finish/retro.go:118 declares `evGateReviewed = \"gate_reviewed\"` as a new unexported const, even though retro.go already imports \"github.com/monrad/takt/internal/gate\" (line 10) and uses it elsewhere in the same file (e.g. gate.FollowUp at line 37, gate.SourceApprove). internal/gate/gate.go:47 already exports `EvReviewed = \"gate_reviewed\"`, and internal/cli/cmd_review.go:230 uses gate.EvReviewed directly for the identical event type — confirming the same string now lives under two names in two places that could drift.",
+      "citations": [
+        "internal/finish/retro.go:118",
+        "internal/finish/retro.go:9-10",
+        "internal/gate/gate.go:47",
+        "internal/cli/cmd_review.go:230"
+      ]
+    },
+    {
+      "id": "c12",
+      "verdict": "confirmed",
+      "evidence": "RemoveReceipt (internal/gate/gate.go:211-214) has an fs.ErrNotExist-is-ok branch. Both CLI tests that call `review --force` (TestForcedReviewFailureLeavesNoStaleReceipt and TestFindingsFileCarriesTheGateHashAndRound in internal/cli/cmd_review_failure_test.go, lines 146-173 and 282-314) run --force only after a prior successful, un-forced review already wrote a receipt (see e.g. line 150-153 and 285-289), so RemoveReceipt always deletes an existing file in both cases. A grep for 'RemoveReceipt' in internal/gate/gate_test.go finds no matches — no direct unit test either.",
+      "citations": [
+        "internal/gate/gate.go:211-214",
+        "internal/cli/cmd_review_failure_test.go:146-173",
+        "internal/cli/cmd_review_failure_test.go:282-314"
+      ]
+    },
+    {
+      "id": "c13",
+      "verdict": "confirmed",
+      "evidence": "internal/gate/gate.go:212 checks `errors.Is(err, fs.ErrNotExist)`, requiring the new \"io/fs\" import (line added at gate.go:12 area). The rest of the file uses os.ErrNotExist for the identical sentinel: line 125 `errors.Is(err, os.ErrNotExist) \u0026\u0026 name == \"goals.md\"` and line 179 `errors.Is(err, os.ErrNotExist)` in ReadReceipt — both via the already-imported \"os\" package. Since os.ErrNotExist == fs.ErrNotExist, RemoveReceipt's spelling is a functionally inert but real departure from the file's own established convention.",
+      "citations": [
+        "internal/gate/gate.go:212",
+        "internal/gate/gate.go:125",
+        "internal/gate/gate.go:179"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13"
+  ]
+}

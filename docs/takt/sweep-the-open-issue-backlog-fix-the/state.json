@@ -234,7 +234,7 @@
     {
       "id": 10,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/gate/gate.go",
         "internal/cli/cmd_review.go",
@@ -243,12 +243,21 @@
         "internal/cli/cmd_review_failure_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 10,
+        "attempt": 1,
+        "status": "done",
+        "summary": "runReview now reads events for the round, retires the prior receipt on `--force` before the backend call, and writes findings → carry → checked `gate_reviewed` event (with reason) → receipt → commit; `reviews/\u003cgate\u003e.json` carries `hash` and `round` via a new `reviewRecord`, with five new failure-path tests and the two comment rewrites.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T20:45:41.167052722Z"
+      }
     },
     {
       "id": 11,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/wave/close.go",
         "internal/cli/cmd_close_wave.go",
@@ -258,7 +267,16 @@
         "internal/cli/close_events_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 11,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Retro inputs now count gate and task review findings once each from the event log (split as gate_review_findings/task_review_findings) and emit one wave timing per dispatched attempt that closed, with closed_at, committed and an omitzero committed_at; wave_closed carries slice and review_findings, which the close record also stores.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T20:45:55.6878276Z"
+      }
     },
     {
       "id": 12,
@@ -276,7 +294,16 @@
         "internal/cli/brief_stable_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 12,
+        "attempt": 1,
+        "status": "done",
+        "summary": "push_pr` now carries `pr_title` and `pr_body_path` from a generated `finish/pr.md` (spec paragraph, goal verdicts, bundle pointer), the template and the `pr` option say `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with no `--fill` left, and the three #51 `cmd_next.go` items (single render, hoisted `ensureSliceDiff`, `lensTasks`) landed with tests.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T20:56:11.044173439Z"
+      }
     },
     {
       "id": 13,
@@ -291,7 +318,16 @@
         "internal/cli/cmd_answer_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 13,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added the TAKT_FAKE_REVIEW_CALLS recording hook to fake.go and the six #45/#51 polish tests across gate_test.go, oploop_test.go, close_internal_test.go, record_reviewer_test.go, and cmd_answer_test.go; all verify commands (greps, race tests, lint) pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T20:52:04.365010844Z"
+      }
     },
     {
       "id": 14,
@@ -317,13 +353,16 @@
     }
   ],
   "active_wave": {
-    "n": 0,
+    "n": 1,
     "slice": 1,
-    "attempt": 3,
-    "started_at": "2026-08-28T20:14:52.862571895Z",
+    "attempt": 1,
+    "started_at": "2026-08-28T20:33:54.605360815Z",
     "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
     "tasks": [
-      4
+      10,
+      11,
+      12,
+      13
     ],
     "baseline": []
   },

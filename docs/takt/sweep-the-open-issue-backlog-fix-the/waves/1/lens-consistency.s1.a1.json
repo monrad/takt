@@ -1,0 +1,42 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:10:42.50511834Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 779,
+      "title": "dispatchLenses reimplements the writeDispatchBrief helper it should call",
+      "detail": "Task 12 introduces r.writeDispatchBrief(dest, render) (lines 639-650) precisely to pair renderFresh with writeStableBriefAt once (#51). dispatchLenses's per-lens loop (lines 772-785) inlines exactly that sequence — text, _, rerr := renderFresh(lensBrief); ...; writeStableBriefAt(p, text, lensBrief) — instead of calling r.writeDispatchBrief(p, lensBrief), which would do the same thing since dest (p) is always non-empty here. The new helper is used at one of its two natural call sites and duplicated at the other, within the same task's own diff.",
+      "task": 12
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro.go",
+      "line": 118,
+      "title": "retro.go re-declares gate.EvReviewed under a different local name",
+      "detail": "evGateReviewed = \"gate_reviewed\" duplicates the exported gate.EvReviewed (internal/gate/gate.go:47, also \"gate_reviewed\") even though retro.go already imports internal/gate (used elsewhere in the file, e.g. gate.FollowUp, gate.SourceApprove). Task 10's cmd_review.go uses gate.EvReviewed directly for the same event type; task 11 instead re-declares the same string under a new unexported name rather than reusing the existing constant it could import.",
+      "task": 11
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 212,
+      "title": "RemoveReceipt uses fs.ErrNotExist where the rest of gate.go uses os.ErrNotExist",
+      "detail": "ReadReceipt (line 179) and artifactHash (line 125) both check errors.Is(err, os.ErrNotExist) for the identical sentinel. The new RemoveReceipt checks errors.Is(err, fs.ErrNotExist) instead, which required adding a new \"io/fs\" import solely for a spelling that os.ErrNotExist (== fs.ErrNotExist) already covers via the package's existing \"os\" import. Minor departure from the file's own established convention.",
+      "task": 10
+    },
+    {
+      "severity": "minor",
+      "file": "internal/brief/brief.go",
+      "line": 274,
+      "title": "PRTitleQuoted duplicates the existing shellQuote escaping helper",
+      "detail": "internal/cli/archive.go:354 already has shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" } for the identical purpose — escaping a string for a POSIX single-quoted word inside an instruction a session runs verbatim through a shell (used there for `git clean -fd -- \u003cpath\u003e`). PRTitleQuoted re-implements the same close-escape-reopen algorithm (minus the surrounding quotes, left to the template) in a different package instead of factoring one shared helper, so the same shell-quoting rule now lives in two places that could drift independently.",
+      "task": 12
+    }
+  ]
+}

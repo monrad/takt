@@ -1,0 +1,42 @@
+{
+  "lens": "docs",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:10:07.671693061Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "title": "Copilot skill still tells the host to `gh pr create --fill`",
+      "detail": "This diff replaces `gh pr create --base \u003cbase\u003e --fill` with a run-generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` everywhere it is produced (run-push_pr.md template, the branch_finish `pr` option's Description in internal/decide/questions.go, cmd_next.go's preparePushPR). The Copilot skill's op-table row for `run`/`push_pr` still spells out the literal old command: \"push_pr (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`)\". A host following this contract literally would run the old `--fill` command, discarding the run-derived title/body the rest of the diff exists to produce.",
+      "task": 0
+    },
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "title": "Claude Code command doc still tells the host to `gh pr create --fill`",
+      "detail": "Same staleness as the Copilot skill: the `run` row's push_pr example still reads \"then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", unchanged by this diff even though the actual op instructions (and the branch_finish option description in internal/decide/questions.go) now use `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the op's `pr_title`/`pr_body_path` inputs.",
+      "task": 0
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 1,
+      "title": "Retro instructions still say \"dispatch→commit timings\" after WaveTiming became dispatch→close",
+      "detail": "Task 11 changes WaveTiming from one entry per committed attempt to one entry per dispatched attempt that *closed*, with `closed_at` always present and `committed`/`committed_at` only when the attempt actually committed (internal/finish/retro.go's WaveTiming doc comment now reads \"one per dispatched attempt that closed\"). The retro-writing op's own instructions, run-retro.md line 1, still describe the inputs as \"per-wave dispatch→commit timings\" — unchanged except for the review-findings clause the task explicitly edited. A reworked attempt's timing entry has no `committed_at` at all, which the stale phrasing does not prepare the retro-writing agent for.",
+      "task": 11
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_review.go",
+      "line": 389,
+      "title": "priorFindingsForScopedPass's doc comment now contradicts the struct it sits above",
+      "detail": "The comment says \"the findings file carries no hash and no pass identity, so pairing it with the receipt was convention, not a checkable invariant\" (lines 388-390), but this same diff adds exactly that — Hash and Round — to reviews/\u003cgate\u003e.json via the new reviewRecord type documented two paragraphs above (lines 359-365: \"tagged with the gate hash it reviewed and the round it was\"). The stated justification for reading both the verdict and the blocking flag from one artifact is now factually wrong about the artifact's own shape, even though the conclusion (read from reviews/\u003cgate\u003e.json, not the receipt) may still be correct for other reasons.",
+      "task": 10
+    }
+  ]
+}

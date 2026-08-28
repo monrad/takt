@@ -1,0 +1,9 @@
+{
+  "task": 13,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added the TAKT_FAKE_REVIEW_CALLS recording hook to fake.go and the six #45/#51 polish tests across gate_test.go, oploop_test.go, close_internal_test.go, record_reviewer_test.go, and cmd_answer_test.go; all verify commands (greps, race tests, lint) pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T20:52:04.365010844Z"
+}

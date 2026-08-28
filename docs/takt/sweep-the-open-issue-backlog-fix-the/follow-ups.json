@@ -114,6 +114,103 @@
       "detail": "bundleHint's only positive branch guess is `\"takt/\"+slug` (select.go:122-123), and its doc comment states flatly that `takt init` commits the bundle on takt/\u003cslug\u003e. But cmd_init.go's chooseBranch (internal/cli/cmd_init.go:204-206, spec D9) documents two branch outcomes: on the default branch init creates takt/\u003cslug\u003e, but on any other branch init adopts the current branch (bi.adopted=true) and commits the bundle there instead — under whatever name that branch has, not takt/\u003cslug\u003e. For a run initialised via the adopted path, switching away from that branch and running `status`/`unlock` will fail loadBundle with fs.ErrNotExist, bundleHint's BranchExists(ctx, \"takt/\"+slug) check will correctly return false (no such branch was ever created), and the code falls through to \"no run named \u003cslug\u003e under \u003cbase\u003e; check the slug or pass --dir\" — telling the user no such run exists when it does, just on a differently-named adopted branch. No existing helper maps a slug back to its actual (possibly adopted) branch, so this is a real gap between the new hint logic and the branch rule the surrounding code already knows about, not just an untested edge case.",
       "source": "internal",
       "ts": "2026-08-28T20:33:46.056161214Z"
+    },
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "wave": 1,
+      "title": "Claude Code command doc still tells the host to `gh pr create --fill`",
+      "detail": "Same staleness as the Copilot skill: the `run` row's push_pr example still reads \"then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", unchanged by this diff even though the actual op instructions (and the branch_finish option description in internal/decide/questions.go) now use `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the op's `pr_title`/`pr_body_path` inputs.",
+      "source": "internal",
+      "ts": "2026-08-28T21:15:35.60451429Z"
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "wave": 1,
+      "title": "Copilot skill still tells the host to `gh pr create --fill`",
+      "detail": "This diff replaces `gh pr create --base \u003cbase\u003e --fill` with a run-generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` everywhere it is produced (run-push_pr.md template, the branch_finish `pr` option's Description in internal/decide/questions.go, cmd_next.go's preparePushPR). The Copilot skill's op-table row for `run`/`push_pr` still spells out the literal old command: \"push_pr (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`)\". A host following this contract literally would run the old `--fill` command, discarding the run-derived title/body the rest of the diff exists to produce.",
+      "source": "internal",
+      "ts": "2026-08-28T21:15:35.604514509Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_review.go",
+      "line": 389,
+      "wave": 1,
+      "task": 10,
+      "title": "priorFindingsForScopedPass's doc comment now contradicts the struct it sits above",
+      "detail": "The comment says \"the findings file carries no hash and no pass identity, so pairing it with the receipt was convention, not a checkable invariant\" (lines 388-390), but this same diff adds exactly that — Hash and Round — to reviews/\u003cgate\u003e.json via the new reviewRecord type documented two paragraphs above (lines 359-365: \"tagged with the gate hash it reviewed and the round it was\"). The stated justification for reading both the verdict and the blocking flag from one artifact is now factually wrong about the artifact's own shape, even though the conclusion (read from reviews/\u003cgate\u003e.json, not the receipt) may still be correct for other reasons.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534633Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 211,
+      "wave": 1,
+      "task": 10,
+      "title": "RemoveReceipt's not-exist branch has no direct or indirect test coverage",
+      "detail": "RemoveReceipt (gate.go:211) is new and has two branches: delete an existing receipt, or treat fs.ErrNotExist as success. Every test that calls `takt review --force` (TestForcedReviewFailureLeavesNoStaleReceipt and TestFindingsFileCarriesTheGateHashAndRound in internal/cli/cmd_review_failure_test.go) does so only after a prior successful review already wrote a receipt, so the deletion always removes an existing file. No test — neither a direct unit test in internal/gate/gate_test.go nor a CLI test doing `review \u003cgate\u003e --force` as the very first review of a gate — exercises the fs.ErrNotExist-is-ok branch, even though that is a realistic first-use case for --force.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534881Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 212,
+      "wave": 1,
+      "task": 10,
+      "title": "RemoveReceipt uses fs.ErrNotExist where the rest of gate.go uses os.ErrNotExist",
+      "detail": "ReadReceipt (line 179) and artifactHash (line 125) both check errors.Is(err, os.ErrNotExist) for the identical sentinel. The new RemoveReceipt checks errors.Is(err, fs.ErrNotExist) instead, which required adding a new \"io/fs\" import solely for a spelling that os.ErrNotExist (== fs.ErrNotExist) already covers via the package's existing \"os\" import. Minor departure from the file's own established convention.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534971Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_review_test.go",
+      "line": 67,
+      "wave": 1,
+      "task": 10,
+      "title": "Legacy coverage was added as a new top-level test",
+      "detail": "The task says every new test belongs in cmd_review_failure_test.go and asks for the legacy-file scenario as an added case in the existing round-trip test. Keep this package-private coverage in cmd_review_test.go, but fold it into TestWriteResultJSONRoundTripsFindings rather than introducing a separate test function.",
+      "source": "approve",
+      "ts": "2026-08-28T21:21:28.785628158Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 1,
+      "wave": 1,
+      "task": 11,
+      "title": "Retro instructions still say \"dispatch→commit timings\" after WaveTiming became dispatch→close",
+      "detail": "Task 11 changes WaveTiming from one entry per committed attempt to one entry per dispatched attempt that *closed*, with `closed_at` always present and `committed`/`committed_at` only when the attempt actually committed (internal/finish/retro.go's WaveTiming doc comment now reads \"one per dispatched attempt that closed\"). The retro-writing op's own instructions, run-retro.md line 1, still describe the inputs as \"per-wave dispatch→commit timings\" — unchanged except for the review-findings clause the task explicitly edited. A reworked attempt's timing entry has no `committed_at` at all, which the stale phrasing does not prepare the retro-writing agent for.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728647Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 163,
+      "wave": 1,
+      "task": 11,
+      "title": "reviewFindingsOf's summation is only ever exercised with one reviewed task",
+      "detail": "reviewFindingsOf sums len(tr.Review.Findings) across every task in the close. The only test that reaches it, TestWaveClosedEventCarriesSliceAndReviewFindings (internal/cli/close_events_test.go), bumps a single task (task 3) with one finding, so the accumulation (n += ...) across two-or-more reviewed tasks in the same close is never proved. TestRetroInputsCountEveryReviewOnce (internal/finish/retro_test.go) tests the downstream retro math but constructs its wave_closed events with a hard-coded review_findings value rather than calling reviewFindingsOf, so it doesn't cover this function either. A silent regression here (e.g. assignment instead of accumulation) would produce quietly wrong review_findings counts in the retro with no failing test.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728768Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro.go",
+      "line": 118,
+      "wave": 1,
+      "task": 11,
+      "title": "retro.go re-declares gate.EvReviewed under a different local name",
+      "detail": "evGateReviewed = \"gate_reviewed\" duplicates the exported gate.EvReviewed (internal/gate/gate.go:47, also \"gate_reviewed\") even though retro.go already imports internal/gate (used elsewhere in the file, e.g. gate.FollowUp, gate.SourceApprove). Task 10's cmd_review.go uses gate.EvReviewed directly for the same event type; task 11 instead re-declares the same string under a new unexported name rather than reusing the existing constant it could import.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728842Z"
     }
   ]
 }
