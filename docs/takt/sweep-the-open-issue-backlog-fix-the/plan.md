@@ -9,26 +9,32 @@ by #44, #43 and #45; `internal/cli/cmd_close_wave.go` by #53, #23 and #51;
 #36; `internal/brief/brief.go` by #31, #45 and #36. A per-issue split would serialise the sweep
 on those files, so each hot file has exactly one owner per wave and the issues that touch it
 ride along. Waves are computed by takt from `depends_on`; the file sets of tasks without an
-ordering edge are disjoint (takt's own `plan-disjoint` rule), and — after the plan review — so
+ordering edge are disjoint (takt's own `plan-disjoint` rule), and — after the plan reviews — so
 are their side effects: the two generated Copilot agent files have one owner (T14), and no task
-runs `hostgen` except that one. The graph gives two waves:
+runs `hostgen` except that one. The graph gives three waves:
 
-- **Wave 1** — T1, T2, T3, T4, T5, T6, T7, T8, T9, T14. Ten independent tasks, no shared files
+- **Wave 1** — T1, T2, T3, T4, T5, T6, T7, T8, T14. Nine independent tasks, no shared files
   (`max_parallel` is 8, so takt will run them as two slices).
-- **Wave 2** — T10 (after T1 and T2), T11 (after T1), T12 (after T6), T13 (after T1).
+- **Wave 2** — T10 (after T1 and T2), T11 (after T1), T12 (after T2 and T6), T13 (after T1).
+- **Wave 3** — T9 (after T8 and T12): the prose that publishes the `push_pr` command to the
+  session, which must not exist before the op it describes.
 
 Every task carries cheap tripwire verifies (a `grep` for a symbol, test name or phrase the task
 introduces, each failing on the current tree) plus the package tests the spec names, and a
 scoped `golangci-lint run` on the packages it edits — the repo's lint config is strict (funlen
 100/50, gocognit 20, mnd, godot, paralleltest, testpackage, nolintlint with required
-explanations), and catching it per task is cheaper than at finish. T10 and T12 also carry the
-repo-wide gates (`go test -race ./...`, `golangci-lint run ./...`, `task hosts:check`) as fast
-feedback for G13; what proves G13 is `takt verify` at finish, which runs the union of every
-task's verify commands on the assembled tree after the last wave has committed.
+explanations), and catching it per task is cheaper than at finish. T10 and T12 carry the
+repo-wide gates as fast feedback, and T9 — the last task of the final wave — carries the exact
+commands the spec names for G13: `go test ./... -race -count=1`, `golangci-lint run ./...`,
+`task hosts:check`. `takt verify` at finish runs the union of every task's verify commands on
+the assembled tree after the last wave has committed.
 
-Every committed wave is self-consistent: wave 1 lands the whole `retry`-on-error path except
+Every committed wave is self-consistent. Wave 1 lands the whole `retry`-on-error path except
 the one thing it cannot have yet (the backend's reason on a freshly written receipt, which is
-`runReview`'s in wave 2), and the question renders a receipt without a reason honestly.
+`runReview`'s in wave 2), and the question renders a receipt without a reason honestly. Nothing
+the session reads names the `push_pr` inputs before they exist: the `pr` option's description
+changes in T12, the same task that creates `inputs.pr_title`, `inputs.pr_body_path` and
+`finish/pr.md`, and the skill rows and design §7.5 change in T9, one wave later.
 
 Everything below was verified against the tree at `55e4431` (this branch's HEAD at planning
 time); line numbers are where the code stands today, not a contract.
@@ -59,7 +65,7 @@ whole document from `renderFindings` plus its two sections and writes it once th
 pointer to compile (`assertApproveFollowUps`, `TestRecordVerifyWritesInternalRecordAndCarriesUnattributed`);
 T13 later strengthens them, which is why T13 depends on this task. Seven files.
 
-### T2 — the errored gate review, end to end minus the writer: question, `retry` answer, and the reason's plumbing; a choosable branch_finish; "twelve" (#43.2, #26, #45, #36 option text) — `implement`
+### T2 — the errored gate review, end to end minus the writer: question, `retry` answer, and the reason's plumbing; a choosable branch_finish; "twelve" (#43.2, #26, #45) — `implement`
 
 The plan review's point stands: a wave must not offer a choice the binary rejects. So this task
 lands the whole `retry` path except what `runReview` writes (T10): `gate.Receipt` and
@@ -73,14 +79,14 @@ receipt written before the field existed, or by wave 1's `runReview`), and `answ
 accepts `retry` (writes nothing; `cmdAnswer` clears the gate and commits). The rework/reject
 wording is untouched. `questionBranchFinish` orders `pr` (Recommended), `keep`, `merge`
 (disabled, with its reason), `discard` when merge is blocked and leaves the allowed order alone;
-exactly one option ever carries "(Recommended)" and it is first and enabled — the `pr`
-description names `--title '<title>' --body-file <path>` instead of `--fill`. "eleven ids" →
-"twelve" in both places. Tests in the two decide test files, plus a new cli test file that
-plants an error receipt (with a reason) at the current hash and drives `next` → `answer retry`
-→ `next`, proving the reason reaches the question, the answer writes no event, and the gate
-returns until the review is re-run. The scripted op-loop driver already picks the first
-*enabled* option, so the branch_finish reorder changes no existing loop test. Eight files; T10
-depends on it.
+exactly one option ever carries "(Recommended)" and it is first and enabled. The `pr` option's
+*description* keeps today's `--fill` wording here — T12 rewrites it in the same commit that
+creates the inputs it will name. "eleven ids" → "twelve" in both places. Tests in the two decide
+test files, plus a new cli test file that plants an error receipt (with a reason) at the current
+hash and drives `next` → `answer retry` → `next`, proving the reason reaches the question, the
+answer writes no event, and the gate returns until the review is re-run. The scripted op-loop
+driver already picks the first *enabled* option, so the branch_finish reorder changes no
+existing loop test. Eight files; T10 and T12 depend on it.
 
 ### T3 — doctor `review-record` check (#43.3) — `bounded`
 
@@ -139,24 +145,16 @@ One flag in `copilotArgs`, pinned by `TestCopilotArgs`, with the comment saying 
 cross-vendor reviewer must not read the project instructions the implementer followed. The
 design-doc sentence is T8's. Two files.
 
-### T8 — documentation sweep (#54, #35, #26 plan doc, #18, #49 §8.2, #45 §6, #36 §7.5) — `docs`
+### T8 — documentation sweep (#54, #35, #26 plan doc, #18, #49 §8.2, #45 §6) — `docs`
 
 Four prose files, each edit fixed by the spec: design §4.6 restated by the holder (the rule the
-code keys on), §8.2's command line gaining the copilot flag and its one-sentence reason, and
-§7.5's `--fill` becoming the title/body-file form so the design does not contradict T12; the
+code keys on) and §8.2's command line gaining the copilot flag and its one-sentence reason; the
 hardening plan's Task 8 choosing `pr` and naming `docs/takt/<slug>/retro.md`; the fixed-point
 design's §6 sentence after the table; the README's macOS quarantine paragraph under "The
-binary". No code.
-
-### T9 — the two skill files: the `push_pr` command and the absolute-path invariant (#36 op table, #37) — `bounded`
-
-`commands/takt.md` and `hosts/copilot/skills/takt/SKILL.md` get the `push_pr` row rewritten to
-`gh pr create --base <base> --title '<title>' --body-file <path>` (from `inputs.pr_title` and
-`inputs.pr_body_path`) and one new Invariants bullet beside "never edit the bundle by hand":
-inspect bundle files by absolute path — never `cd` into the bundle. Both sentences are added to
-`crossHostInvariants` in `prompt_test.go`, so the parity test fails if either host's copy
-drifts. Independent of T12's template change: the prose describes the op T12 emits, and the
-spec fixes the wording. Three files.
+binary". Issue #20's body is GitHub's and is left to the maintainer — this run does not edit it
+and makes no note of it anywhere (the spec's #35 row was amended to say exactly that). Design
+§7.5's `--fill` sentence is *not* this task's: it describes the `push_pr` command and moves to
+T9, after the command exists. No code.
 
 ### T14 — the two agent definitions and their generated Copilot files (#24 and #31 agent text) — `bounded`
 
@@ -205,23 +203,25 @@ and `committed_at` (`omitzero`), `waveTimings` pairs `wave_dispatched` with `wav
 attempt. `run-retro.md` names the split. `TestBuildRetroInputsCarriesFollowUps` gets its
 minimal fixture; the existing timing fixtures gain `wave_closed` events. Six files.
 
-### T12 — the pull request is written from the run; `cmd_next.go` polish (#36, #51 `cmd_next.go` items) — `implement`
+### T12 — the pull request is written from the run; `cmd_next.go` polish (#36 code and option text, #51 `cmd_next.go` items) — `implement`
 
-Depends on T6 (`brief.go`, `brief_test.go`). A pure `finish.BuildPR` derives the title (the
-spec's H1, else the topic's first 72 runes) and body (first prose paragraph, `## Goals` with
-each goal's verdict / `waived (<reason>)` / `not assessed`, `## Run` bundle pointer); the
-`push_pr` `run` op writes `finish/pr.md` on every call and passes `inputs.pr_title` and
-`inputs.pr_body_path`. The `## Goals` section is omitted only when the run's goals are off
-(`Config.Goals` false); with goals on, `goals.md` is required — a missing or unparsable file
-fails the `next` call rather than producing a PR body with no goals — and `not assessed` is
-what a goal gets when `finish/goals.json` does not exist or has no verdict for it, never what an
-unreadable or malformed record (or `spec.md`) turns into: those errors fail the call too, and
-tests pin both the missing `goals.md` and the corrupt `goals.json`. `RunData` gains the two
-fields and a `PRTitleQuoted` method (`'` → `'\''`); `run-push_pr.md` says `--title '<title>'
---body-file <path>`. Same file, so the three `cmd_next.go` polish items land here:
-`writeStableBrief` renders once and hands `writeStableBriefAt` the text, `verifyBrief` calls
-`ensureSliceDiff` before building its closure, `lensTasks` loses its dead parameter. Eight
-files. Carries the repo-wide gates.
+Depends on T6 (`brief.go`, `brief_test.go`) and T2 (`questions.go`). A pure `finish.BuildPR`
+derives the title (the spec's H1, else the topic's first 72 runes) and body (first prose
+paragraph, `## Goals` with each goal's verdict / `waived (<reason>)` / `not assessed`, `## Run`
+bundle pointer); the `push_pr` `run` op writes `finish/pr.md` on every call and passes
+`inputs.pr_title` and `inputs.pr_body_path`. The `## Goals` section is omitted only when the
+run's goals are off (`Config.Goals` false); with goals on, `goals.md` is required — a missing or
+unparsable file fails the `next` call rather than producing a PR body with no goals — and
+`not assessed` is what a goal gets when `finish/goals.json` does not exist or has no verdict
+for it, never what an unreadable or malformed record (or `spec.md`) turns into: those errors
+fail the call too, and tests pin both the missing `goals.md` and the corrupt `goals.json`.
+`RunData` gains the two fields and a `PRTitleQuoted` method (`'` → `'\''`); `run-push_pr.md`
+says `--title '<title>' --body-file <path>`; and the `pr` option's description in
+`questions.go` names the same command from the op's inputs — landing here, not in T2, so no
+committed tree describes inputs that do not exist yet. Same file, so the three `cmd_next.go`
+polish items land here: `writeStableBrief` renders once and hands `writeStableBriefAt` the
+text, `verifyBrief` calls `ensureSliceDiff` before building its closure, `lensTasks` loses its
+dead parameter. Nine files. Carries the repo-wide gates.
 
 ### T13 — the polish tests, and the fake backend records its calls (#45 and #51 test items) — `bounded`
 
@@ -237,18 +237,34 @@ and reads exactly `logs/<id>.prompt`, no directory scan and no glob a stale file
 "no verdict for c2" sub-case. `cmd_answer_test.go`: `internal_review_skipped` carries
 `reason: agent_invalid`. Six files: five test files and the fake backend's recording hook.
 
+### T9 — publish the `push_pr` command: the two skill rows, design §7.5, and the absolute-path invariant (#36 prose, #37) — `bounded`
+
+*Wave 3, after T12 (the op it describes) and T8 (the design doc it shares).* `commands/takt.md`
+and `hosts/copilot/skills/takt/SKILL.md` get the `push_pr` row rewritten to `gh pr create
+--base <base> --title '<title>' --body-file <path>` (from `inputs.pr_title` and
+`inputs.pr_body_path`) and one new Invariants bullet beside "never edit the bundle by hand":
+inspect bundle files by absolute path — never `cd` into the bundle. Design §7.5's `--fill`
+sentence becomes the same command. Both skill sentences are added to `crossHostInvariants` in
+`prompt_test.go`, so the parity test fails if either host's copy drifts. The #37 invariant could
+have landed earlier, but it is one bullet in the same two files, and one owner per file is
+simpler than two ordered ones. As the last task of the final wave it carries the exact
+repository-wide gates the spec names. Four files.
+
 ## Risks
 
 - **Same-worktree wave concurrency.** Wave 1 has six tasks compiling `internal/cli` (T1, T2,
-  T4, T5, T6 directly; T3 through its cli test) and two whose tests read the agent files (T9,
-  T14), so one task's verify can observe another's half-written edit and fail transiently;
-  takt re-attempts, and the wave is graded on the committed tree. This is the accepted residual
-  risk of the previous sweep, adopted again. What the plan review found — two tasks running
+  T4, T5, T6 directly; T3 through its cli test) and one whose tests read the agent files (T14),
+  so one task's verify can observe another's half-written edit and fail transiently; takt
+  re-attempts, and the wave is graded on the committed tree. This is the accepted residual risk
+  of the previous sweep, adopted again. What the first plan review found — two tasks running
   `hostgen` and writing each other's generated files — is not a transient failure but an
   out-of-scope write, and is removed by giving T14 sole ownership of the generated files.
 - **Wave 1 offers `retry` before `runReview` writes a reason.** The question renders
   `(no reason recorded)` for such a receipt and the `retry` answer already works, so the
   intermediate tree is honest rather than contradictory; T10 fills the reason in wave 2.
+- **A third wave for one prose task.** T9 costs a wave of its own so that the session's
+  instructions never name `pr_title`/`pr_body_path` before `takt next` emits them; the
+  alternative — folding it into T12 — would put T12 at the twelve-file cap.
 - **Failure injection in T10's tests** relies on two seams: a read-only `events.jsonl`
   refusing `O_APPEND` (the seam the existing streak-loss tests use), which does not hold as
   root — that test skips when `os.Geteuid() == 0` — and a `.git/index.lock` file, which makes
@@ -269,8 +285,9 @@ and reads exactly `logs/<id>.prompt`, no directory scan and no glob a stale file
 - **T3 `bounded`** — a new check in a package whose shape (`Check{Name, Run}`) every sibling
   file demonstrates; message, fix line and test cases are dictated by the spec.
 - **T7 `bounded`** — one flag, one assertion, wording given.
-- **T9 `bounded`** — two prose files plus two string literals appended to an existing test
-  table; the sentences are quoted in the spec.
+- **T9 `bounded`** — three prose files plus two string literals appended to an existing test
+  table; the sentences are quoted in the spec. Its repo-wide gates are regression guards on a
+  tree every other task has already landed on, not new work.
 - **T13 `bounded`** — tests against existing behaviour, plus a five-line recording hook in the
   fake reviewer (a test double that lives in production code so the CLI runs without a
   vendor); every assertion is named, so it is small and fully specified rather than `test`

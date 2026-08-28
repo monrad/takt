@@ -278,7 +278,7 @@ where a test is added.
   bundle, since a shell that stays there turns every later repo-relative path into a
   false "missing file". (`prompt_test.go` keeps the two files in parity.)
 - **#35** — the plan doc's Task 8 step 3 says `docs/takt/<slug>/retro.md`. Issue #20's
-  body is GitHub's; it is noted in the PR, not edited by this run.
+  body is GitHub's and is left to the maintainer; this run does not edit it.
 - **#18** — README's "The binary" section gains a short macOS paragraph: the cask
   removes `com.apple.quarantine` from the installed binary (the `.goreleaser.yaml`
   post-install hook); if a future macOS or Homebrew change stops that, the first run
@@ -321,5 +321,5 @@ brief with a path and no excerpt; the copilot flag; and the tests #45/#51 list.
 | #36: title fallback and quoting | H1, else the topic's first 72 characters; single-quoted with `'\''`. | H1 is the spec's own name for the change; single quotes are the one shell-safe form for arbitrary text. | assumed |
 | #45's "three review rounds" prose | Nothing to do — not present at `cc0a501`. | Verified by grep over `internal/brief/templates` and `agents/`. | assumed |
 | #45's `eventString` extraction | Left as is. | The issue itself calls it a judgment call; the two loops have different semantics. | assumed |
-| #35: edit issue #20's body? | No — noted in the PR description instead. | Editing GitHub issues is not a repository change. | assumed |
+| #35: edit issue #20's body? | No — left to the maintainer. | Editing GitHub issues is not a repository change, and nothing this run produces is the place to record it. | assumed |
 | #53: migrate old `follow-ups.json` files? | No. | Only two runs exist and both are archived; the ambiguity is documented. | assumed |
