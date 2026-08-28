@@ -1,0 +1,18 @@
+{
+  "lens": "docs",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T20:01:43.107554192Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "§5.4 still documents FollowUp.Wave as a plain int and the carry as un-de-duplicated, both now false",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and (line 361-362) `Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.` This wave's task 1 changes exactly that: `internal/gate/followup.go` now declares `Wave *int` (nil for a gate follow-up, \u0026n for wave n, so wave 0 serialises as \"wave\": 0) and `AppendFollowUps` is now idempotent with a Key()-based upgrade rule (approve→override) — i.e. #44 is resolved, not left untouched. The new code comment on the Wave/Task fields even cites this same '§5.4' as its rationale, so the doc it points to now contradicts the shape it documents. No task in this wave updates the two-layers design doc, and it is still an actively cross-referenced document (2026-08-24-takt-design.md links '(two-layers design §5.4)' and similar in several places), so a future reader following that citation is told the wrong field type and the wrong de-duplication story.",
+      "task": 0
+    }
+  ]
+}

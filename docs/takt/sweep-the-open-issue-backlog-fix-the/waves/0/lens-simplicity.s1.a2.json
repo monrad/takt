@@ -1,0 +1,18 @@
+{
+  "lens": "simplicity",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T19:55:23.860432409Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/select.go",
+      "line": 119,
+      "title": "Dead defensive nil-check on ws.Repo",
+      "detail": "bundleHint's `if ws.Repo != nil { ... }` guard is unreachable: its only caller, openTarget (select.go:100-102), only reaches bundleHint after openWorkspace (select.go:92) has already succeeded, and openWorkspace (workspace.go:29-44) only returns a non-nil *workspace when gitx.Open succeeded — gitx.Open (internal/gitx/git.go:31-37) returns either (nil, error) or (\u0026Repo{...}, nil), never (nil, nil), and openWorkspace propagates any Open error before constructing the workspace. So ws.Repo is provably non-nil on every path that reaches bundleHint; the branch can never take the false side. This is a dead fallback (rubric item 4) introduced by this diff's new bundleHint helper — it silently guards against a condition that cannot occur instead of trusting (or asserting) the invariant, adding a branch with no real effect and no test can ever exercise the false side.",
+      "task": 4
+    }
+  ]
+}

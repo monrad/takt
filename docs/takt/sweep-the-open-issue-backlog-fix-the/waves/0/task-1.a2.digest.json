@@ -1,0 +1,9 @@
+{
+  "task": 1,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Removed the unreachable json.Marshal fallback in FollowUp.Key() per the review finding; the rest of the wave-pointer, idempotent-append and single-write-findings work was already in place, and all verify commands (tests, lint, greps) now pass — the earlier failure came from another task's citation change that has since been fixed.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T19:35:30.369176487Z"
+}

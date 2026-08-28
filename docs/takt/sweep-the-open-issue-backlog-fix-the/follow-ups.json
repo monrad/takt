@@ -75,6 +75,25 @@
       "detail": "reviewRecordLevel returns one matching level, so duplicate or additional review-record findings could pass. Assert levels(fs, \"review-record\") equals exactly [WARN] or [PASS] as specified.",
       "source": "approve",
       "ts": "2026-08-28T19:00:09.364711005Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "§5.4 still documents FollowUp.Wave as a plain int and the carry as un-de-duplicated, both now false",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and (line 361-362) `Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.` This wave's task 1 changes exactly that: `internal/gate/followup.go` now declares `Wave *int` (nil for a gate follow-up, \u0026n for wave n, so wave 0 serialises as \"wave\": 0) and `AppendFollowUps` is now idempotent with a Key()-based upgrade rule (approve→override) — i.e. #44 is resolved, not left untouched. The new code comment on the Wave/Task fields even cites this same '§5.4' as its rationale, so the doc it points to now contradicts the shape it documents. No task in this wave updates the two-layers design doc, and it is still an actively cross-referenced document (2026-08-24-takt-design.md links '(two-layers design §5.4)' and similar in several places), so a future reader following that citation is told the wrong field type and the wrong de-duplication story.",
+      "source": "internal",
+      "ts": "2026-08-28T20:07:19.406247666Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 202,
+      "task": 6,
+      "title": "Newline-flattening fix applied to PriorFindingLines but not to its twin CandidateLines",
+      "detail": "This diff adds `lineSafe` to collapse newlines in PriorFindingLines' free-text `f.Detail` before rendering one-finding-per-line (brief.go:244), with a doc comment explaining that an unflattened multi-line Detail would 'arrive as several [findings]' to the reviewing agent. CandidateLines (brief.go:202-208), a few lines above in the same file, renders VerifyCandidate.Detail — the same kind of free-form, agent-authored prose (from lens-review findings, wired through cmd_next.go:884) — in the exact same one-per-line format, with the exact same unflattened `c.Detail`. The identical hazard this diff explicitly fixes in one place is left live in the structurally identical sibling function it did not touch.",
+      "source": "internal",
+      "ts": "2026-08-28T20:10:20.203231781Z"
     }
   ]
 }

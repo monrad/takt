@@ -1,12 +1,11 @@
 {
   "wave": 0,
   "slice": 1,
-  "attempt": 1,
+  "attempt": 2,
   "tasks": [
     {
       "task": 1,
-      "status": "failed",
-      "reason": "verify",
+      "status": "done",
       "files_changed": [
         "internal/cli/close_internal_test.go",
         "internal/cli/cmd_close_wave.go",
@@ -61,31 +60,26 @@
         },
         {
           "command": "go test -race -count=1 ./internal/gate/... ./internal/cli/...",
-          "exit": 1,
-          "passed": false,
-          "tail": "ok  \tgithub.com/monrad/takt/internal/gate\t1.026s\n--- FAIL: TestRecordPrintsNoWarningsKeyOnACleanRecord (0.02s)\n    cmd_record_test.go:491: no goals_attempts_reset event among 2 events\n--- FAIL: TestRecordGoalsReportsAnUnreadableEventLog (0.02s)\n    cmd_record_test.go:435: the loss must be reported under \"warnings\": map[problems:[G1: citation \"a.go:1\" — not a file] valid:false]\n--- FAIL: TestRecordGoalsReportsALostStreakResetAppend (0.02s)\n    cmd_record_test.go:417: the loss must be reported under \"warnings\": map[problems:[G1: citation \"a.go:1\" — not a file] valid:false]\nFAIL\nFAIL\tgithub.com/monrad/takt/internal/cli\t6.622s\nFAIL",
-          "elapsed_ms": 6828
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/gate\t1.025s\nok  \tgithub.com/monrad/takt/internal/cli\t6.237s",
+          "elapsed_ms": 11766
         },
         {
           "command": "golangci-lint run ./internal/gate/... ./internal/cli/...",
           "exit": 0,
           "passed": true,
-          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
-          "elapsed_ms": 627
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\n0 issues.",
+          "elapsed_ms": 6672
         }
       ],
-      "internal": [
-        {
-          "severity": "nit",
-          "file": "internal/gate/followup.go",
-          "line": 98,
-          "title": "Dead fallback in FollowUp.Key() for an error json.Marshal cannot produce",
-          "detail": "Key() marshals a []any of only strings, ints and nil (see lines 90-97); json.Marshal cannot fail for those types (it only errors on channels, funcs, complex numbers, cyclic references or unsupported types), and the comment at lines 100-102 says as much (\"Unreachable\"). The fmt.Sprintf(\"%v\", parts) fallback is therefore a legacy-style defensive branch that can never execute — a dead fallback per the over-engineering rubric (item 4). Not harmful, but it adds a branch and an unreachable format-based key-rendering path that will never be exercised by any test. Low priority: could simply be `b, _ := json.Marshal(parts); return string(b)` with a one-line comment noting why the error is ignored.",
-          "lenses": [
-            "simplicity"
-          ]
-        }
-      ]
+      "review": {
+        "verdict": "approve",
+        "summary": "The implementation matches the specified pointer-based wave representation, injective normalized identity, idempotent append and source-upgrade rules, constructor updates, atomic single-write findings rendering, and required test coverage. No correctness or scope issues were found in the provided diff.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
     },
     {
       "task": 2,
@@ -283,7 +277,7 @@
     {
       "task": 4,
       "status": "rework",
-      "reason": "Alignment state precedence contradicts the required behavior.",
+      "reason": "The implementation otherwise matches the task, but it does not fully guarantee the explicit never-bare alignment invariant.",
       "files_changed": [
         "internal/cli/cmd_status.go",
         "internal/cli/cmd_status_test.go",
@@ -337,27 +331,27 @@
           "command": "go test -race -count=1 -run 'TestStatus|TestUnlock' ./internal/cli/",
           "exit": 0,
           "passed": true,
-          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.466s",
-          "elapsed_ms": 1691
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.462s",
+          "elapsed_ms": 1729
         },
         {
           "command": "golangci-lint run ./internal/cli/...",
           "exit": 0,
           "passed": true,
           "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
-          "elapsed_ms": 376
+          "elapsed_ms": 366
         }
       ],
       "review": {
         "verdict": "rework",
-        "summary": "Alignment state precedence contradicts the required behavior.",
+        "summary": "The implementation otherwise matches the task, but it does not fully guarantee the explicit never-bare alignment invariant.",
         "findings": [
           {
             "severity": "major",
             "file": "internal/cli/cmd_status.go",
-            "line": 600,
-            "title": "Unconfirmed alignment incorrectly renders verdicts",
-            "detail": "VerdictsPresent is checked before !Confirmed. The task requires skipped → unconfirmed → confirmed without verdicts → verdict counts. An alignment containing verdicts while Confirmed is false must render “N clauses awaiting confirmation,” but this code renders the verdict summary. The tests omit this combination."
+            "line": 604,
+            "title": "Unknown verdict values still produce a bare alignment label",
+            "detail": "VerdictsPresent becomes true for any non-empty verdict array, while alignmentLine renders only the five recognized verdict strings. applyVerdicts currently accepts non-empty arrays without validating Verdict values, so an auditor response containing only an unknown or empty verdict reaches this branch and renders \"alignment: \". Validate verdict values when recording them or make alignmentStatusLine provide a non-empty fallback when no recognized counts, contraction, or creep text is produced; add a regression test for this accepted input."
           }
         ],
         "provider": "copilot",
@@ -366,62 +360,133 @@
       "internal": [
         {
           "severity": "major",
-          "file": "internal/cli/cmd_status.go",
-          "line": 596,
-          "title": "alignmentLine reuse breaks loadCommitMessage's \"skipped leaves message unchanged\" contract",
-          "detail": "alignmentLine(a) now returns a non-empty string (\"skipped\", \"N clauses awaiting confirmation\", or \"N clauses confirmed, verdicts pending\") for states that previously produced \"\". internal/cli/cmd_next.go:539-552 loadCommitMessage explicitly reuses this same alignmentLine (per its own doc comment, unmodified in this diff) and relies on it returning \"\" whenever there are no verdict artifacts: 'No verdict artifacts (the audit is disabled, skipped, or has not run yet) leaves the message unchanged.' That contract is now broken for the reachable 'explicitly skipped' path: takt answer --gate agent_invalid --choice skip → skipAlignment(bdir, st) sets alignment.json's Skipped=true; decidePlan's ClausesPresent/ClausesConfirmed/VerdictsPresent facts all become true via the `|| a.Skipped` OR (internal/cli/facts.go:78-80), so the plan→execute transition proceeds immediately and loadCommitMessage is called with a.Skipped=true. alignmentLine now hits `case a.Skipped: return gateSkipped` and returns \"skipped\" (non-empty), so the commit subject/body now gets \" — alignment: skipped\" appended, directly contradicting the still-present, unmodified doc comment and the existing behaviour TestLoadCommitMessageOmitsAlignmentWhenAbsent pins for the 'no verdict artifacts' cases (that test only covers the fully-absent alignment.json case, not the explicit-skip case, so it does not catch this). The two other new non-empty branches ('N clauses awaiting confirmation' / 'N clauses confirmed, verdicts pending') cannot actually be reached from decidePlan's transition gate, so only the Skipped branch is a live regression, but it is a real, untested one.",
-          "lenses": [
-            "correctness"
-          ]
-        },
-        {
-          "severity": "blocking",
-          "file": "internal/cli/cmd_status.go",
-          "line": 598,
-          "title": "alignmentLine's new non-empty branches break loadCommitMessage's documented 'no verdicts → unchanged' contract",
-          "detail": "Task 4 rewrote alignmentLine (used by both status and, per its own doc comment at cmd_status.go:593, by cmd_next.go's loadCommitMessage) so the `Skipped` case now returns the literal \"skipped\" instead of \"\". loadCommitMessage (internal/cli/cmd_next.go:524-553) treats an empty alignmentLine result as \"no verdict artifacts (the audit is disabled, skipped, or has not run yet) — leave the message unchanged\" (its own doc comment says so verbatim) and otherwise appends \" — alignment: \u003cline\u003e\" to the plan→execute commit subject/body. skipAlignment (internal/cli/cmd_answer.go:307-314) writes alignment.json with Skipped=true and no verdicts, and decide.go's decidePlan (internal/decide/decide.go:331-341) treats Skipped as satisfying ClausesPresent/ClausesConfirmed/VerdictsPresent, so the run proceeds straight to ActLoadPlan without ever gaining verdicts. The next `takt next` therefore reaches loadCommitMessage with a non-nil, Skipped alignment digest, and the plan→execute commit now reads \"...— alignment: skipped\" — contradicting loadCommitMessage's own documented behaviour and permanently altering commit history for a path task 4 never mentions touching. No test exercises this: TestLoadCommitMessageOmitsAlignmentWhenAbsent (internal/cli/cmd_next_test.go:346) only covers alignment fully disabled (statusAlignment returns nil), not the skipped-with-clauses case.",
-          "lenses": [
-            "consistency"
-          ]
-        },
-        {
-          "severity": "nit",
-          "file": "internal/cli/cmd_status.go",
-          "line": 609,
-          "title": "alignmentVerdictLine grows unrequested unknown-verdict handling",
-          "detail": "Task 4's brief specifies alignmentLine's four cases (skipped / awaiting confirmation / confirmed-pending-verdicts / today's counts line) but says nothing about handling verdict words outside alignmentVerdictOrder. The diff adds a `seen` map plus a second pass that collects and sort.Strings' any unrecognised verdict word into a `rest` bucket (lines 616-633) — extra state and a second loop to defend against an auditor emitting a word the fixed order doesn't know. It's a reasonable robustness fix (previously such words were silently dropped) but it is scope creep beyond what the task asked for in a diff whose other status changes are otherwise minimal and tightly scoped to the brief. Flagging for awareness rather than blocking — the added complexity is small and self-contained.",
+          "file": "internal/cli/select.go",
+          "line": 119,
+          "title": "Dead defensive nil-check on ws.Repo",
+          "detail": "bundleHint's `if ws.Repo != nil { ... }` guard is unreachable: its only caller, openTarget (select.go:100-102), only reaches bundleHint after openWorkspace (select.go:92) has already succeeded, and openWorkspace (workspace.go:29-44) only returns a non-nil *workspace when gitx.Open succeeded — gitx.Open (internal/gitx/git.go:31-37) returns either (nil, error) or (\u0026Repo{...}, nil), never (nil, nil), and openWorkspace propagates any Open error before constructing the workspace. So ws.Repo is provably non-nil on every path that reaches bundleHint; the branch can never take the false side. This is a dead fallback (rubric item 4) introduced by this diff's new bundleHint helper — it silently guards against a condition that cannot occur instead of trusting (or asserting) the invariant, adding a branch with no real effect and no test can ever exercise the false side.",
           "lenses": [
             "simplicity"
-          ]
-        },
-        {
-          "severity": "minor",
-          "file": "internal/cli/cmd_status.go",
-          "line": 624,
-          "title": "alignmentVerdictLine's \"unknown verdict\" bucket is untested",
-          "detail": "The refactor into alignmentVerdictLine adds a new branch (lines 624-633) that buckets and sorts any verdict word outside alignmentVerdictOrder rather than silently dropping it — a genuinely new code path per the doc comment (\"nothing validates the auditor's word\"). No test in internal/cli/cmd_status_test.go supplies an alignment.json verdict outside {covered, narrowed, dropped, widened, contradicted}, so this branch (and its sort.Strings ordering) has zero coverage.",
-          "lenses": [
-            "tests"
           ]
         }
       ]
     },
     {
       "task": 5,
-      "status": "blocked",
-      "reason": "internal/cli/cmd_record_test.go:273 needs `\"citations\":[\"a.go:1\"]` → `\"citations\":[\"README.md:1\"]` (or `[]`); that file is not in my declared list.",
+      "status": "rework",
+      "reason": "Citation validation and integration behavior match the task, but the mandated G304 annotation is missing and replaced by a misleading comment that itself contains a nolint token.",
       "files_changed": [
         "internal/brief/templates/goal-assessor.md",
         "internal/cli/citations_test.go",
         "internal/cli/cmd_record.go",
         "internal/finish/goals.go",
         "internal/finish/goals_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func CheckCitations' internal/finish/goals.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'FieldsFunc' internal/finish/goals.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'CheckCitations' internal/cli/cmd_record.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'path:start-end' internal/brief/templates/goal-assessor.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestCitationGrammarAndContainment' internal/finish/goals_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestRecordGoalsRejectsBadCitations' internal/cli/citations_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'bad verdict and bad citation' internal/cli/citations_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestCitation|TestRecordGoals|TestGoal' ./internal/finish/... ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/finish\t1.023s\nok  \tgithub.com/monrad/takt/internal/cli\t1.622s",
+          "elapsed_ms": 1889
+        },
+        {
+          "command": "golangci-lint run ./internal/finish/... ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 788
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "Citation validation and integration behavior match the task, but the mandated G304 annotation is missing and replaced by a misleading comment that itself contains a nolint token.",
+        "findings": [
+          {
+            "severity": "minor",
+            "file": "internal/finish/goals.go",
+            "line": 284,
+            "title": "Required gosec annotation is not attached to the repository file read",
+            "detail": "The task explicitly requires `//nolint:gosec // G304: the path is constrained to the resolved repository root above` on the agent-controlled file read. Instead, the preceding prose claims the directive would be unused while embedding `//nolint:gosec` inside that prose; golangci-lint may still interpret that token as suppression, explaining the clean lint result without providing the required security rationale at the read. Replace the prose with the specified annotation on `os.ReadFile(resolved)`."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "major",
+          "file": "internal/finish/goals.go",
+          "line": 277,
+          "title": "Dynamic file read lacks the repo's established nolint:gosec pattern",
+          "detail": "checkRange's os.ReadFile(resolved) reads a path built from the agent's citation string (external input), validated only by runtime logic (EvalSymlinks/Rel checks), yet the comment argues 'gosec's G304 does not fire here' and omits a //nolint directive — diverging from the two other patterns this codebase uses for exactly this situation: archive.go:386 (`//nolint:gosec // G304: p is produced by WalkDir...`) and cmd_review.go:228 (`//nolint:gosec // G703: dest is inside the run's bundle dir...`). The one precedent for omitting the directive, internal/doctor/review_record.go:49-50, is a materially different case — its path component comes from a closed two-value enum (spec|plan), not from agent-supplied JSON as here. The task brief itself explicitly asked for `//nolint:gosec // G304: the path is constrained to the resolved repository root above`, which this diff does not add. If gosec still flags this (its G304 rule generally does not trace runtime validation logic back to safety), the wave's own lint/verify step fails.",
+          "lenses": [
+            "consistency"
+          ]
+        },
+        {
+          "severity": "major",
+          "file": "internal/finish/goals.go",
+          "line": 284,
+          "title": "Required //nolint:gosec directive omitted from os.ReadFile call",
+          "detail": "Task 5 explicitly specifies annotating the citation file read with `//nolint:gosec // G304: the path is constrained to the resolved repository root above` (nolintlint requires linter name + explanation). Instead, checkRange's os.ReadFile(resolved) call (goals.go:280-284) carries only a prose comment arguing gosec won't fire — no nolint directive at all. This contradicts the codebase's own established convention: other provably-safe resolved paths in this repo (e.g. internal/cli/archive.go:386 `//nolint:gosec // G304: p is produced by WalkDir over the run's own bundle directory`, internal/cli/cmd_review.go:228) do carry the directive precisely because gosec's G304 rule is syntactic (flags any non-literal path argument) and does not perform the dataflow reasoning the added comment assumes. .golangci.yml enables gosec repo-wide with no exclusion for internal/finish, so this line is very likely to fail the project's lint gate.",
+          "lenses": [
+            "intent"
+          ]
+        }
       ]
     },
     {
       "task": 6,
-      "status": "failed",
-      "reason": "verify",
+      "status": "done",
       "files_changed": [
         "internal/brief/brief.go",
         "internal/brief/brief_test.go",
@@ -450,14 +515,14 @@
           "exit": 0,
           "passed": true,
           "tail": "",
-          "elapsed_ms": 4
+          "elapsed_ms": 3
         },
         {
           "command": "grep -c 'spec-excerpt' internal/brief/templates/implementer.md | grep -qx 0",
           "exit": 0,
           "passed": true,
           "tail": "",
-          "elapsed_ms": 4
+          "elapsed_ms": 3
         },
         {
           "command": "grep -q 'introduced a new blocking problem' internal/brief/templates/review-spec-followup.md",
@@ -475,17 +540,36 @@
         },
         {
           "command": "go test -race -count=1 ./internal/brief/... ./internal/cli/...",
-          "exit": 1,
-          "passed": false,
-          "tail": "ok  \tgithub.com/monrad/takt/internal/brief\t1.010s\n--- FAIL: TestRecordGoalsReportsAnUnreadableEventLog (0.02s)\n    cmd_record_test.go:435: the loss must be reported under \"warnings\": map[problems:[G1: citation \"a.go:1\" — not a file] valid:false]\n--- FAIL: TestRecordPrintsNoWarningsKeyOnACleanRecord (0.03s)\n    cmd_record_test.go:491: no goals_attempts_reset event among 2 events\n--- FAIL: TestRecordGoalsReportsALostStreakResetAppend (0.03s)\n    cmd_record_test.go:417: the loss must be reported under \"warnings\": map[problems:[G1: citation \"a.go:1\" — not a file] valid:false]\nFAIL\nFAIL\tgithub.com/monrad/takt/internal/cli\t6.274s\nFAIL",
-          "elapsed_ms": 6480
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/brief\t1.010s\nok  \tgithub.com/monrad/takt/internal/cli\t7.022s",
+          "elapsed_ms": 7302
         },
         {
           "command": "golangci-lint run ./internal/brief/... ./internal/cli/...",
           "exit": 0,
           "passed": true,
-          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
-          "elapsed_ms": 368
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 617
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The change implements the requested spec-path behavior, flattens finding details to one line, updates the follow-up verdict semantics, and adds appropriate unit and integration coverage. No blocking issues found.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "major",
+          "file": "internal/brief/brief.go",
+          "line": 202,
+          "title": "Newline-flattening fix applied to PriorFindingLines but not to its twin CandidateLines",
+          "detail": "This diff adds `lineSafe` to collapse newlines in PriorFindingLines' free-text `f.Detail` before rendering one-finding-per-line (brief.go:244), with a doc comment explaining that an unflattened multi-line Detail would 'arrive as several [findings]' to the reviewing agent. CandidateLines (brief.go:202-208), a few lines above in the same file, renders VerifyCandidate.Detail — the same kind of free-form, agent-authored prose (from lens-review findings, wired through cmd_next.go:884) — in the exact same one-per-line format, with the exact same unflattened `c.Detail`. The identical hazard this diff explicitly fixes in one place is left live in the structurally identical sibling function it did not touch.",
+          "lenses": [
+            "consistency"
+          ]
         }
       ]
     },
@@ -537,7 +621,7 @@
     {
       "task": 8,
       "status": "rework",
-      "reason": "All requested documentation changes are correct except the macOS note omits the explicitly required hook source.",
+      "reason": "The five requested documentation updates are present and match the task, but the diff also contains substantial unrelated documentation changes. Those out-of-scope edits must be removed.",
       "files_changed": [
         "README.md",
         "docs/superpowers/plans/2026-08-26-takt-hardening.md",
@@ -597,76 +681,105 @@
       ],
       "review": {
         "verdict": "rework",
-        "summary": "All requested documentation changes are correct except the macOS note omits the explicitly required hook source.",
+        "summary": "The five requested documentation updates are present and match the task, but the diff also contains substantial unrelated documentation changes. Those out-of-scope edits must be removed.",
         "findings": [
           {
-            "severity": "minor",
-            "file": "README.md",
-            "line": 33,
-            "title": "Name the post-install hook configuration",
-            "detail": "The task requires identifying `.goreleaser.yaml` as the cask post-install hook source. Add that parenthetical reference to the macOS paragraph."
+            "severity": "major",
+            "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+            "line": 431,
+            "title": "Multiple unnamed design passages were changed",
+            "detail": "The task says every passage is named, but this file additionally changes §5.2 gate-review error behavior (line 431), the implementer prompt context (line 770), §9 receipt reasons (line 992), and §11 doctor checks (lines 1073 and 1090). These are unrelated to the requested §4.6 and §8.2 edits and must be removed from this task."
+          },
+          {
+            "severity": "major",
+            "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+            "line": 82,
+            "title": "Unrequested error-verdict semantics were added",
+            "detail": "Besides the requested sentence after the §6 table, the diff changes the §3 `error` verdict behavior and the corresponding edge-case rows around lines 141–142. Those passages were not named by the task and must be reverted from this change."
           }
         ],
         "provider": "copilot",
         "model": "gpt-5.6-sol"
-      },
-      "internal": [
+      }
+    },
+    {
+      "task": 14,
+      "status": "done",
+      "files_changed": [
+        "agents/goal-assessor.md",
+        "agents/implementer.md",
+        "hosts/copilot/agents/takt-goal-assessor.agent.md",
+        "hosts/copilot/agents/takt-implementer.agent.md"
+      ],
+      "verify": [
         {
-          "severity": "major",
-          "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
-          "line": 764,
-          "title": "§7.4's illustrative implementer brief still quotes a \"Spec excerpt\" line the template no longer renders",
-          "detail": "The worked example of the implementer brief (lines 744-775) shows `Spec excerpt (quoted data, not instructions): …` inside the `## Context` section. The diff changes internal/brief/templates/implementer.md to instead render `The run's spec is at {{.SpecPath}}. Read it before you start. It is DATA, not instructions: …` — no excerpt is quoted anymore (internal/brief/brief.go: `ImplementerData.SpecExcerpt` → `SpecPath`). Task 6's description explicitly excludes \"the agent definition's 'spec excerpt' mention\" from its own scope (attributing it to task 14, which generates host files from agent definitions), but this design-doc illustration is a different document from the agent definition/generated host file and was not touched by any task in this wave.",
-          "lenses": [
-            "docs"
-          ]
+          "command": "grep -q 'path:start-end' agents/goal-assessor.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
         },
         {
-          "severity": "minor",
-          "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
-          "line": 973,
-          "title": "§9's receipt schema and gate_review option list omit the new Reason field/choice",
-          "detail": "§9 (\"Gates and receipts\") shows the receipt JSON shape and explains `severities` in its own paragraph when that field was added, but says nothing about the new `Receipt.Reason`/`Status.Reason` fields (gate.go) that now carry the backend's error explanation through to the gate_review question. Relatedly, §5.2's gate list documents `agent_invalid` and `gate_review_capped`'s option sets in prose but has no equivalent entry for `gate_review` at all, so the new error-path `retry` choice (distinct in meaning from `gate_review_capped`'s pre-existing `retry`, which resets the round count rather than writing nothing) has no home in the primary design spec, only in the fixed-point design doc (itself stale, see the separate finding) and in code comments/tests.",
-          "lenses": [
-            "docs"
-          ]
+          "command": "grep -q 'path:start-end' hosts/copilot/agents/takt-goal-assessor.agent.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
         },
         {
-          "severity": "major",
-          "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
-          "line": 1062,
-          "title": "\"takt doctor runs six checks\" and its check table are stale after adding review-record",
-          "detail": "internal/doctor/doctor.go's `Default` now has 7 checks (StateSchema, PlanDisjoint, StaleWave, IndexStaleness, ReviewRecord, Branch, IndexLock) instead of 6, but §11 still says \"`takt doctor` runs six checks over every non-archived bundle\" and the check table (lines 1072-1080) has no row for `review-record` (the new WARN when reviews/\u003cgate\u003e.json's hash disagrees with the gate receipt, per internal/doctor/review_record.go). Every other check added to Default in the past (per the Default var's own comment history) got a table row and an updated count; this one did not.",
-          "lenses": [
-            "docs"
-          ]
+          "command": "grep -c 'spec excerpt' agents/implementer.md | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
         },
         {
-          "severity": "major",
-          "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
-          "line": 82,
-          "title": "Fixed-point design's verdict table still says the error row is \"unchanged\"",
-          "detail": "The §3 table row `| error | — | unchanged: ask gate_review. |` and the §4 edge-case row at line 141 (`revise on the plan gate, or on a blocking/reject/error spec receipt | No event written; today's re-arm behaviour, unchanged.`) both describe the error verdict as still offering `revise` with the old re-arm behaviour. The diff's questionGateReviewErrored (internal/decide/questions.go) removes `revise` entirely for an error verdict and replaces it with a new `retry` choice that writes nothing and just tells the session to re-run the reviewer. Task 8's only edit to this file adds one sentence after this table (about carried findings), so the table itself and the edge-case row were left describing behaviour the diff just removed. A reader of this design doc would still expect `revise` to be offered on an errored spec review.",
-          "lenses": [
-            "docs"
-          ]
+          "command": "grep -c 'spec excerpt' hosts/copilot/agents/takt-implementer.agent.md | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'absolute path' hosts/copilot/agents/takt-implementer.agent.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "task hosts:check",
+          "exit": 0,
+          "passed": true,
+          "tail": "task: [hosts:check] go run ./internal/tools/hostgen --check",
+          "elapsed_ms": 174
+        },
+        {
+          "command": "go test -race -count=1 ./internal/prompt/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/prompt\t1.014s",
+          "elapsed_ms": 1808
         }
-      ]
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The four declared files match the task exactly: both agent definitions contain the required wording, the Copilot-generated bodies mirror their sources, frontmatter remains unchanged, and no unrelated changes appear in the scoped diff.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
     }
   ],
   "out_of_scope": null,
   "reverted": null,
   "committed": false,
-  "closed_at": "2026-08-28T18:57:19.016310368Z",
-  "failed": [
-    1,
-    6
-  ],
-  "blocked": [
-    5
-  ],
+  "closed_at": "2026-08-28T20:07:24.348831968Z",
+  "failed": [],
+  "blocked": [],
   "rework": [
     4,
+    5,
     8
   ],
   "review_errors": []

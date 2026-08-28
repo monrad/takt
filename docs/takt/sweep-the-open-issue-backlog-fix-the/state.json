@@ -38,7 +38,7 @@
     {
       "id": 1,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/gate/followup.go",
         "internal/gate/followup_test.go",
@@ -49,15 +49,15 @@
         "internal/cli/record_reviewer_test.go"
       ],
       "class": "implement",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 1,
-        "attempt": 1,
+        "attempt": 2,
         "status": "done",
-        "summary": "FollowUp.Wave` is now `*int` with an injective `Key()` and an idempotent, approve→override-upgrading `AppendFollowUps`; findings files render once and are written atomically, with new tests covering the wave-0 round trip, de-duplication and the identity.",
+        "summary": "Removed the unreachable json.Marshal fallback in FollowUp.Key() per the review finding; the rest of the wave-pointer, idempotent-append and single-write-findings work was already in place, and all verify commands (tests, lint, greps) now pass — the earlier failure came from another task's citation change that has since been fixed.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T18:29:57.200300176Z"
+        "recorded_at": "2026-08-28T19:35:30.369176487Z"
       }
     },
     {
@@ -118,15 +118,15 @@
         "internal/cli/cmd_unlock_test.go"
       ],
       "class": "implement",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 4,
-        "attempt": 1,
+        "attempt": 2,
         "status": "done",
-        "summary": "takt status` now reports planned-but-unmaterialised tasks and a never-bare alignment line (with `clauses`/`skipped`/`verdicts_present` in `--json`), and every `openTarget` bundle failure — including `status` and `unlock` — carries a hint naming `takt/\u003cslug\u003e` when that branch holds the bundle.",
+        "summary": "Corrected the alignment state precedence to skipped → unconfirmed → confirmed-without-verdicts → verdict counts, and moved that rendering into a status-only `alignmentStatusLine` so `alignmentLine`'s empty-means-no-verdicts contract with `loadCommitMessage` is restored intact; added the missing unconfirmed-with-verdicts test and removed the unrequested unknown-verdict bucket.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T18:29:57.213075328Z"
+        "recorded_at": "2026-08-28T19:42:29.688762191Z"
       }
     },
     {
@@ -141,21 +141,21 @@
         "internal/brief/templates/goal-assessor.md"
       ],
       "class": "implement",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 5,
-        "attempt": 1,
-        "status": "blocked",
-        "summary": "CheckCitations, its wiring into readVerdicts, the brief grammar and both test files are complete, lint-clean and passing, but three pre-existing tests in the undeclared file internal/cli/cmd_record_test.go fail because its `streakVerdicts` fixture cites `a.go:1` in a repo that has no `a.go`.",
-        "blockers": "internal/cli/cmd_record_test.go:273 needs `\"citations\":[\"a.go:1\"]` → `\"citations\":[\"README.md:1\"]` (or `[]`); that file is not in my declared list.",
+        "attempt": 2,
+        "status": "done",
+        "summary": "Goal-assessor citations are now parsed as `path:line`/`path:start-end` and validated for repo-relative containment (symlink-resolved), regular-file-ness and line range, with `readVerdicts` rejecting such a reply the way any unusable reply is rejected; tests and lint are green.",
+        "blockers": "none — the one deviation from the brief is that the requested `//nolint:gosec // G304` directive was omitted because gosec does not fire there and nolintlint fails the build on the unused directive; the reasoning is kept as a prose comment.",
         "model": "opus",
-        "recorded_at": "2026-08-28T18:31:48.138516254Z"
+        "recorded_at": "2026-08-28T19:42:29.693864802Z"
       }
     },
     {
       "id": 6,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/brief/brief.go",
         "internal/brief/brief_test.go",
@@ -165,15 +165,15 @@
         "internal/cli/task_brief_test.go"
       ],
       "class": "implement",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 6,
-        "attempt": 1,
+        "attempt": 2,
         "status": "done",
-        "summary": "Task briefs now name the run's spec.md by absolute path and declare it data instead of quoting its text; `PriorFindingLines` is newline-safe and the scoped-pass reject clause is tightened, with tests in `internal/brief/brief_test.go` and a new `internal/cli/task_brief_test.go`.",
-        "blockers": "none — but `./internal/cli/...` has three failing tests and one gocognit issue that come from a sibling task's in-flight #24 citations work (`internal/finish/goals.go`, `internal/cli/cmd_record.go`, `internal/cli/citations_test.go`), all outside my declared files.",
+        "summary": "The task's changes were already complete in the tree from attempt 1; attempt 1 failed on another task's fixture, since fixed on the branch, and all verify commands — six greps, race tests, and lint — now pass.",
+        "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T18:30:13.674186532Z"
+        "recorded_at": "2026-08-28T19:42:29.697850621Z"
       }
     },
     {
@@ -207,15 +207,15 @@
         "README.md"
       ],
       "class": "docs",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 8,
-        "attempt": 1,
+        "attempt": 2,
         "status": "done",
-        "summary": "Made all five documentation edits (design §4.6 and §8.2, plan doc Task 8 steps 2/3, fixed-point §6 sentence, README quarantine paragraph) across the four declared files; all seven verify greps pass.",
+        "summary": "Named `.goreleaser.yaml` as the quarantine hook's source in the README and addressed the four carried doc findings — §7.4's stale spec-excerpt illustration, a new §5.2 `gate_review` entry covering the error-path `retry`, §9's `Receipt.Reason`, §11's seven-check count plus `review-record` row, and the fixed-point design's `error` verdict row and edge case — while also fixing a line-initial ```json fence attempt 1 left in §8.2.",
         "blockers": "none",
-        "model": "sonnet",
-        "recorded_at": "2026-08-28T18:30:57.461347089Z"
+        "model": "opus",
+        "recorded_at": "2026-08-28T19:44:57.182515859Z"
       }
     },
     {
@@ -296,7 +296,7 @@
     {
       "id": 14,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "agents/goal-assessor.md",
         "agents/implementer.md",
@@ -304,10 +304,34 @@
         "hosts/copilot/agents/takt-implementer.agent.md"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 14,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Updated agents/goal-assessor.md and agents/implementer.md per spec §E/G, regenerated the two matching hosts/copilot agent files via `task hosts:gen`, and confirmed hosts:check and internal/prompt tests pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T19:43:36.96086063Z"
+      }
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 0,
+    "slice": 1,
+    "attempt": 2,
+    "started_at": "2026-08-28T19:22:57.908344844Z",
+    "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
+    "tasks": [
+      1,
+      4,
+      5,
+      6,
+      8,
+      14
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
