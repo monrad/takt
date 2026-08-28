@@ -19,11 +19,22 @@ func cmdVersion(env Env) int {
 	if err := fs.Parse(env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
-	if *expect != "" && *expectManifest != "" {
+	// A literal-empty --expect ("takt version --expect \"\"") means the flag
+	// was given but the host's handshake stamped nothing into it — that must
+	// still fail (issue #3), unlike an absent --expect, which prints the
+	// plain version. *expect != "" cannot tell those apart, so detect that
+	// the flag was actually passed instead of inspecting its value.
+	var expectGiven bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "expect" {
+			expectGiven = true
+		}
+	})
+	if expectGiven && *expectManifest != "" {
 		return fail(env.Stderr, exitUsage, "--expect and --expect-manifest are mutually exclusive",
 			"pass the version inline with --expect, or the manifest to read it from with --expect-manifest")
 	}
-	if *expect != "" {
+	if expectGiven {
 		return versionExpect(env, *expect)
 	}
 	if *expectManifest != "" {
@@ -42,6 +53,11 @@ func cmdVersion(env Env) int {
 // the manifest one, dev exception included: `task build` is a plain `go
 // build` with no ldflags, so every development binary reports [version.Dev]
 // and must pass the handshake rather than fail it.
+//
+// A mismatch reads "does not match skill version <v>" with a hint to
+// "update the skill", not "plugin" — this flag is the skill's handshake and
+// there is no plugin here to name (issue #11); manifestFailure's subject
+// argument below carries that noun.
 func versionExpect(env Env, want string) int {
 	// The one judgment that is not the manifest one: an expectation with no
 	// version in it. manifestFailure would call it a manifest with no
@@ -53,11 +69,12 @@ func versionExpect(env Env, want string) int {
 		return fail(env.Stderr, exitError, "the host's handshake names no version",
 			"check the host prompt's takt version --expect line")
 	}
-	if problem, hint := manifestFailure(version.Current(), "--expect", want); problem != "" {
+	problem, hint, dev := manifestFailure(version.Current(), "--expect", want, "skill")
+	if problem != "" {
 		return fail(env.Stderr, exitError, problem, hint)
 	}
 	out := map[string]any{keyVersion: version.Current()}
-	if _, dev := ManifestMatches(version.Current(), want); dev {
+	if dev {
 		out["dev"] = true
 	}
 	if err := writeJSON(env.Stdout, out); err != nil {
@@ -87,10 +104,10 @@ func versionExpectManifest(env Env, path string) int {
 		return fail(env.Stderr, 1, "cannot parse plugin manifest "+path+": "+err.Error(),
 			"check CLAUDE_PLUGIN_ROOT and the plugin installation")
 	}
-	if problem, hint := manifestFailure(version.Current(), path, m.Version); problem != "" {
+	problem, hint, dev := manifestFailure(version.Current(), path, m.Version, "plugin")
+	if problem != "" {
 		return fail(env.Stderr, exitError, problem, hint)
 	}
-	_, dev := ManifestMatches(version.Current(), m.Version)
 	out := map[string]any{keyVersion: version.Current(), "manifest": m.Version}
 	if dev {
 		out["dev"] = true
@@ -102,24 +119,32 @@ func versionExpectManifest(env Env, path string) int {
 }
 
 // manifestFailure judges a plugin manifest's declared version against the
-// running binary's and returns the {error, hint} pair to fail with, or two
-// empty strings when the handshake passes.
+// running binary's, once, and returns the {error, hint} pair to fail with —
+// or two empty strings when the handshake passes — together with dev, the
+// same dev ManifestMatches computed while judging, so neither caller has to
+// call ManifestMatches a second time just to learn it.
+//
+// subject is the noun the mismatch failure names: "skill" for the --expect
+// handshake the Copilot CLI skill runs, "plugin" for --expect-manifest's
+// plugin-manifest handshake. The empty-version failure below it always names
+// the manifest path instead, regardless of subject.
 //
 // The empty-version check comes first and applies to every build. A manifest
 // with no version is a broken bundle, not a version disagreement: a stamped
 // binary reported it as "does not match plugin version " with nothing after
 // it, and an unstamped one matched it like any other manifest and let the
 // loop start against a bundle whose version nothing knows.
-func manifestFailure(binary, path, manifest string) (string, string) {
+func manifestFailure(binary, path, manifest, subject string) (string, string, bool) {
 	if strings.TrimSpace(manifest) == "" {
 		return "plugin manifest " + path + " has no version field",
-			"reinstall the takt plugin, or set the version in a checkout with `task version:set <x.y.z>`"
+			"reinstall the takt plugin, or set the version in a checkout with `task version:set <x.y.z>`", false
 	}
-	if ok, _ := ManifestMatches(binary, manifest); !ok {
-		return "takt version " + binary + " does not match plugin version " + manifest,
-			"install takt " + manifest + " (nix/brew/go install) or update the plugin"
+	ok, dev := ManifestMatches(binary, manifest)
+	if !ok {
+		return "takt version " + binary + " does not match " + subject + " version " + manifest,
+			"install takt " + manifest + " (nix/brew/go install) or update the " + subject, false
 	}
-	return "", ""
+	return "", "", dev
 }
 
 // ManifestMatches reports whether binary — takt's own build version —

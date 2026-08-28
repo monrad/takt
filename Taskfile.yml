@@ -2,9 +2,16 @@ version: "3"
 
 tasks:
   build:
-    desc: Build the takt binary.
+    desc: Build the takt binary, stamped with the plugin manifest's version.
+    vars:
+      VERSION:
+        sh: go run ./internal/tools/setversion --print
     cmds:
+      # go build ./... alone compiles and discards — a multi-package build
+      # emits no binary — so it stays only as the compile check for every
+      # other package; the binary itself needs an output and a main package.
       - go build ./...
+      - go build -ldflags "-X github.com/monrad/takt/internal/version.Version={{.VERSION}}" -o takt ./cmd/takt
 
   test:
     desc: Run the test suite.

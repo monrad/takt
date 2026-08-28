@@ -1,0 +1,26 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T12:53:49.762671061Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next_test.go",
+      "line": 1699,
+      "title": "Acceptance-note regression test for the WriteFileAtomic migration is missing",
+      "detail": "Task 2A's acceptance note explicitly calls for a test that the four call sites (writeStableBriefAt, ensureSliceDiff, renderTaskBrief, writeLogsIgnore) were actually converted, by asserting `os.WriteFile` no longer appears at all in cmd_next.go, cmd_init.go and launch.go — specifically warning that a positive grep for `WriteFileAtomic` alone would pass even if one of cmd_next.go's two occurrences were left unconverted. No such test was added in cmd_next_test.go, cmd_init_test.go or elsewhere in this wave's diff. I confirmed by grep that the production migration is currently complete (no `os.WriteFile` remains in those three files), but nothing in the test suite would catch a future regression where one call site reverts to `os.WriteFile` — exactly the false-positive scenario the brief called out.",
+      "task": 2
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_init.go",
+      "line": 359,
+      "title": "writeLogsIgnore's still-fatal failure path has no test, even though the function's body was rewritten this wave",
+      "detail": "The brief states writeLogsIgnore's own failure must stay fatal (only info/exclude's loss becomes a warning), and this wave rewrote the function's internals (dropped the manual MkdirAll+os.WriteFile in favor of bundle.WriteFileAtomic). No test in cmd_init_test.go forces writeLogsIgnore itself to fail (e.g. an unwritable logs/ directory) and checks that init still exits non-zero and rolls back — unlike the parallel, now-thorough coverage added for excludeLogsDir's new non-fatal path. This is a pre-existing gap, but it intersects code that was directly changed in this diff.",
+      "task": 2
+    }
+  ]
+}

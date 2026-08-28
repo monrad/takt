@@ -31,6 +31,14 @@ func TestVersionExpectManifest(t *testing.T) {
 	if missCode != 1 || !strings.Contains(errb, "hint") {
 		t.Fatalf("%d %s", missCode, errb)
 	}
+	// --expect-manifest's failures are the plugin's, never the skill's
+	// (issue #11) — the test binary can only reach this unreadable-manifest
+	// branch, not the version-mismatch one TestManifestFailure covers
+	// directly, but every failure this flag can produce still names the
+	// plugin.
+	if !strings.Contains(errb, "plugin") || strings.Contains(errb, "skill") {
+		t.Errorf("--expect-manifest failure must name the plugin, not the skill: %s", errb)
+	}
 }
 
 // TestVersionExpectAcceptsADevBuild pins the dev exception on `--expect`,
@@ -52,6 +60,49 @@ func TestVersionExpectAcceptsADevBuild(t *testing.T) {
 	}
 	if _, ok := got["manifest"]; ok {
 		t.Errorf("--expect names no manifest, so the reply must not report one: %v", got)
+	}
+}
+
+// TestVersionExpectEmptyFailsTheHandshake pins issue #3: `takt version
+// --expect ""` gives the flag a literal-empty value — the shape a host
+// prompt takes when its own version-stamp line came out empty — and that
+// must fail the handshake exactly like the whitespace-only case already
+// does, not fall through to the plain `takt version` print. Dispatching on
+// `*expect != ""` could not tell "the flag was never passed" apart from
+// "the flag was passed an empty string"; detecting that --expect was given
+// at all is what fixes it. Both shapes are checked here so a future
+// regression that treats them differently is caught. The other two paths
+// that share cmdVersion's flag set — the mutual-exclusion check and the
+// plain-print default — are re-checked alongside them, since both sit on
+// the same dispatch this fix rewrites.
+func TestVersionExpectEmptyFailsTheHandshake(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, want := range []string{"", "   "} {
+		code, _, errb := runIn(t, dir, nil, "version", "--expect", want)
+		if code == 0 {
+			t.Fatalf("--expect %q: exit 0, want the versionless refusal", want)
+		}
+		if !strings.Contains(errb, "the host's handshake names no version") {
+			t.Errorf("--expect %q: error does not name the versionless refusal: %s", want, errb)
+		}
+		if !strings.Contains(errb, "check the host prompt's takt version --expect line") {
+			t.Errorf("--expect %q: hint does not point back at the handshake line: %s", want, errb)
+		}
+	}
+
+	// The mutual-exclusion check still fires on two real, non-empty values.
+	manifest := filepath.Join(dir, "plugin.json")
+	if err := os.WriteFile(manifest, []byte(`{"name":"takt","version":"0.1.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errb := runIn(t, dir, nil, "version", "--expect", "0.1.0", "--expect-manifest", manifest); code != 2 {
+		t.Fatalf("mutual exclusion: exit %d, want 2: %s", code, errb)
+	}
+
+	// The plain-print path — no --expect at all — is unaffected.
+	if code, got, errb := runIn(t, dir, nil, "version"); code != 0 || got["version"] != version.Current() {
+		t.Fatalf("plain print: exit %d, got %v, stderr %s", code, got, errb)
 	}
 }
 
@@ -141,25 +192,44 @@ func TestVersionExpectManifestNoVersion(t *testing.T) {
 // command-level test can only half reach: the test binary is always
 // 0.0.0-dev, so a stamped build's branches are unreachable through
 // `takt version`. A missing manifest version fails for both kinds of build;
-// a mismatch fails only for the stamped one.
+// a mismatch fails only for the stamped one, and the mismatch text names the
+// subject the caller passes — "skill" for --expect's handshake, "plugin" for
+// --expect-manifest's (issue #11) — while the missing-version text always
+// names the manifest path regardless of subject. It also pins dev: false on
+// every failure, and dev: true on the one case that passes with an unstamped
+// binary, now returned alongside the {error, hint} pair instead of requiring
+// a second call to [cli.ManifestMatches] (issue #10).
 func TestManifestFailure(t *testing.T) {
 	t.Parallel()
 	const path = "/p/.claude-plugin/plugin.json"
-	for _, c := range []struct{ binary, manifest, wantErr string }{
-		{"0.0.0-dev", "", "plugin manifest " + path + " has no version field"},
-		{"1.2.3", "", "plugin manifest " + path + " has no version field"},
-		{"1.2.3", "  ", "plugin manifest " + path + " has no version field"},
-		{"1.2.3", "1.2.4", "takt version 1.2.3 does not match plugin version 1.2.4"},
-		{"1.2.3", "1.2.3", ""},
-		{"0.0.0-dev", "1.2.4", ""},
+	for _, c := range []struct {
+		binary, manifest, subject, wantErr, wantHintContains string
+		wantDev                                              bool
+	}{
+		{"0.0.0-dev", "", "plugin", "plugin manifest " + path + " has no version field", "", false},
+		{"1.2.3", "", "plugin", "plugin manifest " + path + " has no version field", "", false},
+		{"1.2.3", "  ", "plugin", "plugin manifest " + path + " has no version field", "", false},
+		{"1.2.3", "1.2.4", "plugin", "takt version 1.2.3 does not match plugin version 1.2.4", "update the plugin", false},
+		{"1.2.3", "1.2.4", "skill", "takt version 1.2.3 does not match skill version 1.2.4", "update the skill", false},
+		{"1.2.3", "1.2.3", "plugin", "", "", false},
+		{"0.0.0-dev", "1.2.4", "plugin", "", "", true},
 	} {
-		gotErr, gotHint := cli.ManifestFailure(c.binary, path, c.manifest)
+		gotErr, gotHint, gotDev := cli.ManifestFailure(c.binary, path, c.manifest, c.subject)
 		if gotErr != c.wantErr {
-			t.Errorf("ManifestFailure(%q, %q) error = %q, want %q", c.binary, c.manifest, gotErr, c.wantErr)
+			t.Errorf("ManifestFailure(%q, %q, %q) error = %q, want %q",
+				c.binary, c.manifest, c.subject, gotErr, c.wantErr)
 		}
 		if (gotHint == "") != (c.wantErr == "") {
-			t.Errorf("ManifestFailure(%q, %q) hint = %q with error %q — a failure must carry a hint",
-				c.binary, c.manifest, gotHint, gotErr)
+			t.Errorf("ManifestFailure(%q, %q, %q) hint = %q with error %q — a failure must carry a hint",
+				c.binary, c.manifest, c.subject, gotHint, gotErr)
+		}
+		if c.wantHintContains != "" && !strings.Contains(gotHint, c.wantHintContains) {
+			t.Errorf("ManifestFailure(%q, %q, %q) hint %q does not name the subject: want %q",
+				c.binary, c.manifest, c.subject, gotHint, c.wantHintContains)
+		}
+		if gotDev != c.wantDev {
+			t.Errorf("ManifestFailure(%q, %q, %q) dev = %v, want %v",
+				c.binary, c.manifest, c.subject, gotDev, c.wantDev)
 		}
 	}
 }

@@ -75,6 +75,42 @@ func TestPromptHandshakeVerbsAndInvariants(t *testing.T) {
 	}
 }
 
+// crossHostInvariants are the sentences that must read identically in the
+// Claude prompt and the Copilot skill: the two are separate files describing
+// one contract, and nothing enforces that an edit to one lands in the other.
+// Anchoring on the phrases the two files share today means an edit that
+// drifts either copy — even a rewording that keeps the same meaning — fails
+// this test, which is the point: the wording itself is the shared contract.
+var crossHostInvariants = []string{
+	// the owner-gate exception (op table, `ask` bullet)
+	"The `owner` gate is the exception: its `answer` clears nothing and only prints a `hint`, so act on the choice yourself",
+	// the `kept: true` rule (op table, `ask` bullet)
+	"An `answer` that prints `\"kept\": true` leaves the gate open — end the turn (the user chose to stop or abort).",
+	// the `git add -A` prohibition (Invariants)
+	"never run `git add -A`",
+}
+
+// TestPromptInvariantsReadTheSameOnEveryHost pins #15's third gap:
+// TestPromptHandshakeVerbsAndInvariants only ever loaded the Claude prompt,
+// so a sentence edited in commands/takt.md and left stale in
+// hosts/copilot/skills/takt/SKILL.md (or the reverse) passed every existing
+// test. Both files are loaded here and checked against the same anchors.
+func TestPromptInvariantsReadTheSameOnEveryHost(t *testing.T) {
+	t.Parallel()
+	claude, err := prompt.Load(promptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copilot, err := prompt.Load(skillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inv := range crossHostInvariants {
+		mustContain(t, claude, inv, "invariant missing from "+promptPath)
+		mustContain(t, copilot, inv, "invariant missing from "+skillPath)
+	}
+}
+
 // taktCommandsNamed returns the subcommand of every `takt <name>` the prompt
 // spells out: the first word after the token, minus the closing backtick and
 // whatever sentence punctuation follows it. Placeholders (`takt <cmd>`) and

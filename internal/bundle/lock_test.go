@@ -44,6 +44,48 @@ func TestAcquireOutcomesOverTheRecordedHolder(t *testing.T) {
 	}
 }
 
+// TestAcquireStealBoundaryAndSelfStale pins the exact edge of the ttl
+// comparison — Acquire grades `now.Sub(held.Heartbeat) > ttl`, strict, so a
+// heartbeat exactly ttl old is still live — and the order the switch grades
+// its cases in: identity beats staleness, so a holder that is "mine but
+// stale" comes back LockHeldBySelf rather than LockStolen.
+func TestAcquireStealBoundaryAndSelfStale(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	const ttl = 10 * time.Minute
+	me := bundle.Identity{ID: "me", Host: "h"}
+
+	t.Run("heartbeat exactly ttl old is blocked, not stolen", func(t *testing.T) {
+		t.Parallel()
+		held := &bundle.Session{ID: "you", Host: "h", Heartbeat: now.Add(-ttl)}
+		got, s := bundle.Acquire(held, me, now, ttl, false)
+		if got != bundle.LockBlocked {
+			t.Fatalf("Acquire at the ttl boundary = %v, want %v", got, bundle.LockBlocked)
+		}
+		if s != held {
+			t.Fatal("blocked must hand back the holder unchanged")
+		}
+	})
+
+	t.Run("heartbeat one nanosecond past ttl is stolen", func(t *testing.T) {
+		t.Parallel()
+		held := &bundle.Session{ID: "you", Host: "h", Heartbeat: now.Add(-ttl - time.Nanosecond)}
+		got, s := bundle.Acquire(held, me, now, ttl, false)
+		if got != bundle.LockStolen || s == nil || s.ID != "me" {
+			t.Fatalf("Acquire one ns past the ttl boundary = %v, %+v; want %v held by me", got, s, bundle.LockStolen)
+		}
+	})
+
+	t.Run("mine but stale is held-by-self, not stolen", func(t *testing.T) {
+		t.Parallel()
+		held := &bundle.Session{ID: "me", Host: "h", Heartbeat: now.Add(-24 * time.Hour)}
+		got, s := bundle.Acquire(held, me, now, ttl, false)
+		if got != bundle.LockHeldBySelf || s == nil || s.ID != "me" {
+			t.Fatalf("Acquire on a stale self-held lock = %v, %+v; want %v", got, s, bundle.LockHeldBySelf)
+		}
+	})
+}
+
 // TestAcquireRecordsHowTheIdWasObtained pins the part of the holder the
 // orphan rule reads: a takt-invented id can never be presented again, so
 // Acquire must carry Identity.Generated onto the record it hands back — a

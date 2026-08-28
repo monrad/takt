@@ -1,0 +1,134 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T13:31:50.981755299Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 311,
+      "title": "§4.6's pre-existing \"taken over ... silently\" claim now overlaps confusingly with the newly-written lock_taken paragraph",
+      "detail": "Line 311 (untouched by this diff) says a generated holder \"is taken over on the next call by anyone, silently.\" Five lines later, the diff's new paragraph (lines 316-320) draws a much narrower silence: only a generated *acquirer* taking over a generated holder, unforced, \"records nothing\" — a named acquirer's takeover of the same generated holder does append a lock_taken event (cmd_next.go's `case orphaned:` when `!r.genID`, internal/cli/cmd_next.go:206-209). Reusing the word \"silently\" for the (unrelated, still-true) absence of the `ask: owner` prompt right next to a paragraph that uses \"quietly\"/\"records nothing\" for the absence of an audit event invites a reader to conflate the two. Task 3's brief only asked for the one sentence at ~line 315 to be rewritten, but the result now reads as self-contradictory within the same subsection unless line 311 is also qualified.",
+      "id": "c1",
+      "task": 3,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 316,
+      "title": "Rewritten §4.6 sentence omits the generated-acquirer/named-holder case",
+      "detail": "The new sentence enumerates recording as 'when a named session takes over' or 'whenever a takeover was explicitly forced', plus the generated-over-generated exemption and the no-takeover case. It does not mention the (unchanged, pre-existing) case where a *generated* acquirer takes over a *stale named* holder without --force: since `orphaned` is false there (the holder isn't `Generated`), the code's default arm in internal/cli/cmd_next.go still appends lock_taken (outcome LockStolen) regardless of the acquirer's own kind or the force flag. A reader could infer from 'recorded when a named session takes over' that a generated acquirer's takeover of a stale named holder goes unrecorded, which is not true. The code is correct and unchanged in this respect; only the doc's new three-part framing leaves this combination unstated.",
+      "id": "c2",
+      "task": 3,
+      "lenses": [
+        "intent",
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 204,
+      "title": "New default: arm of the lock_taken switch has no test asserting its event shape",
+      "detail": "Task-3 rewrote the last switch arm from an explicit outcome check (`case outcome == bundle.LockStolen, outcome == bundle.LockForced \u0026\u0026 r.force:`) to a bare `default:` (cmd_next.go:207-210), which only the not-orphaned path reaches (a named/non-generated holder being stolen or forced). The new `case !takeover:` guard that makes this safe is well covered by TestNextForceWithoutATakeoverAppendsNothing (cmd_next_test.go:1512), and the exemption change is covered by TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (cmd_next_test.go:1462) — but that test only exercises generated holders, which are always `orphaned` regardless of heartbeat freshness (orphaned only checks held.Generated + ID mismatch, not staleness), so both its idle and live scenarios land in `case orphaned:`, not `default:`. The only code path that actually reaches `default:` is a named-holder takeover, exercised behaviorally by the pre-existing TestNextSessionLock (cmd_next_test.go:881-899), but that test never inspects the appended lock_taken event's fields (outcome value, absence of a `reason` key). No test in the diff (or found in the file) asserts `eventsOfType(...)[0].Data` for a forced/stolen takeover of a non-generated holder, so a regression in this specific arm (e.g., an accidental `reason` key, or a wrong outcome value) would not be caught.",
+      "id": "c3",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_record_test.go",
+      "line": 338,
+      "title": "Fault-injection test helpers duplicated verbatim across two test files",
+      "detail": "readOnlyEventLog/directoryEventLog (internal/cli/cmd_record_test.go:338-368) and breakEventAppend/breakEventRead (internal/cli/record_reviewer_test.go:549-579) are byte-for-byte identical implementations (same os.Chmod(0o400)/OpenFile probe/os.Remove+os.Mkdir dance), differing only in name. They live in different Go packages (cli vs cli_test) so they can't call each other directly, but internal/testutil (a package already imported by both, e.g. testutil.NewRepo/testutil.Git) is the natural home for a single testutil.BreakEventAppend(t, bdir)/testutil.BreakEventRead(t, bdir) pair — confirmed via grep that os.Chmod(p, 0o400) and Mkdir(p, 0o750) each appear in exactly these two new locations and nowhere pre-existing in the tree. Not blocking, but ~30 duplicated lines that a shared helper would remove.",
+      "id": "c4",
+      "task": 8,
+      "lenses": [
+        "simplicity",
+        "consistency"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/facts.go",
+      "line": 281,
+      "title": "warnStreakLoss inlines its warning string instead of following the local excludeWarning(err) helper convention",
+      "detail": "cmd_init.go's excludeWarning(err) (internal/cli/cmd_init.go:425-427) is a small named function returning \"info/exclude not written: \" + err.Error(), used by both cmd_init.go and cmd_next.go for the same warnings-contract pattern this task extends. warnStreakLoss instead builds \"attempt-streak reset not recorded: \"+err.Error() inline inside the append call. Not wrong, but it departs from the one-sentence-per-named-function shape the warnings contract otherwise uses for its two other producers.",
+      "id": "c5",
+      "task": 8,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:311 says a generated holder 'is taken over on the next call by anyone, silently' — this describes the absence of the `ask: owner` prompt (the next sentences, lines 314-315, introduce that gate: 'If another id holds the lock with a heartbeat younger than lock_ttl... next returns ask: owner'). The new paragraph at lines 316-319 uses 'quietly' (not 'silently') for a distinct, clearly-scoped concept — whether the lock_taken audit event is appended — and explicitly explains the event contract ('The lock_taken event records a takeover, not a flag'). Both spans are individually true and describe different mechanisms (prompt-gating vs. audit-logging); there is no actual contradiction, only a speculative claim that a reader 'could' conflate two different words ('silently' vs 'quietly') used for two clearly delineated topics five lines apart. No factual error is shown.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:311",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:316"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "The rewritten sentence enumerates recording conditions as 'a **named** session takes over' or 'a takeover was **explicitly forced**', plus the generated-over-generated and nothing-taken exemptions — but omits the case of a generated acquirer stealing a stale *named* (non-generated) holder without --force. Code confirms this case is recorded unconditionally: bundle.Acquire (internal/bundle/lock.go:38-39) returns LockStolen purely from `now.Sub(held.Heartbeat) \u003e ttl`, with no dependence on who or force; back in cmd_next.go, `orphaned := held != nil \u0026\u0026 held.ID != r.session \u0026\u0026 held.Generated` (cmd_next.go:130) is false for a named holder, so the switch's `orphaned \u0026\u0026 r.genID \u0026\u0026 !r.force` and `case orphaned:` arms are skipped and it falls to `default:` (cmd_next.go:210-213), which appends lock_taken regardless of the acquirer's own kind. The doc's enumerated 'yes' list (named acquirer / explicit force) does not literally state this generated-acquirer-over-named-holder case.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:316",
+        "internal/cli/cmd_next.go:202",
+        "internal/bundle/lock.go:38"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "The `default:` arm (cmd_next.go:210-213) is reached only by non-orphaned takeovers. TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (cmd_next_test.go:1462-1502) uses only Generated:true holders, both idle and live, which are always `orphaned` per `orphaned := held != nil \u0026\u0026 held.ID != r.session \u0026\u0026 held.Generated` (cmd_next.go:130) — so both scenarios hit `case orphaned:`, never `default:`. The only test that reaches `default:` is TestNextSessionLock (cmd_next_test.go:892-894), `if _, o, _ := next(t, root, b, \"--force\"); o[\"op\"] != \"run\"` — this checks only the op, never `eventsOfType(t, bdir, \"lock_taken\")[0].Data`. A grep across the package confirms no test asserts `Data[\"outcome\"]` or absence of a reason key for this arm.",
+      "citations": [
+        "internal/cli/cmd_next.go:210",
+        "internal/cli/cmd_next_test.go:892",
+        "internal/cli/cmd_next_test.go:1476"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "readOnlyEventLog/directoryEventLog (cmd_record_test.go:340-368) and breakEventAppend/breakEventRead (record_reviewer_test.go:627-654) are line-for-line identical (same os.Chmod(p, 0o400)/OpenFile probe/Cleanup, same os.Remove+os.Mkdir(p, 0o750) dance), differing only in name. Confirmed the files are in different packages: cmd_record_test.go:2 is `package cli`, record_reviewer_test.go:1 is `package cli_test`. Both already import internal/testutil (cmd_record_test.go:288 `testutil.NewRepo(t)`; record_reviewer_test.go:14 import, used at line 26+). A grep for os.Chmod(p, 0o400) and Mkdir(p, 0o750) finds them only at these two new locations in the source tree.",
+      "citations": [
+        "internal/cli/cmd_record_test.go:340",
+        "internal/cli/record_reviewer_test.go:551"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "cmd_init.go defines `func excludeWarning(err error) string { return \"info/exclude not written: \" + err.Error() }` (cmd_init.go:425-427), used by both cmd_init.go and cmd_next.go (cmd_next.go:160 `r.warnings = append(r.warnings, excludeWarning(err))`) — a small named function per warning sentence. warnStreakLoss instead builds the string inline: `out[keyWarnings] = append(prev, \"attempt-streak reset not recorded: \"+err.Error())` (facts.go:281), with no equivalent named helper. This is an accurate, quotable description of the stylistic departure.",
+      "citations": [
+        "internal/cli/facts.go:281",
+        "internal/cli/cmd_init.go:425"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c2",
+    "c3",
+    "c4",
+    "c5"
+  ]
+}

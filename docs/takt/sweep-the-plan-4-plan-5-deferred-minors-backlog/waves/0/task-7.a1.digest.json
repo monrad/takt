@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added TestAcquireStealBoundaryAndSelfStale (lock_test.go), TestPromptInvariantsReadTheSameOnEveryHost (prompt_test.go), and TestQuotedScalarProblemBackslashRuns plus a backslash-run-parity fix to the test-only quotedScalarProblem helper (copilot_test.go); also updated copilot_test.go's `hosts.RenderCopilotAgent` call to the 3-arg signature already landed by a concurrent task so the package compiles.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T12:01:08.245145675Z"
+}

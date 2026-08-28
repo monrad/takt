@@ -1,0 +1,179 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T12:15:38.372473178Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "CONTRIBUTING.md",
+      "line": 12,
+      "title": "task check's shorthand comment no longer matches what task build does",
+      "detail": "`task check     # go build ./... \u0026\u0026 go test ./... -race -count=1 \u0026\u0026 golangci-lint run ./...` implies `task build`'s contribution to `task check` is a plain `go build ./...`. After this diff, `task build` also shells out to `go run ./internal/tools/setversion --print` and runs a second, stamped `go build -ldflags ... -o takt ./cmd/takt`, producing a `takt` binary in the repo root as a side effect of `task check`. The one-liner was already missing `hosts:check` before this diff, but this diff adds a second, newly-introduced discrepancy (an extra build invocation and a version-lookup subprocess) that a contributor reading only this line would not expect.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "Taskfile.yml",
+      "line": 14,
+      "title": "New ldflags stamp has no regression test, unlike its two siblings",
+      "detail": "internal/prompt/dist_test.go already pins flake.nix and .goreleaser.yaml to the identical ldflags target (`internal/version.Version=`) with automated tests (TestFlakeReadsThePluginVersion, TestGoreleaserStampsTheVersion), and TestGoreleaserStampsTheVersion's own comment (internal/prompt/dist_test.go:63-64) says it 'pins the release build to the same ldflags path the flake and the Taskfile use' — treating all three as one synchronized invariant. Task 6 adds the third stamp to Taskfile.yml:14 but no Go test reads Taskfile.yml or asserts its -ldflags target/package path match the other two, so a future typo in the -X path (which go build silently ignores rather than erroring on) would go undetected by `go test ./...`, reproducing the exact silent-0.0.0-dev-stamp class of bug this task fixes.",
+      "id": "c2",
+      "task": 6,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1188,
+      "title": "§15 Distribution and versioning omits the new task-build stamping route",
+      "detail": "Task 6 (Taskfile.yml + internal/tools/setversion) gives `task build` a real version stamp: `go run ./internal/tools/setversion --print` reads .claude-plugin/plugin.json and the value is passed via -ldflags into internal/version.Version, so `task build`'s binary now reports the manifest version instead of 0.0.0-dev. §15 is this repo's living, actively-amended reference for every mechanism that stamps or fails to stamp the version (flake.nix, goreleaser, tagged go install) and explicitly frames 'local build' as the unstamped 0.0.0-dev case (also echoed in internal/version/version.go:33-46's Current() doc comment, which lists exactly 'three routes' and states 'a local go build or go test has neither, and reports [Dev]'). The diff adds a fourth stamping mechanism without a matching §15 bullet or an update to that Current() comment, even though this codebase's own convention (stated in docs/superpowers/plans/2026-08-26-takt-hardening.md:19, 'a task that changes behaviour amends the spec section that describes it, in the same commit') and recent history on this branch (commits 'docs: the intro and §10.1 count five agents', 'docs: two review layers in the base design and README') both treat this file as kept in sync with behaviour changes.",
+      "id": "c3",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_version.go",
+      "line": 137,
+      "title": "`subject` reuses a name that already means something else in this package",
+      "detail": "manifestFailure's new `subject` parameter (and its doc comment at lines 127-130) names the noun a mismatch error uses (\"skill\"/\"plugin\"). internal/cli/cmd_close_wave.go already establishes `subject` to mean the git commit subject line (waveSubject, commitSubjectSoftLimit, cmd_next.go:461-494) throughout the same `cli` package. The overlap is harmless today but a grep for \"subject\" in this package now turns up two unrelated concepts.",
+      "id": "c4",
+      "task": 1,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/hosts/copilot_test.go",
+      "line": 46,
+      "title": "The \"no description\" failure branch's src-naming is never tested",
+      "detail": "Task 5 requires both of RenderCopilotAgent's failure messages to name src with one error style. internal/hosts/copilot.go:39 (fmt.Errorf(\"%s: frontmatter has no description\", src)) is the second branch — reached when the frontmatter parses but has no/empty description. No test in this diff (internal/hosts/copilot_test.go, internal/prompt/copilot_test.go, internal/tools/hostgen/main_test.go) constructs input that hits this branch at all; TestRenderCopilotAgentRefusesAFileWithoutFrontmatter only feeds unparseable frontmatter (the first branch, prompt.Frontmatter's own error) and only asserts err != nil, never the message text. TestRunNamesTheRealSourcePathUnderARoot (main_test.go:85) also uses \"no frontmatter here\\n\", hitting the same first branch. The description-less branch's src-naming — half of what #14 changed — has zero coverage, so a regression there (e.g. reverting to the old \"agents/\"+ccName+\".md\" format) would pass every test.",
+      "id": "c5",
+      "task": 5,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/copilot_test.go",
+      "line": 290,
+      "title": "Backslash-run test's boundary case is mislabeled \"zero\" when the actual run is two",
+      "detail": "The case named \"a run at the very start of the body is even (zero)\" uses value `\"\\\\\"b\"` (body `\\\\\"b`), where the backslash run preceding the quote at body index 2 is 2, not 0 — it exercises the loop's j\u003e=0 boundary (the run extends to the start of body) rather than a zero-length run. The assertion itself is correct (byte 3), so this is a naming/comment nit, not a functional gap — but the parenthetical is confusing for a future maintainer reading it as documentation of what's being pinned.",
+      "id": "c6",
+      "task": 7,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/tools/setversion/main.go",
+      "line": 1,
+      "title": "Package doc comment doesn't mention the new --print mode",
+      "detail": "The package-level comment (lines 1-9) describes setversion purely as the tool that rewrites the version via `task version:set VERSION=x.y.z`. This diff adds a second, independent mode (`--print`, a read-only path used by `task build`) that is never mentioned in that comment, so a reader running `go doc ./internal/tools/setversion` sees only the rewrite mode's contract, not the read mode's.",
+      "id": "c7",
+      "task": 6,
+      "lenses": [
+        "docs"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "CONTRIBUTING.md:12 reads `task check     # go build ./... \u0026\u0026 go test ./... -race -count=1 \u0026\u0026 golangci-lint run ./...`. Before this diff, Taskfile.yml's `build` task cmds were only `go build ./...`, matching that shorthand. The diff changes `build` to add a `vars: VERSION: sh: go run ./internal/tools/setversion --print` and a second `go build -ldflags \"-X github.com/monrad/takt/internal/version.Version={{.VERSION}}\" -o takt ./cmd/takt`, which `task check` invokes via `task: build` (Taskfile.yml:26-32). CONTRIBUTING.md is untouched by this diff, so the one-liner now omits both the version-lookup subprocess and the second stamped build invocation.",
+      "citations": [
+        "CONTRIBUTING.md:12",
+        "Taskfile.yml:5-14",
+        "Taskfile.yml:26-32"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "internal/prompt/dist_test.go has TestFlakeReadsThePluginVersion (flake.nix) and TestGoreleaserStampsTheVersion (.goreleaser.yaml), whose own comment at lines 63-64 says it 'pins the release build to the same ldflags path the flake and the Taskfile use.' No test in the repo (grep for 'Taskfile.yml' across *.go returns nothing) reads Taskfile.yml or asserts its new `-X github.com/monrad/takt/internal/version.Version=` ldflags target/package path at Taskfile.yml:14 against the other two stamps.",
+      "citations": [
+        "internal/prompt/dist_test.go:63-64",
+        "Taskfile.yml:14"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md §15 (line 1188) lists exactly three version-stamping routes (flake.nix, .goreleaser.yaml, go install@tag) and frames local building as unstamped; internal/version/version.go's Current() doc comment (lines 33-42) likewise says 'Four kinds of build reach it by three routes' ending in 'a local go build or go test has neither, and reports [Dev]'. The diff adds a fourth stamping mechanism (Taskfile.yml's `task build` -ldflags invocation reading the manifest via setversion --print) and touches neither file, so the doc's route count and 'local build is unstamped' framing are now incomplete. docs/superpowers/plans/2026-08-26-takt-hardening.md:19 does state the sync convention: 'The spec is the authority: a task that changes behaviour amends the spec section that describes it, in the same commit, with the exact text given in the task.'",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:1188",
+        "internal/version/version.go:33-42",
+        "docs/superpowers/plans/2026-08-26-takt-hardening.md:19",
+        "Taskfile.yml:14"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "cmd_version.go:137 introduces `subject` as manifestFailure's fourth parameter, documented at lines 127-130 ('subject is the noun the mismatch failure names: \"skill\" ... \"plugin\"'). In the same `cli` package, cmd_close_wave.go already uses `waveSubject` (line 479) and cmd_next.go uses `commitSubjectSoftLimit` (line 464) and a local `subject :=` var (line 482) to mean the git commit subject line. Both concepts now share the token 'subject' in the same package.",
+      "citations": [
+        "internal/cli/cmd_version.go:127-137",
+        "internal/cli/cmd_close_wave.go:479",
+        "internal/cli/cmd_next.go:482"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "copilot.go:39 (`fmt.Errorf(\"%s: frontmatter has no description\", src)`) is the second failure branch. copilot_test.go's only failure test, TestRenderCopilotAgentRefusesAFileWithoutFrontmatter (line 46-51), feeds `\"no frontmatter\\n\"`, which fails prompt.Frontmatter and hits the first branch (line 35) only, asserting merely `err == nil`. hostgen/main_test.go's TestRunNamesTheRealSourcePathUnderARoot (lines 85-106) uses `\"no frontmatter here\\n\"`, also the first branch. No test anywhere constructs frontmatter that parses but lacks/has empty description, so the src-naming in the second branch is unexercised.",
+      "citations": [
+        "internal/hosts/copilot.go:39",
+        "internal/hosts/copilot_test.go:46-51",
+        "internal/tools/hostgen/main_test.go:85-106"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "copilot_test.go:290 names the case 'a run at the very start of the body is even (zero)' with value `\"\\\\\"b\"` (raw literal, 6 bytes: `\"`,`\\`,`\\`,`\"`,`b`,`\"`). body = value[1:5] = `\\`,`\\`,`\"`,`b`. Walking quotedScalarProblem's loop, the quote at body index 2 has a backslash run of length 2 (body[1] and body[0]), not 0 — the run reaches the start of the body (the j\u003e=0 boundary) but is a run of two, not zero backslashes. The expected byte-3 assertion is correct; only the '(zero)' parenthetical mislabels the run length.",
+      "citations": [
+        "internal/prompt/copilot_test.go:290",
+        "internal/prompt/copilot_test.go:511-528"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "internal/tools/setversion/main.go's package doc comment (lines 1-9) describes setversion solely as 'the command [that] rewrites takt's declared version ... to a new semver: `task version:set VERSION=x.y.z`' with no mention of a read-only mode. The diff adds `--print` (runPrint, main.go:~95-110) as a second, independent mode, but leaves this package comment untouched.",
+      "citations": [
+        "internal/tools/setversion/main.go:1-9"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7"
+  ]
+}

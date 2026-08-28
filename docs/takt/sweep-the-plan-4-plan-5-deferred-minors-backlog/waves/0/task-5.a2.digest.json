@@ -1,0 +1,9 @@
+{
+  "task": 5,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Both hostgen failures share one `fmt.Errorf` style naming the src the process read, and the missing regression coverage now exists at both layers — a `run()`-level test that reads stderr under a non-default `--root`, and a renderer-level table covering the no-description branch.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T12:24:44.461182023Z"
+}

@@ -1,0 +1,306 @@
+{
+  "sha": "944f47b5036970692ea7560d89104388632a36ea",
+  "passed": true,
+  "no_commands": false,
+  "commands": [
+    "grep -q 'does not match skill version' internal/cli/cmd_version.go",
+    "grep -c 'ManifestMatches(' internal/cli/cmd_version.go | grep -qx 2",
+    "go test -race -count=1 -run 'TestVersion|TestManifest' ./internal/cli/",
+    "grep -q 'func WriteFileAtomic' internal/bundle/write.go",
+    "grep -c 'os\\.WriteFile' internal/cli/cmd_next.go | grep -qx 0",
+    "grep -c 'os\\.WriteFile' internal/cli/cmd_init.go | grep -qx 0",
+    "grep -c 'os\\.WriteFile' internal/cli/launch.go | grep -qx 0",
+    "grep -q 'TestInitEscapesABackslashBearingBundleDir' internal/cli/cmd_init_test.go",
+    "grep -q 'TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile' internal/cli/cmd_init_test.go",
+    "go test -race -count=1 ./internal/op/... ./internal/bundle/... ./internal/gitx/... ./internal/cli/...",
+    "grep -q '#9 is already fixed' docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/spec.md",
+    "grep -q 'eleven code-and-doc fixes' docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/goals.md",
+    "grep -q 'explicitly forced' docs/superpowers/specs/2026-08-24-takt-design.md",
+    "grep -q 'TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken' internal/cli/cmd_next_test.go",
+    "go test -race -count=1 -run 'TestNext|TestLock' ./internal/cli/",
+    "go test -race ./...",
+    "golangci-lint run ./...",
+    "grep -qF 'quote .Token \"rejection\"' internal/brief/templates/planner.md",
+    "go test -race -count=1 ./internal/brief/...",
+    "grep -q 'RenderCopilotAgent(src' internal/tools/hostgen/main.go",
+    "go test -race -count=1 ./internal/hosts/... ./internal/tools/hostgen/...",
+    "grep -q 'ldflags' Taskfile.yml",
+    "go run ./internal/tools/setversion --print",
+    "go test -race -count=1 ./internal/tools/setversion/...",
+    "rm -f takt \u0026\u0026 task build \u0026\u0026 ./takt version | grep -q \"\\\"$(go run ./internal/tools/setversion --print)\\\"\"",
+    "rm -f takt \u0026\u0026 task build \u0026\u0026 ./takt version | grep -c 0.0.0-dev | grep -qx 0",
+    "grep -q 'TestAcquireStealBoundaryAndSelfStale' internal/bundle/lock_test.go",
+    "grep -q 'TestPromptInvariantsReadTheSameOnEveryHost' internal/prompt/prompt_test.go",
+    "grep -q 'TestQuotedScalarProblemBackslashRuns' internal/prompt/copilot_test.go",
+    "go test -race -count=1 ./internal/bundle/... ./internal/prompt/...",
+    "grep -Eq 'func endAttemptStreak\\(.+\\) error' internal/cli/facts.go",
+    "grep -c '_ = endAttemptStreak' internal/cli/cmd_record.go | grep -qx 0",
+    "grep -c '_ = endAttemptStreak' internal/cli/record_reviewer.go | grep -qx 0",
+    "go test -race -count=1 ./internal/cli/...",
+    "grep -q 'warnings,omitempty' internal/op/op.go",
+    "grep -q 'keyWarnings' internal/cli/cli.go",
+    "go test -race -count=1 ./internal/op/..."
+  ],
+  "results": [
+    {
+      "command": "grep -q 'does not match skill version' internal/cli/cmd_version.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c 'ManifestMatches(' internal/cli/cmd_version.go | grep -qx 2",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "go test -race -count=1 -run 'TestVersion|TestManifest' ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.020s",
+      "elapsed_ms": 1241
+    },
+    {
+      "command": "grep -q 'func WriteFileAtomic' internal/bundle/write.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 6
+    },
+    {
+      "command": "grep -c 'os\\.WriteFile' internal/cli/cmd_next.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -c 'os\\.WriteFile' internal/cli/cmd_init.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -c 'os\\.WriteFile' internal/cli/launch.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestInitEscapesABackslashBearingBundleDir' internal/cli/cmd_init_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestExcludeRulesIgnoreLogPayloadsButKeepTheIgnoreFile' internal/cli/cmd_init_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/op/... ./internal/bundle/... ./internal/gitx/... ./internal/cli/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/op\t1.009s\nok  \tgithub.com/monrad/takt/internal/bundle\t1.030s\nok  \tgithub.com/monrad/takt/internal/gitx\t6.546s\nok  \tgithub.com/monrad/takt/internal/cli\t7.382s",
+      "elapsed_ms": 7611
+    },
+    {
+      "command": "grep -q '#9 is already fixed' docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/spec.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 6
+    },
+    {
+      "command": "grep -q 'eleven code-and-doc fixes' docs/takt/sweep-the-plan-4-plan-5-deferred-minors-backlog/goals.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'explicitly forced' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken' internal/cli/cmd_next_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 -run 'TestNext|TestLock' ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.434s",
+      "elapsed_ms": 1644
+    },
+    {
+      "command": "go test -race ./...",
+      "exit": 0,
+      "passed": true,
+      "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t(cached)\nok  \tgithub.com/monrad/takt/internal/brief\t(cached)\nok  \tgithub.com/monrad/takt/internal/bundle\t(cached)\nok  \tgithub.com/monrad/takt/internal/cli\t(cached)\nok  \tgithub.com/monrad/takt/internal/config\t(cached)\nok  \tgithub.com/monrad/takt/internal/decide\t(cached)\nok  \tgithub.com/monrad/takt/internal/doctor\t(cached)\nok  \tgithub.com/monrad/takt/internal/finish\t(cached)\nok  \tgithub.com/monrad/takt/internal/gate\t(cached)\nok  \tgithub.com/monrad/takt/internal/gitx\t(cached)\nok  \tgithub.com/monrad/takt/internal/goals\t(cached)\nok  \tgithub.com/monrad/takt/internal/hosts\t(cached)\nok  \tgithub.com/monrad/takt/internal/op\t(cached)\nok  \tgithub.com/monrad/takt/internal/plan\t(cached)\nok  \tgithub.com/monrad/takt/internal/prompt\t(cached)\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t(cached)\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t(cached)\nok  \tgithub.com/monrad/takt/internal/version\t(cached)\nok  \tgithub.com/monrad/takt/internal/wave\t(cached)",
+      "elapsed_ms": 2601
+    },
+    {
+      "command": "golangci-lint run ./...",
+      "exit": 0,
+      "passed": true,
+      "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+      "elapsed_ms": 402
+    },
+    {
+      "command": "grep -qF 'quote .Token \"rejection\"' internal/brief/templates/planner.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/brief/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/brief\t1.013s",
+      "elapsed_ms": 1204
+    },
+    {
+      "command": "grep -q 'RenderCopilotAgent(src' internal/tools/hostgen/main.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "go test -race -count=1 ./internal/hosts/... ./internal/tools/hostgen/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/hosts\t1.008s\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t1.010s",
+      "elapsed_ms": 1158
+    },
+    {
+      "command": "grep -q 'ldflags' Taskfile.yml",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "go run ./internal/tools/setversion --print",
+      "exit": 0,
+      "passed": true,
+      "tail": "0.1.0",
+      "elapsed_ms": 28
+    },
+    {
+      "command": "go test -race -count=1 ./internal/tools/setversion/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/tools/setversion\t1.011s",
+      "elapsed_ms": 1165
+    },
+    {
+      "command": "rm -f takt \u0026\u0026 task build \u0026\u0026 ./takt version | grep -q \"\\\"$(go run ./internal/tools/setversion --print)\\\"\"",
+      "exit": 0,
+      "passed": true,
+      "tail": "task: [build] go build ./...\ntask: [build] go build -ldflags \"-X github.com/monrad/takt/internal/version.Version=0.1.0\" -o takt ./cmd/takt",
+      "elapsed_ms": 406
+    },
+    {
+      "command": "rm -f takt \u0026\u0026 task build \u0026\u0026 ./takt version | grep -c 0.0.0-dev | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "task: [build] go build ./...\ntask: [build] go build -ldflags \"-X github.com/monrad/takt/internal/version.Version=0.1.0\" -o takt ./cmd/takt",
+      "elapsed_ms": 361
+    },
+    {
+      "command": "grep -q 'TestAcquireStealBoundaryAndSelfStale' internal/bundle/lock_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestPromptInvariantsReadTheSameOnEveryHost' internal/prompt/prompt_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestQuotedScalarProblemBackslashRuns' internal/prompt/copilot_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/bundle/... ./internal/prompt/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/bundle\t1.029s\nok  \tgithub.com/monrad/takt/internal/prompt\t1.013s",
+      "elapsed_ms": 1212
+    },
+    {
+      "command": "grep -Eq 'func endAttemptStreak\\(.+\\) error' internal/cli/facts.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -c '_ = endAttemptStreak' internal/cli/cmd_record.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c '_ = endAttemptStreak' internal/cli/record_reviewer.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/cli/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t6.542s",
+      "elapsed_ms": 6752
+    },
+    {
+      "command": "grep -q 'warnings,omitempty' internal/op/op.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'keyWarnings' internal/cli/cli.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/op/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/op\t1.009s",
+      "elapsed_ms": 1166
+    }
+  ],
+  "at": "2026-08-28T13:37:08.80089762Z"
+}

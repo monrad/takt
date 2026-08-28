@@ -12,6 +12,7 @@ import (
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/config"
+	"github.com/monrad/takt/internal/gitx"
 	"github.com/monrad/takt/internal/version"
 )
 
@@ -49,6 +50,11 @@ type initRun struct {
 	bdir   string
 	newDir bool   // init created bdir; it did not exist beforehand
 	staged string // repo-relative path successfully staged, "" if none
+	// warnings names the optional writes this init lost without failing —
+	// today only info/exclude (the warnings contract). They are printed as
+	// one more key; nothing about them changes the exit code, and nothing
+	// about them triggers the rollback.
+	warnings []string
 }
 
 // cmdInit implements `takt init` (spec §7.1): resolve the workspace,
@@ -112,11 +118,16 @@ func cmdInit(env Env) int {
 		return code
 	}
 
-	err = writeJSON(env.Stdout, map[string]any{
+	out := map[string]any{
 		keySlug: opts.slug, "bundle": bundleOut, keyBranch: bi.branch, keyBranchAdopted: bi.adopted,
 		keyBase: bi.def, keyBaseSHA: baseSHA, keyCommitted: committed,
-	})
-	if err != nil {
+	}
+	// Absent when nothing was lost, never empty: a clean init's document is
+	// byte-identical to what it has always printed.
+	if len(run.warnings) > 0 {
+		out[keyWarnings] = run.warnings
+	}
+	if err = writeJSON(env.Stdout, out); err != nil {
 		return 1
 	}
 	return 0
@@ -307,8 +318,14 @@ func persistState(
 	if err := writeLogsIgnore(run.bdir); err != nil {
 		return failInit(ctx, env, run, err.Error())
 	}
+	// info/exclude is a convenience and its loss is cosmetic: the tracked
+	// logs/.gitignore is what protects a commit and a clone, and all the
+	// exclude adds is keeping the untracked sidecar invisible from another
+	// branch. So it is reported and carried on from — and in particular the
+	// rollback must not run for it, which would delete a freshly created
+	// branch and bundle over an ignore rule (the warnings contract).
 	if err := excludeLogsDir(ctx, run.ws, run.bdir); err != nil {
-		return failInit(ctx, env, run, err.Error())
+		run.warnings = append(run.warnings, excludeWarning(err))
 	}
 	// The holder goes in only once both rules that keep it out of git are on
 	// disk, so the sidecar can never be seen by the init commit that follows
@@ -340,15 +357,11 @@ const logsIgnore = "*\n!.gitignore\n"
 // identical content would churn an mtime — and a watcher, and a backup — on
 // every call of the busiest command takt has.
 func writeLogsIgnore(bdir string) error {
-	dir := filepath.Join(bdir, "logs")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	p := filepath.Join(dir, ".gitignore")
+	p := filepath.Join(bdir, "logs", ".gitignore")
 	if cur, err := os.ReadFile(p); err == nil && string(cur) == logsIgnore {
 		return nil
 	}
-	return os.WriteFile(p, []byte(logsIgnore), 0o600)
+	return bundle.WriteFileAtomic(p, []byte(logsIgnore))
 }
 
 // excludeLogsDir records the bundle's untracked logs directory in the
@@ -375,11 +388,17 @@ func writeLogsIgnore(bdir string) error {
 // attempted: an ignore rule for a directory that is gone is harmless, and
 // editing a line back out of a file the user also owns is not.
 //
-// The two rules are gitignore patterns and go in unescaped
-// ([gitx.Repo.EnsureExclude] documents whose business the escaping is).
+// The two rules are gitignore patterns, and [gitx.Repo.EnsureExclude] writes
+// what it is given verbatim, so the escaping happens here — over the
+// repo-relative path alone, with each rule's own syntax composed around the
+// escaped result. Escaping a composed rule instead would escape the second
+// one's leading `!`, which is the negation the whole pair depends on, and
+// the first one's trailing `*`, which is the wildcard that makes it match
+// the directory's contents; both would become literals matching nothing.
 // [bundle.ValidSlug] holds a slug to a-z, 0-9 and `-`, so a run's own name
-// can never carry a glob metacharacter or a leading `#`/`!`; only a `--dir`
-// pointing at a directory whose name does can reach that.
+// can never carry a glob metacharacter or a leading `#`/`!`; a `--dir`
+// pointing at a directory whose name does is the way in, and
+// [gitx.EscapeIgnorePattern] is what keeps it matching itself.
 //
 // It takes the workspace and the bundle dir rather than an *initRun because
 // `takt next` calls it too (acquireLock). The exclude lives in the
@@ -396,7 +415,15 @@ func excludeLogsDir(ctx context.Context, ws *workspace, bdir string) error {
 	if err != nil {
 		return err
 	}
-	return ws.Repo.EnsureExclude(ctx, "/"+rel+"/logs/*", "!/"+rel+"/logs/.gitignore")
+	esc := gitx.EscapeIgnorePattern(rel)
+	return ws.Repo.EnsureExclude(ctx, "/"+esc+"/logs/*", "!/"+esc+"/logs/.gitignore")
+}
+
+// excludeWarning is the one sentence init and next report a lost
+// info/exclude with. Both say it the same way, so a reader of either
+// command's JSON sees the same loss described identically.
+func excludeWarning(err error) string {
+	return "info/exclude not written: " + err.Error()
 }
 
 // commitInitBundle stages and commits only the bundle directory when it lives

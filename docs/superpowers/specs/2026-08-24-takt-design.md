@@ -313,13 +313,18 @@ records `generated: true`, and such a holder is taken over on the next call by a
 worktree, never rides into a commit and never reaches a clone — a `next` that decides nothing still leaves the
 tracked bundle byte-identical. If another id holds the lock with a heartbeat younger than `lock_ttl` (default
 10 m), `next` returns `ask: owner` (take over with `--force` / abort / read-only); an older heartbeat is taken
-over with a `lock_taken` event. `takt unlock` deletes the file; archiving does too. A file that exists but
-cannot be parsed fails `next` with a hint to `unlock` — guessing "free" is how two sessions end up driving one
-bundle. Advisory: it prevents two live sessions from colliding by accident; it does not try to be NFS-safe.
-`state.json` is `schema: 2` from this change; a `schema: 1` file (which carried `session`) loads, and the next
-write drops the key and stamps 2. `init` also records the bundle's `logs/` directory in the repository's
-`.git/info/exclude` (shared by every worktree of the repository, never cloned), so the sidecar stays invisible
-on whichever branch a worktree checks out; the tracked `logs/.gitignore` still protects clones.
+over. The `lock_taken` event records a takeover, not a flag: one is appended when a **named** session takes
+over, and whenever a takeover was **explicitly forced** with `--force`, whatever the holder's kind; a
+generated session quietly taking over a generated holder records nothing, because neither id was ever handed
+to a second process; and where nothing was taken from anybody — a `--force` against a free lock, or against
+the lock the caller already holds — there is no event. `takt unlock` deletes the file; archiving does too. A
+file that exists but cannot be parsed fails `next` with a hint to `unlock` — guessing "free" is how two
+sessions end up driving one bundle. Advisory: it prevents two live sessions from colliding by accident; it
+does not try to be NFS-safe. `state.json` is `schema: 2` from this change; a `schema: 1` file (which carried
+`session`) loads, and the next write drops the key and stamps 2. `init` also records the bundle's `logs/`
+directory in the repository's `.git/info/exclude` (shared by every worktree of the repository, never cloned),
+so the sidecar stays invisible on whichever branch a worktree checks out; the tracked `logs/.gitignore` still
+protects clones.
 
 ### 4.7 Git
 

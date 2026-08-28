@@ -389,3 +389,61 @@ func TestEnsureExcludeKeepsRuleOrderAndLineBoundaries(t *testing.T) {
 		t.Fatal("an empty rule must be refused")
 	}
 }
+
+// TestEscapeIgnorePatternEscapesTheBackslashFirst pins the escaper
+// EnsureExclude's callers compose their rules with. The backslash case is
+// the one that decides the order: `\` is gitignore's own escape character
+// and a legal character in a Unix directory name, so a name carrying one
+// must come out as a doubled backslash and never as an escape for whatever
+// follows it.
+func TestEscapeIgnorePatternEscapesTheBackslashFirst(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"an ordinary path is untouched", "docs/takt/demo", "docs/takt/demo"},
+		{"a bracket would open a character class", "docs/[takt]/demo", `docs/\[takt]/demo`},
+		{"a star and a question mark are wildcards", "docs/a*b?c/demo", `docs/a\*b\?c/demo`},
+		{"a literal backslash is doubled", `docs/ta\kt/demo`, `docs/ta\\kt/demo`},
+		{"a backslash before a metacharacter is not an escape", `docs/a\*b`, `docs/a\\\*b`},
+		{"a leading hash would be a comment", "#notes/demo", `\#notes/demo`},
+		{"a leading bang would be a negation", "!notes/demo", `\!notes/demo`},
+		{"a hash or bang further in is literal already", "docs/#a!b/demo", "docs/#a!b/demo"},
+		{"git strips an unescaped trailing space", "docs/demo ", `docs/demo\ `},
+		{"an inner space needs nothing", "docs/de mo", "docs/de mo"},
+		{"nothing to escape in nothing", "", ""},
+	} {
+		if got := gitx.EscapeIgnorePattern(tc.in); got != tc.want {
+			t.Errorf("%s: EscapeIgnorePattern(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestEnsureExcludeHonoursAnEscapedPatternInGit is the escaper's other half:
+// git itself must read the escaped rule as the directory it names. A
+// backslash-bearing directory is the case a test can only settle by asking
+// git, since the escape and the character are the same byte.
+func TestEnsureExcludeHonoursAnEscapedPatternInGit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := testutil.NewRepo(t)
+	r, err := gitx.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const dir = `docs/ta\kt/demo`
+	if err = os.MkdirAll(filepath.Join(root, filepath.FromSlash(dir), "logs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	esc := gitx.EscapeIgnorePattern(dir)
+	if err = r.EnsureExclude(ctx, "/"+esc+"/logs/*", "!/"+esc+"/logs/.gitignore"); err != nil {
+		t.Fatal(err)
+	}
+	// check-ignore exits 0 for an ignored path and 1 for one that is not,
+	// so the two calls are the assertion: the payload is hidden and the
+	// ignore file is re-included.
+	if _, err = r.Run(ctx, "check-ignore", "-q", dir+"/logs/session.json"); err != nil {
+		t.Fatalf("the escaped rule must ignore the log payload: %v", err)
+	}
+	if _, err = r.Run(ctx, "check-ignore", "-q", dir+"/logs/.gitignore"); err == nil {
+		t.Fatal("the negation must keep the ignore file itself visible")
+	}
+}

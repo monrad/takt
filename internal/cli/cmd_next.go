@@ -42,6 +42,24 @@ type nextRun struct {
 	genID   bool // takt invented r.session; nothing persisted it
 	force   bool
 	recover bool
+	// warnings names the optional writes this call lost without failing —
+	// today only info/exclude (the warnings contract). Every op printed
+	// after the lock is taken carries them, which is what [nextRun.emit] is
+	// for.
+	warnings []string
+}
+
+// opPrinter prints one op and returns the command's exit code. applyAndStop
+// takes one rather than printing for itself because it serves both the
+// post-lock archive and the pre-lock replay of an already-archived run, and
+// only the first of those can have lost anything.
+type opPrinter func(op.Op) int
+
+// plainOp is the printer for a path that cannot have lost anything: an
+// already-archived run is answered before the lock is taken, so there is no
+// warning to carry.
+func plainOp(env Env) opPrinter {
+	return func(o op.Op) int { return printOp(env, o) }
 }
 
 // cmdNext implements the op trampoline (spec §5.1): take the session lock,
@@ -76,7 +94,7 @@ func cmdNext(env Env) int {
 		if code = recommitArchive(ctx, env, tgt); code != 0 {
 			return code
 		}
-		return applyAndStop(ctx, env, tgt)
+		return applyAndStop(ctx, env, tgt, plainOp(env))
 	}
 	id, generated := sessionID(env.Getenv)
 	r := &nextRun{
@@ -116,7 +134,7 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 			keySlug: r.slug, "holder": held.ID, "host": held.Host,
 			"heartbeat": held.Heartbeat.Format(time.RFC3339),
 		})
-		return printOp(r.env, q), true
+		return r.emit(q), true
 	}
 	// Both rules that keep the bundle's untracked area out of git go in
 	// first, every time. A bundle created before they existed has a logs/
@@ -128,48 +146,88 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 	// exclude is repository state, so init — which runs once, and already
 	// ran — is the one place it could never be repaired from. Neither call
 	// writes anything when the rule is already there.
+	//
+	// The two are not equally load-bearing, and they fail differently. The
+	// tracked .gitignore is what keeps the lock out of the commit this run
+	// is going to make, so losing it is fatal. info/exclude only keeps the
+	// sidecar invisible from another branch — cosmetic — so its loss is
+	// reported on the op this call is about to print and the run carries on
+	// (the warnings contract).
 	if err = writeLogsIgnore(r.bdir); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
 	if err = excludeLogsDir(ctx, r.ws, r.bdir); err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), ""), true
+		r.warnings = append(r.warnings, excludeWarning(err))
 	}
 	if err = bundle.WriteSession(r.bdir, next); err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), ""), true
 	}
-	// Every takeover of a session that could have been driving is recorded:
-	// an expired heartbeat, an explicit --force, and the silent takeover of
-	// a holder that recorded generated=true and can therefore never come
-	// back. The last one is invisible to the user by design, which is
-	// exactly why it belongs in the log — spec §4.6 has takt record recovery
-	// as an event rather than repairing state silently (review M7).
+	// A lock_taken records a takeover, so every arm below is gated on one
+	// having happened. Acquire returns `acquired` when there was no holder
+	// at all and `held-by-self` when the caller already holds the run, and
+	// a --force passed in either situation takes the run from nobody:
+	// grading on the flag would write an event for a takeover that never
+	// happened — a false audit line, and churn in the tracked events.jsonl
+	// on every forced `takt next` against a free lock.
 	//
-	// With one exception: when the *acquirer's* id is generated too, nobody
-	// could have been driving — neither id was ever handed to a second
-	// process — so there is no takeover to report, and appending one would
-	// rewrite events.jsonl, a tracked file, on every single `takt next` a
-	// session without CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes. A named
-	// session taking over a generated holder still logs it.
+	// Every takeover of a session that could have been driving is
+	// recorded: an expired heartbeat, an explicit --force, and the silent
+	// takeover of a holder that recorded generated=true and can therefore
+	// never come back. The last one is invisible to the user by design,
+	// which is exactly why it belongs in the log — spec §4.6 has takt
+	// record recovery as an event rather than repairing state silently
+	// (review M7).
+	//
+	// With one exception, and only when the takeover was not asked for:
+	// when the *acquirer's* id is generated too, nobody could have been
+	// driving — neither id was ever handed to a second process — so there
+	// is no takeover to report, and appending one would rewrite
+	// events.jsonl, a tracked file, on every single `takt next` a session
+	// without CLAUDE_CODE_SESSION_ID/TAKT_SESSION makes. A named session
+	// taking over a generated holder still logs it, and so does an
+	// explicit --force: r.force is set from the command line and nowhere
+	// else, so the churn argument that justifies the exemption never
+	// reaches it, and a takeover a user asked for is recorded whatever the
+	// holder's kind.
 	//
 	// The exception is decided on the holder's record, not on Acquire's
-	// outcome, and so is graded first. Acquire grades an expired heartbeat
-	// ahead of force, so a generated holder that has simply been idle longer
-	// than lock_ttl comes back as `stolen` rather than `forced` — reading
-	// the outcome instead put a lock_taken line in the tracked events.jsonl
-	// after every pause, which is exactly the dirty tree this exemption
-	// exists to prevent.
+	// outcome, and so is graded ahead of the outcome arms. Acquire grades
+	// an expired heartbeat ahead of force, so a generated holder that has
+	// simply been idle longer than lock_ttl comes back as `stolen` rather
+	// than `forced` — reading the outcome instead put a lock_taken line in
+	// the tracked events.jsonl after every pause, which is exactly the
+	// dirty tree this exemption exists to prevent. The event carries
+	// whatever Acquire graded, so a forced takeover of a long-idle holder
+	// still reads `stolen`.
+	takeover := outcome == bundle.LockStolen || outcome == bundle.LockForced
 	switch {
-	case orphaned && r.genID: // nobody could have been driving; nothing to report
+	case !takeover: // the run was taken from nobody; there is nothing to record
+	case orphaned && r.genID && !r.force: // nobody could have been driving
 	case orphaned:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome), keyReason: "orphaned",
 		})
-	case outcome == bundle.LockStolen, outcome == bundle.LockForced && r.force:
+	default:
 		_ = bundle.AppendEvent(r.bdir, "lock_taken", map[string]any{
 			keySession: r.session, "outcome": string(outcome),
 		})
 	}
 	return 0, false
+}
+
+// emit prints one of this run's ops, carrying whatever optional write the
+// call lost. Every op a `takt next` that took the lock can print goes
+// through here — including the stop op the archive path builds in
+// archive.go, which is reached from r.archive and would otherwise drop a
+// warning on the one call that ends the run well. Routing them all through
+// one helper is what stops a future exit path from losing one; the only op
+// printed outside it belongs to an already-archived run, which is answered
+// before any lock is taken and so has nothing to report (plainOp).
+func (r *nextRun) emit(o op.Op) int {
+	if len(r.warnings) > 0 {
+		o.Warnings = append(slices.Clone(o.Warnings), r.warnings...)
+	}
+	return printOp(r.env, o)
 }
 
 // loop decides, performs the side effects whose preconditions are met, and
@@ -210,7 +268,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 		case decide.ActRun:
 			return r.run(*d.Op)
 		case decide.ActExec, decide.ActStop:
-			return printOp(r.env, *d.Op)
+			return r.emit(*d.Op)
 		case decide.ActArchive:
 			return r.archive(ctx)
 		default:
@@ -569,7 +627,7 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 		// reading it panicked instead of running (review finding).
 		o.Wave, o.Attempt = new(aw.N), aw.Attempt
 	}
-	return printOp(r.env, o)
+	return r.emit(o)
 }
 
 // writeStableBrief renders a non-task brief under briefs/, reusing the
@@ -610,10 +668,7 @@ func writeStableBriefAt(p string, render func(tok string) (text, name string, er
 	if reused != "" {
 		text = reused
 	}
-	if err = os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return "", err
-	}
-	return p, os.WriteFile(p, []byte(text), 0o600)
+	return p, bundle.WriteFileAtomic(p, []byte(text))
 }
 
 // reuseBriefToken re-renders the brief at p with the delimiter token already
@@ -666,10 +721,7 @@ func (r *nextRun) ensureSliceDiff(ctx context.Context) (string, error) {
 		}
 	}
 	p := sliceDiffPath(r.bdir, aw.N, sliceOf(aw), aw.Attempt)
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return "", err
-	}
-	return p, os.WriteFile(p, []byte(taskDiff(ctx, r.ws, files)), 0o600)
+	return p, bundle.WriteFileAtomic(p, []byte(taskDiff(ctx, r.ws, files)))
 }
 
 // dispatchLenses emits row 15a: one reviewer agent per unrecorded lens over
@@ -709,7 +761,7 @@ func (r *nextRun) dispatchLenses(ctx context.Context, d decide.Decision) int {
 			Brief: p, Cwd: r.ws.Repo.Root, Label: "lens: " + lens,
 		})
 	}
-	return printOp(r.env, op.Op{
+	return r.emit(op.Op{
 		Op:        op.Dispatch,
 		Narration: fmt.Sprintf("wave %d: internal review, %d lenses", aw.N, len(agents)),
 		Wave:      new(aw.N), Attempt: aw.Attempt, Agents: agents,
@@ -879,7 +931,7 @@ func (r *nextRun) ask(o op.Op) int {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
 	}
-	return printOp(r.env, o)
+	return r.emit(o)
 }
 
 // run fills a run op's instructions from the step's template (spec §5.2)
@@ -915,7 +967,7 @@ func (r *nextRun) run(o op.Op) int {
 	}
 	o.Instructions = text
 	o.Inputs = inputs
-	return printOp(r.env, o)
+	return r.emit(o)
 }
 
 // writeRetroInputs re-derives finish/retro-inputs.json from the run's own

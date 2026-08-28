@@ -1,0 +1,9 @@
+{
+  "task": 8,
+  "attempt": 1,
+  "status": "done",
+  "summary": "endAttemptStreak` returns its read and append errors, all four record call sites fold a loss into the `warnings` array of the JSON they already print at exit 0, and ten new tests cover both losses at each site plus the absent-key clean case.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T13:16:56.035779393Z"
+}

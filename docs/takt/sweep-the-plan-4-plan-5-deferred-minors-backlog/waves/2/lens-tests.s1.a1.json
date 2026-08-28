@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T13:25:45.7369231Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 204,
+      "title": "New default: arm of the lock_taken switch has no test asserting its event shape",
+      "detail": "Task-3 rewrote the last switch arm from an explicit outcome check (`case outcome == bundle.LockStolen, outcome == bundle.LockForced \u0026\u0026 r.force:`) to a bare `default:` (cmd_next.go:207-210), which only the not-orphaned path reaches (a named/non-generated holder being stolen or forced). The new `case !takeover:` guard that makes this safe is well covered by TestNextForceWithoutATakeoverAppendsNothing (cmd_next_test.go:1512), and the exemption change is covered by TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken (cmd_next_test.go:1462) — but that test only exercises generated holders, which are always `orphaned` regardless of heartbeat freshness (orphaned only checks held.Generated + ID mismatch, not staleness), so both its idle and live scenarios land in `case orphaned:`, not `default:`. The only code path that actually reaches `default:` is a named-holder takeover, exercised behaviorally by the pre-existing TestNextSessionLock (cmd_next_test.go:881-899), but that test never inspects the appended lock_taken event's fields (outcome value, absence of a `reason` key). No test in the diff (or found in the file) asserts `eventsOfType(...)[0].Data` for a forced/stolen takeover of a non-generated holder, so a regression in this specific arm (e.g., an accidental `reason` key, or a wrong outcome value) would not be caught.",
+      "task": 3
+    }
+  ]
+}

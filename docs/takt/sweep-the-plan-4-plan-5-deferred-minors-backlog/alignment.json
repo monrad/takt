@@ -1,0 +1,188 @@
+{
+  "anchor_hash": "sha256:d90f0c33bfb9eb849e57c2da35b3e579e80c9c0afe110b393c552f59a8d0c671",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Sweep the plan-4/plan-5 deferred minors backlog covering fourteen fixes and two rulings, filed as issues #1 #2 #3 #4 #5 #6 #9 #10 #11 #12 #13 #14 #15 #16 on monrad/takt",
+      "span": "Sweep the plan-4/plan-5 deferred minors backlog: fourteen small, independently verifiable fixes and two rulings, filed as GitHub issues #1 #2 #3 #4 #5 #6 #9 #10 #11 #12 #13 #14 #15 #16 on monrad/takt."
+    },
+    {
+      "id": "A2",
+      "text": "Group tasks by file so they stay disjoint",
+      "span": "Group by file so tasks stay disjoint"
+    },
+    {
+      "id": "A3",
+      "text": "cmd_version.go: fix #3, --expect \"\" must fail the handshake, not pass",
+      "span": "cmd_version.go takes #3 (--expect \"\" must fail the handshake, not pass)"
+    },
+    {
+      "id": "A4",
+      "text": "cmd_version.go: fix #10, ManifestMatches evaluated twice",
+      "span": "#10 (ManifestMatches evaluated twice)"
+    },
+    {
+      "id": "A5",
+      "text": "cmd_version.go: fix #11, mismatch text says \"plugin\" on the Copilot host",
+      "span": "#11 (mismatch text says \"plugin\" on the Copilot host)"
+    },
+    {
+      "id": "A6",
+      "text": "gitx + cmd_init.go: fix #6, init/next failing on read-only .git/info/exclude should degrade to a warning",
+      "span": "gitx + cmd_init.go take #6 (init/next fail when .git/info/exclude is read-only — degrade to a warning)"
+    },
+    {
+      "id": "A7",
+      "text": "gitx + cmd_init.go: fix #12, EnsureExclude writes the bundle path unescaped",
+      "span": "#12 (EnsureExclude writes the bundle path unescaped)"
+    },
+    {
+      "id": "A8",
+      "text": "cmd_next.go: fix #5, briefs written non-atomically, wants bundle.WriteFileAtomic",
+      "span": "cmd_next.go takes #5 (briefs written non-atomically — wants bundle.WriteFileAtomic)"
+    },
+    {
+      "id": "A9",
+      "text": "cmd_next.go: fix #4, --force takeover from a generated session over a generated holder records no lock_taken; needs log-always vs document decision",
+      "span": "#4 (a --force takeover from a generated session over a generated holder records no lock_taken — decide log-always vs document)"
+    },
+    {
+      "id": "A10",
+      "text": "Standalone fix #9: config lock_ttl and wave_stale_after not validated \u0026gt; 0",
+      "span": "#9 (config lock_ttl and wave_stale_after not validated \u0026gt; 0)"
+    },
+    {
+      "id": "A11",
+      "text": "Standalone fix #1: planner brief template renders validation problems outside the delimiter quote",
+      "span": "#1 (planner brief template renders validation problems outside the delimiter quote)"
+    },
+    {
+      "id": "A12",
+      "text": "Standalone fix #14: hostgen message polish and --root-unaware paths",
+      "span": "#14 (hostgen message polish and --root-unaware paths)"
+    },
+    {
+      "id": "A13",
+      "text": "Standalone fix #13: task build does not stamp the version",
+      "span": "#13 (task build does not stamp the version)"
+    },
+    {
+      "id": "A14",
+      "text": "Standalone fix #15: test gaps (lock steal boundary, cross-prompt invariant sentences, quotedScalarProblem escape look-back, writeLogsIgnore already-present case)",
+      "span": "#15 (test gaps: lock steal boundary, cross-prompt invariant sentences, quotedScalarProblem escape look-back, writeLogsIgnore already-present case)"
+    },
+    {
+      "id": "A15",
+      "text": "A ruling is needed before code for #16 (endAttemptStreak swallows read and append errors — keep documented or fail loud) and for #4",
+      "span": "Two need a ruling before code: #16 (endAttemptStreak swallows read and append errors — keep documented or fail loud) and #4 above"
+    },
+    {
+      "id": "A16",
+      "text": "#2 is the spec §4.6 doc sentence that follows whatever #4's ruling decides",
+      "span": "#2 is the spec §4.6 doc sentence that follows whatever #4 decides"
+    },
+    {
+      "id": "A17",
+      "text": "Out of scope: #34 (open PR #38 on fix/doctor-finding-count) and everything in the diagnostics, retro and review-layer clusters",
+      "span": "Out of scope: #34 (open PR #38 on fix/doctor-finding-count) and everything in the diagnostics, retro and review-layer clusters."
+    },
+    {
+      "id": "A18",
+      "text": "Afterwards, go test -race ./... and golangci-lint run ./... must be green",
+      "span": "Green afterwards: go test -race ./... and golangci-lint run ./..."
+    }
+  ],
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "plan.md's Tasks section maps every listed issue to a task (T1:#3,#10,#11; T2:#5,#6,#12,#15-partial; T3:#4,#2; T4:#1; T5:#14; T6:#13; T7:#15-remainder; T8:#16), and its 'G12, and where #9's closure happened' section explains #9 is a closure rather than a fix, matching the spec's own arithmetic rather than dropping it silently."
+    },
+    {
+      "id": "A2",
+      "verdict": "covered",
+      "evidence": "plan.md's Approach section states tasks are grouped 'by file rather than by issue, exactly as the spec lays them out' and that waves are computed from `depends_on` so file sets without an ordering edge are disjoint, 'which is takt's own plan-disjoint rule'."
+    },
+    {
+      "id": "A3",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1 description item (1) has cmd_version.go detect that --expect was given and route a literal-empty value through the existing versionless refusal instead of exiting 0, with verify test `TestVersionExpectEmptyFailsTheHandshake`."
+    },
+    {
+      "id": "A4",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1 item (2) collapses `manifestFailure` + duplicate `ManifestMatches` calls into one judging helper, with an acceptance verify grepping for exactly two `ManifestMatches(` occurrences in cmd_version.go."
+    },
+    {
+      "id": "A5",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1 item (3) gives `--expect` its own subject noun ('does not match skill version'/'update the skill') while `--expect-manifest` keeps 'plugin', verified by `grep -q 'does not match skill version' internal/cli/cmd_version.go`."
+    },
+    {
+      "id": "A6",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 2 part (C) makes `excludeLogsDir`'s failure stop failing both `init` (no rollback) and `next` (`acquireLock`), reporting it via the warnings key instead — 'init and next exit 0, ... the warning names info/exclude'."
+    },
+    {
+      "id": "A7",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 2 part (B) adds a gitignore-pattern escaper to internal/gitx/git.go applied to the repo-relative bundle path in `excludeLogsDir`, keeping `EnsureExclude`'s verbatim contract, with tests for a glob-bearing and a backslash-bearing `--dir`."
+    },
+    {
+      "id": "A8",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 2 part (A) adds `bundle.WriteFileAtomic` beside `WriteJSONAtomic` and switches the brief/slice-diff writers in cmd_next.go (plus launch.go and cmd_init.go) to it, verified by grepping that `os.WriteFile` no longer appears in cmd_next.go."
+    },
+    {
+      "id": "A9",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 3 gates the event switch so an event only appends when `outcome` is `stolen`/`forced`, and conditions the generated-over-generated exemption on `--force` not being passed, implementing the spec's log-it ruling with tests like `TestNextExplicitForceOverAGeneratedHolderAppendsLockTaken`."
+    },
+    {
+      "id": "A10",
+      "verdict": "covered",
+      "evidence": "plan.md's 'G12, and where #9's closure happened' section states #9 'is closed as part of this run's bookkeeping, not implemented' and that 'no task performs or re-performs it, because closing a GitHub issue is outward-facing' — matching the spec's already-fixed finding rather than dropping the issue unaddressed."
+    },
+    {
+      "id": "A11",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 4 rewrites internal/brief/templates/planner.md to wrap `.Problems` in `{{quote .Token \"rejection\" (join .Problems \"\\n\")}}` and extends `TestRejectionReasonsAreQuotedBackOnTheRetry` to the planner."
+    },
+    {
+      "id": "A12",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 5 changes `RenderCopilotAgent`'s signature to receive the source path from hostgen's `--root`-aware caller and unifies both error messages, with a new test asserting a non-'.' `--root` names the real source path."
+    },
+    {
+      "id": "A13",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 6 adds a `--print` mode to setversion and changes Taskfile.yml's `build` to pass `-ldflags` with the parsed version, verified by `./takt version` matching the manifest version and not printing `0.0.0-dev`."
+    },
+    {
+      "id": "A14",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 7 adds `TestAcquireStealBoundaryAndSelfStale`, `TestPromptInvariantsReadTheSameOnEveryHost`, and `TestQuotedScalarProblemBackslashRuns`, while task 2 part (D) adds the writeLogsIgnore already-present case beside `TestNextRestoresADeletedLogsIgnore` — covering all four #15 sub-gaps."
+    },
+    {
+      "id": "A15",
+      "verdict": "covered",
+      "evidence": "plan.md's Class justifications and Assumptions carry the user-confirmed rulings ('Report it in the command's JSON, exit 0' for #16; 'Log it' for #4) and task 8/task 3 implement them respectively."
+    },
+    {
+      "id": "A16",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 3 rewrites §4.6 of docs/superpowers/specs/2026-08-24-takt-design.md 'to state all three parts' per the #4 ruling, verified by `grep -q 'explicitly forced' docs/superpowers/specs/2026-08-24-takt-design.md`."
+    },
+    {
+      "id": "A17",
+      "verdict": "covered",
+      "evidence": "No task in plan.index.json touches #34 or the diagnostics/retro/review-layer cluster files; plan.md's task list is confined to cmd_version.go, the init/next write path, cmd_next.go, planner.md, hostgen, Taskfile.yml/setversion, test files and facts.go/cmd_record.go/record_reviewer.go only."
+    },
+    {
+      "id": "A18",
+      "verdict": "covered",
+      "evidence": "plan.index.json's wave-2 tasks (id 3 and id 8) both list `go test -race ./...` and `golangci-lint run ./...` in their verify arrays, and plan.md states 'what actually proves G13 is takt verify at finish: it runs the union of every task's verify commands at HEAD ... after the last wave has committed'."
+    }
+  ]
+}

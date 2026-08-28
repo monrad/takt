@@ -2,8 +2,18 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/finish"
+	"github.com/monrad/takt/internal/gitx"
+	"github.com/monrad/takt/internal/testutil"
 )
 
 // trailerMarkers is the marker-prefix axis of the accepted-shape
@@ -241,4 +251,274 @@ func parsedTrailerField(key, line string) string {
 	default:
 		return status
 	}
+}
+
+// The `record` verbs in this file are called directly rather than through
+// Main: this file compiles into package cli (it tests unexported helpers),
+// so the external test package's command driver is out of reach. Calling the
+// verb is enough for what #16 settled — the loss is folded into the document
+// the verb itself prints.
+
+// streakGoals is the smallest goals.md `record --agent goal-assessor`
+// accepts: one goal, so one verdict is a whole assessment.
+const streakGoals = "# Goals — demo\n\n## Anchor\n```text\nadd a greeting\n```\n\n## Goals\n" +
+	"- G1 — it works · signal: test · evidence: go test\n"
+
+// streakVerdicts is an assessment takt can use. It judges G1 missed rather
+// than achieved on purpose: an all-achieved assessment goes on through
+// markGoalsChecked, whose own goal_check append is part of the substantive
+// write and correctly fails the command — a different contract from the
+// bookkeeping reset these tests are about.
+const streakVerdicts = "```json\n" +
+	`[{"id":"G1","verdict":"missed","evidence":"nothing greets yet","citations":["a.go:1"]}]` +
+	"\n```\n"
+
+// streakClauses is an alignment reply takt can use.
+const streakClauses = "```json\n" +
+	`{"clauses":[{"id":"C1","text":"greet the user","span":"add a greeting"}]}` +
+	"\n```\n"
+
+// streakTarget builds the smallest run a record verb operates on: a
+// repository to take HEAD from, a bundle directory in the finish phase, the
+// goals.md an assessment is judged against, and one rejection of type
+// invalid already on the event log — so the record that follows has a streak
+// to end and endAttemptStreak actually reaches its append.
+func streakTarget(t *testing.T, invalid string) *runTarget {
+	t.Helper()
+	root := testutil.NewRepo(t)
+	repo, err := gitx.Open(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bdir := filepath.Join(root, "docs", "takt", "demo")
+	if err = os.MkdirAll(bdir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(bdir, "goals.md"), []byte(streakGoals), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = bundle.AppendEvent(bdir, invalid, map[string]any{keyProblems: []string{"unusable reply"}}); err != nil {
+		t.Fatal(err)
+	}
+	return &runTarget{
+		ws: &workspace{Repo: repo}, slug: "demo", bdir: bdir,
+		st: &bundle.State{Slug: "demo", Topic: "add a greeting", Phase: bundle.PhaseFinish},
+	}
+}
+
+// writeStreakMsg writes an agent's final message to a scratch file and
+// returns the path `--from` would name.
+func writeStreakMsg(t *testing.T, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "msg.txt")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// callRecord runs one record verb against a captured Env and decodes the
+// JSON document it printed.
+func callRecord(t *testing.T, fn func(Env) int) (int, map[string]any, string) {
+	t.Helper()
+	var out, errb bytes.Buffer
+	code := fn(Env{Stdout: &out, Stderr: &errb, Getenv: func(string) string { return "" }})
+	var got map[string]any
+	if out.Len() > 0 {
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("stdout is not JSON: %q", out.String())
+		}
+	}
+	return code, got, errb.String()
+}
+
+// readOnlyEventLog makes the run's event log read-only: ReadEvents still
+// succeeds, so the streak is judged and it is only the append of the reset
+// that is refused. This is the lost-append half of #16.
+func readOnlyEventLog(t *testing.T, bdir string) {
+	t.Helper()
+	p := bundle.EventsPath(bdir)
+	if err := os.Chmod(p, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(p, 0o600) })
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err == nil {
+		_ = f.Close()
+		t.Skip("this user can write a mode-400 file, so the lost-append path cannot be provoked")
+	}
+}
+
+// directoryEventLog replaces the run's event log with a directory: opening
+// it succeeds and the first read fails, so ReadEvents fails and AppendEvent
+// is never reached. This is the lost-read half of #16, and it takes the
+// seeded rejection with it — which is exactly why a read that fails is a
+// loss worth naming rather than swallowing.
+func directoryEventLog(t *testing.T, bdir string) {
+	t.Helper()
+	p := bundle.EventsPath(bdir)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(p, 0o750); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// assertStreakLoss insists on the wire shape #16's ruling settled: exit 0,
+// and a warnings array holding exactly one sentence naming the loss.
+func assertStreakLoss(t *testing.T, code int, out map[string]any, errb string) {
+	t.Helper()
+	if code != 0 {
+		t.Fatalf("a lost streak reset must not change the exit code: %d %s", code, errb)
+	}
+	raw, ok := out[keyWarnings]
+	if !ok {
+		t.Fatalf("the loss must be reported under %q: %v", keyWarnings, out)
+	}
+	list, ok := raw.([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("warnings must be a non-empty array of strings: %#v", raw)
+	}
+	s, ok := list[0].(string)
+	if !ok || !strings.Contains(s, "attempt-streak reset not recorded") {
+		t.Fatalf("the warning must name the loss in one sentence: %#v", list[0])
+	}
+}
+
+// assertGoalsRecordIntact checks the keys `record --agent goal-assessor` has
+// always printed, so the warning is provably additive.
+func assertGoalsRecordIntact(t *testing.T, out map[string]any) {
+	t.Helper()
+	if sha, ok := out[keySHA].(string); !ok || sha == "" {
+		t.Fatalf("the assessed sha must survive the loss: %v", out)
+	}
+	if out["all_achieved"] != false {
+		t.Fatalf("all_achieved must survive the loss: %v", out)
+	}
+	unmet, ok := out["unmet"].([]any)
+	if !ok || len(unmet) != 1 {
+		t.Fatalf("the unmet list must survive the loss: %v", out)
+	}
+}
+
+// TestRecordGoalsReportsALostStreakResetAppend is the goals record's half of
+// #16's ruling for the append loss: goals.record.json is already written
+// when endAttemptStreak runs, so a refused append reports itself as a
+// warning and changes neither the exit code nor a single existing key.
+func TestRecordGoalsReportsALostStreakResetAppend(t *testing.T) {
+	t.Parallel()
+	tgt := streakTarget(t, evGoalsInvalid)
+	from := writeStreakMsg(t, streakVerdicts)
+	readOnlyEventLog(t, tgt.bdir)
+	code, out, errb := callRecord(t, func(env Env) int {
+		return recordGoals(t.Context(), env, tgt, from)
+	})
+	assertStreakLoss(t, code, out, errb)
+	assertGoalsRecordIntact(t, out)
+	if rec, err := finish.ReadGoals(tgt.bdir); err != nil || rec == nil {
+		t.Fatalf("the substantive write landed before the loss: %v %v", rec, err)
+	}
+}
+
+// TestRecordGoalsReportsAnUnreadableEventLog is the same ruling for the
+// other loss: the read fails first, so there is nothing to judge and no
+// append to attempt, and the streak is left counting.
+func TestRecordGoalsReportsAnUnreadableEventLog(t *testing.T) {
+	t.Parallel()
+	tgt := streakTarget(t, evGoalsInvalid)
+	from := writeStreakMsg(t, streakVerdicts)
+	directoryEventLog(t, tgt.bdir)
+	code, out, errb := callRecord(t, func(env Env) int {
+		return recordGoals(t.Context(), env, tgt, from)
+	})
+	assertStreakLoss(t, code, out, errb)
+	assertGoalsRecordIntact(t, out)
+}
+
+// TestRecordAlignmentReportsALostStreakResetAppend is the alignment
+// record's half of the append loss: alignment.json is on disk before
+// endAttemptStreak runs.
+func TestRecordAlignmentReportsALostStreakResetAppend(t *testing.T) {
+	t.Parallel()
+	tgt := streakTarget(t, evAlignmentInvalid)
+	from := writeStreakMsg(t, streakClauses)
+	readOnlyEventLog(t, tgt.bdir)
+	code, out, errb := callRecord(t, func(env Env) int {
+		return recordAlignment(env, tgt.bdir, tgt.st, alignmentModeClauses, from)
+	})
+	assertStreakLoss(t, code, out, errb)
+	if out[keyMode] != alignmentModeClauses || out["ok"] != true {
+		t.Fatalf("the record's own keys must be untouched: %v", out)
+	}
+	a, err := readAlignment(tgt.bdir)
+	if err != nil || a == nil || len(a.Clauses) != 1 {
+		t.Fatalf("the substantive write landed before the loss: %+v %v", a, err)
+	}
+}
+
+// TestRecordAlignmentReportsAnUnreadableEventLog is the alignment record's
+// half of the read loss.
+func TestRecordAlignmentReportsAnUnreadableEventLog(t *testing.T) {
+	t.Parallel()
+	tgt := streakTarget(t, evAlignmentInvalid)
+	from := writeStreakMsg(t, streakClauses)
+	directoryEventLog(t, tgt.bdir)
+	code, out, errb := callRecord(t, func(env Env) int {
+		return recordAlignment(env, tgt.bdir, tgt.st, alignmentModeClauses, from)
+	})
+	assertStreakLoss(t, code, out, errb)
+	if out[keyMode] != alignmentModeClauses || out["ok"] != true {
+		t.Fatalf("the record's own keys must be untouched: %v", out)
+	}
+}
+
+// TestRecordPrintsNoWarningsKeyOnACleanRecord is the other half of the
+// contract: absent when nothing was lost, so a healthy goals record and a
+// healthy alignment record print exactly what they always have.
+func TestRecordPrintsNoWarningsKeyOnACleanRecord(t *testing.T) {
+	t.Parallel()
+	goalsTgt := streakTarget(t, evGoalsInvalid)
+	code, out, errb := callRecord(t, func(env Env) int {
+		return recordGoals(t.Context(), env, goalsTgt, writeStreakMsg(t, streakVerdicts))
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if _, ok := out[keyWarnings]; ok {
+		t.Fatalf("a clean goals record must print no warnings key: %v", out)
+	}
+	if ev := lastStreakEvent(t, goalsTgt.bdir, evGoalsReset); ev.Data[keyReason] != reasonRecorded {
+		t.Fatalf("the reset must still be appended when nothing is broken: %+v", ev.Data)
+	}
+	alignTgt := streakTarget(t, evAlignmentInvalid)
+	code, out, errb = callRecord(t, func(env Env) int {
+		return recordAlignment(env, alignTgt.bdir, alignTgt.st, alignmentModeClauses, writeStreakMsg(t, streakClauses))
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if _, ok := out[keyWarnings]; ok {
+		t.Fatalf("a clean alignment record must print no warnings key: %v", out)
+	}
+	if ev := lastStreakEvent(t, alignTgt.bdir, evAlignmentReset); ev.Data[keyReason] != reasonRecorded {
+		t.Fatalf("the reset must still be appended when nothing is broken: %+v", ev.Data)
+	}
+}
+
+// lastStreakEvent returns the newest event of typ, failing the test if the
+// log holds none.
+func lastStreakEvent(t *testing.T, bdir, typ string) bundle.Event {
+	t.Helper()
+	events, err := bundle.ReadEvents(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range slices.Backward(events) {
+		if e.Type == typ {
+			return e
+		}
+	}
+	t.Fatalf("no %s event among %d events", typ, len(events))
+	return bundle.Event{}
 }

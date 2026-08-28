@@ -250,16 +250,36 @@ func countSinceReset(events []bundle.Event, typ, reset string) int {
 // nothing is appended: a clean run's log stays clean, and so does a second
 // valid record in a row.
 //
-// A lost append is tolerated, as everywhere else this log is written: the
-// cost is that the streak keeps counting, and the next brief keeps quoting
-// the old rejection, until some later reset lands.
-func endAttemptStreak(bdir, invalid, reset string, data map[string]any) {
+// A lost append is reported by the caller, at exit 0 (the warnings
+// contract): every call site runs after the substantive write has already
+// landed, so failing here would halt a run over bookkeeping. A lost read is
+// returned for the same reason — a log that cannot be read is a streak that
+// cannot be judged, which is the same loss arriving one step earlier. The
+// cost either way is that the streak keeps counting, and the next brief keeps
+// quoting the old rejection, until some later reset lands.
+func endAttemptStreak(bdir, invalid, reset string, data map[string]any) error {
 	events, err := bundle.ReadEvents(bdir)
-	if err != nil ||
-		(countSinceReset(events, invalid, reset) == 0 && len(lastProblems(events, invalid, reset)) == 0) {
-		return
+	if err != nil {
+		return err
 	}
-	_ = bundle.AppendEvent(bdir, reset, data)
+	if countSinceReset(events, invalid, reset) == 0 && len(lastProblems(events, invalid, reset)) == 0 {
+		return nil
+	}
+	return bundle.AppendEvent(bdir, reset, data)
+}
+
+// warnStreakLoss folds a failed endAttemptStreak into the document a record
+// verb is about to print: one sentence naming what was not written, appended
+// to any warning already there, and nothing at all when the reset landed —
+// the key is absent rather than empty, so a clean record's JSON is what it
+// has always been. The exit code and every existing key are untouched.
+func warnStreakLoss(out map[string]any, err error) map[string]any {
+	if err == nil {
+		return out
+	}
+	prev, _ := out[keyWarnings].([]string)
+	out[keyWarnings] = append(prev, "attempt-streak reset not recorded: "+err.Error())
+	return out
 }
 
 // lastProblems returns the rejection reasons the retried brief shows the

@@ -17,11 +17,16 @@ import (
 	"regexp"
 )
 
-// manifests is the two files setversion rewrites, relative to the directory
-// Run is pointed at (the repository root — the Taskfile always runs `go
-// run` from there).
+// pluginManifest is the manifest --print reads: the one file every build
+// (task build's -ldflags, the flake, goreleaser) treats as the source of
+// truth for takt's declared version.
+var pluginManifest = filepath.Join(".claude-plugin", "plugin.json")
+
+// manifests is the two files setversion's rewrite mode touches, relative to
+// the directory Run is pointed at (the repository root — the Taskfile
+// always runs `go run` from there).
 var manifests = []string{
-	filepath.Join(".claude-plugin", "plugin.json"),
+	pluginManifest,
 	filepath.Join(".claude-plugin", "marketplace.json"),
 }
 
@@ -50,16 +55,21 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	os.Exit(Run(os.Args[1:], os.Stderr, dir))
+	os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr, dir))
 }
 
 // Run is setversion's entry point, exported for its test: args is the
-// program's arguments (exactly one semver string), dir is the directory the
-// two manifests are resolved relative to. It returns the process exit code.
-func Run(args []string, stderr io.Writer, dir string) int {
+// program's arguments — either exactly one semver string (the rewrite mode)
+// or the single flag --print (the read-only mode `task build` runs to learn
+// the version to stamp into -ldflags) — and dir is the directory the
+// manifests are resolved relative to. It returns the process exit code.
+func Run(args []string, stdout, stderr io.Writer, dir string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: setversion <x.y.z>")
+		fmt.Fprintln(stderr, "usage: setversion (<x.y.z>|--print)")
 		return 1
+	}
+	if args[0] == "--print" {
+		return runPrint(stdout, stderr, dir)
 	}
 	v := args[0]
 	if !semverPattern.MatchString(v) {
@@ -77,6 +87,37 @@ func Run(args []string, stderr io.Writer, dir string) int {
 		return 1
 	}
 	return 0
+}
+
+// runPrint implements --print: it reads pluginManifest with the same
+// versionLine regexp rewriteVersion writes with, prints the version it finds
+// to stdout, and writes nothing — `task build` shells this out into a
+// Taskfile var rather than depending on a JSON tool the repo does not
+// otherwise need.
+func runPrint(stdout, stderr io.Writer, dir string) int {
+	v, err := readVersion(filepath.Join(dir, pluginManifest))
+	if err != nil {
+		fmt.Fprintln(stderr, "setversion:", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, v)
+	return 0
+}
+
+// readVersion extracts the quoted value of path's first `"version": "…"`
+// line using versionLine — the same regexp rewriteVersion substitutes
+// through — so --print and the rewrite mode stay one parser reading and
+// writing the same shape.
+func readVersion(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	m := versionLine.FindSubmatchIndex(b)
+	if m == nil {
+		return "", fmt.Errorf("%s: no \"version\" field found", path)
+	}
+	return string(b[m[3]:m[4]]), nil
 }
 
 // rewriteVersion replaces every `"version": "…"` line's value in path with

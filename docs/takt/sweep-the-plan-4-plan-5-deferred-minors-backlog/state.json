@@ -1,0 +1,246 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "sweep-the-plan-4-plan-5-deferred-minors-backlog",
+  "topic": "Sweep the plan-4/plan-5 deferred minors backlog: fourteen small, independently verifiable fixes and two rulings, filed as GitHub issues #1 #2 #3 #4 #5 #6 #9 #10 #11 #12 #13 #14 #15 #16 on monrad/takt. Each issue already states its fix shape. Group by file so tasks stay disjoint: cmd_version.go takes #3 (--expect \"\" must fail the handshake, not pass), #10 (ManifestMatches evaluated twice) and #11 (mismatch text says \"plugin\" on the Copilot host); gitx + cmd_init.go take #6 (init/next fail when .git/info/exclude is read-only — degrade to a warning) and #12 (EnsureExclude writes the bundle path unescaped); cmd_next.go takes #5 (briefs written non-atomically — wants bundle.WriteFileAtomic) and #4 (a --force takeover from a generated session over a generated holder records no lock_taken — decide log-always vs document). Standalone: #9 (config lock_ttl and wave_stale_after not validated \u003e 0), #1 (planner brief template renders validation problems outside the delimiter quote), #14 (hostgen message polish and --root-unaware paths), #13 (task build does not stamp the version), #15 (test gaps: lock steal boundary, cross-prompt invariant sentences, quotedScalarProblem escape look-back, writeLogsIgnore already-present case). Two need a ruling before code: #16 (endAttemptStreak swallows read and append errors — keep documented or fail loud) and #4 above; #2 is the spec §4.6 doc sentence that follows whatever #4 decides. Out of scope: #34 (open PR #38 on fix/doctor-finding-count) and everything in the diagnostics, retro and review-layer clusters. Green afterwards: go test -race ./... and golangci-lint run ./...",
+  "phase": "finish",
+  "created_at": "2026-08-28T09:39:02.926701075Z",
+  "branch": "monrad/fixes",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "bd221d99f8a3aee6ef3af9708ce07b763b8ad85c",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:636cb351f76d16efcf540357e6202f5b977c65e3a0d87e065f8823871fe2fa41",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/cli/cmd_version.go",
+        "internal/cli/cmd_version_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Fixed the version handshake in internal/cli/cmd_version.go (empty --expect now fails via flag.Visit detection, manifestFailure judges once and returns dev too, and failure text names \"skill\" vs \"plugin\" per flag), with matching test coverage added/extended in cmd_version_test.go; all three verify commands pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:54:59.277487064Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/bundle/write.go",
+        "internal/bundle/write_test.go",
+        "internal/gitx/git.go",
+        "internal/gitx/git_test.go",
+        "internal/cli/cmd_init.go",
+        "internal/cli/cmd_init_test.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/cmd_next_test.go",
+        "internal/cli/launch.go",
+        "internal/cli/archive.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "bundle.WriteFileAtomic` now backs all four brief/sidecar writes, `gitx.EscapeIgnorePattern` escapes the bundle path (backslash first) with the exclude rules' syntax composed around it, and a lost `info/exclude` degrades to a `warnings` entry on init and on every post-lock `next` op including the archive's stop.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T12:46:24.821036404Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 2,
+      "status": "done",
+      "files": [
+        "internal/cli/cmd_next.go",
+        "internal/cli/cmd_next_test.go",
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "lock_taken` is now gated on an actual takeover and an explicit `--force` no longer earns the generated-over-generated exemption, with two new tests pinning both halves and §4.6 rewritten to state the full rule.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T13:11:53.45932435Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/brief/templates/planner.md",
+        "internal/brief/brief_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 4,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Converted the planner brief's rejection list to the shared `{{if .Problems}}...{{quote .Token \"rejection\" ...}}` shape used by the other three templates, and extended `TestRejectionReasonsAreQuotedBackOnTheRetry` to cover the planner via `assertRejectionSection`.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:52:48.040341702Z"
+      }
+    },
+    {
+      "id": 5,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/hosts/copilot.go",
+        "internal/hosts/copilot_test.go",
+        "internal/tools/hostgen/main.go",
+        "internal/tools/hostgen/main_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 2,
+      "last_digest": {
+        "task": 5,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Both hostgen failures share one `fmt.Errorf` style naming the src the process read, and the missing regression coverage now exists at both layers — a `run()`-level test that reads stderr under a non-default `--root`, and a renderer-level table covering the no-description branch.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T12:24:44.461182023Z"
+      }
+    },
+    {
+      "id": 6,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "Taskfile.yml",
+        "internal/tools/setversion/main.go",
+        "internal/tools/setversion/main_test.go",
+        "internal/tools/setversion/export_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 6,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added a `--print` mode to `internal/tools/setversion` (reads the plugin manifest's version via the existing regexp, writes nothing) with new tests, and wired `Taskfile.yml`'s `build` task to shell that out into an `-ldflags` var so `task build -o takt ./cmd/takt` stamps the binary while a plain `go build ./...` stays as the compile check for the rest of the tree.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:59:01.906148253Z"
+      }
+    },
+    {
+      "id": 7,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/bundle/lock_test.go",
+        "internal/prompt/prompt_test.go",
+        "internal/prompt/copilot_test.go"
+      ],
+      "class": "test",
+      "attempt": 1,
+      "last_digest": {
+        "task": 7,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added TestAcquireStealBoundaryAndSelfStale (lock_test.go), TestPromptInvariantsReadTheSameOnEveryHost (prompt_test.go), and TestQuotedScalarProblemBackslashRuns plus a backslash-run-parity fix to the test-only quotedScalarProblem helper (copilot_test.go); also updated copilot_test.go's `hosts.RenderCopilotAgent` call to the 3-arg signature already landed by a concurrent task so the package compiles.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T12:01:08.245145675Z"
+      }
+    },
+    {
+      "id": 8,
+      "wave": 2,
+      "status": "done",
+      "files": [
+        "internal/cli/facts.go",
+        "internal/cli/cmd_record.go",
+        "internal/cli/record_reviewer.go",
+        "internal/cli/cmd_record_test.go",
+        "internal/cli/record_reviewer_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 8,
+        "attempt": 1,
+        "status": "done",
+        "summary": "endAttemptStreak` returns its read and append errors, all four record call sites fold a loss into the `warnings` array of the JSON they already print at exit 0, and ten new tests cover both losses at each site plus the absent-key clean case.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T13:16:56.035779393Z"
+      }
+    },
+    {
+      "id": 9,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/op/op.go",
+        "internal/op/op_test.go",
+        "internal/cli/cli.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 9,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added the `warnings` contract — `op.Op.Warnings []string` with `omitempty`, a `keyWarnings` constant in cli.go, and op_test.go coverage for both absent and present cases.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T11:59:31.384092938Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "944f47b5036970692ea7560d89104388632a36ea",
+  "goals_checked_sha": "944f47b5036970692ea7560d89104388632a36ea",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-28T14:41:24.031334637Z",
+    "applied": false
+  }
+}
