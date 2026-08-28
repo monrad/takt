@@ -363,6 +363,13 @@ func previousFailure(bdir string, waveN, slice, task int) (string, []string) {
 				fmt.Sprintf("%s %s:%d — %s: %s", f.Severity, f.File, f.Line, f.Title, f.Detail))
 		}
 	}
+	// A confirmed internal-lens finding a rework did not act on is not lost:
+	// it rides along beside the backend's own findings, tagged with the lens
+	// that raised it (two-layers design §3.7, D11).
+	for _, f := range tr.Internal {
+		findings = append(findings, fmt.Sprintf("[lens:%s] %s %s:%d — %s: %s",
+			strings.Join(f.Lenses, ","), f.Severity, f.File, f.Line, f.Title, f.Detail))
+	}
 	return failure.String(), findings
 }
 
