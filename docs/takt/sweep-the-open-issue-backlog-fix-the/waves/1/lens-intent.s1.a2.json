@@ -1,0 +1,18 @@
+{
+  "lens": "intent",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:57:57.799257042Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "title": "push_pr body-file path is quoted, contradicting the task's literal template and the option description it must match",
+      "detail": "Task 12(C) specifies the exact template line `gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` (body path unquoted). The diff instead renders `--body-file '{{.PRBodyPathQuoted}}'`, adding a new, unrequested `RunData.PRBodyPathQuoted()` method (internal/brief/brief.go, singleQuoted applied to the body path) not mentioned anywhere in the task. Worse, this creates a real inconsistency with the task's own literal Description text in internal/decide/questions.go (`gh pr create --base \u003cbase\u003e --title '\u003ctitle\u003e' --body-file \u003cpath\u003e` — body path deliberately left unquoted per task 12(D)), so the branch_finish option text the deciding session reads no longer matches the command the run-push_pr op actually renders. Task 12(B)'s brief_test.go table entry was likewise changed to a body path containing an apostrophe to exercise the added quoting, deviating from the task's literal `PRBodyPath: \"/b/finish/pr.md\"` fixture and expected unquoted rendering. This is scope beyond what task 12 asked for in (B)/(C)/(D), executed consistently but not as specified.",
+      "task": 12
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T22:00:37.8998727Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1071,
+      "title": "prGoals double-names goals.md in its error, diverging from every other goals.Parse caller",
+      "detail": "prGoals wraps a goals.Parse failure with `fmt.Errorf(\"%s: %w\", p, err)` where p is the full path (internal/cli/cmd_next.go:1066-1073). But every error goals.Parse itself returns already begins with the literal prefix \"goals.md:\" (internal/goals/goals.go:80, 84, 98, 104, 114), so the wrap produces a doubled, confusing message like \"/…/docs/takt/demo/goals.md: goals.md: no goals under `## Goals`\". Every other caller of goals.Parse in this package — cmd_goals.go:38-41, cmd_done.go:163-166, cmd_record.go:210-213, and cmd_next.go's own assessorBrief at line 876-878 — passes the error through unwrapped via err.Error(), relying on goals.Parse's built-in file-naming. prGoals is the only caller that adds a second, redundant name for the same file, and it is inconsistent with the neighboring os.ReadFile error two lines above it in the same function, which is correctly left unwrapped (os.ReadFile errors already carry the path via Go's own PathError formatting, exactly like goals.Parse's messages already carry \"goals.md:\").",
+      "task": 12
+    }
+  ]
+}

@@ -100,3 +100,17 @@
 {"ts":"2026-08-28T21:21:28.789539891Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[12],"rework":[13],"sha":"","wave":1}}
 {"ts":"2026-08-28T21:21:37.889430431Z","type":"gate_opened","data":{"gate":"review_error"}}
 {"ts":"2026-08-28T21:27:14.90349154Z","type":"gate_answered","data":{"choice":"retry","gate":"review_error"}}
+{"ts":"2026-08-28T21:31:24.24590576Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[12,13],"sha":"","wave":1}}
+{"ts":"2026-08-28T21:31:33.167332314Z","type":"wave_dispatched","data":{"attempt":2,"slice":1,"tasks":[12,13],"wave":1}}
+{"ts":"2026-08-28T21:39:06.436860852Z","type":"task_recorded","data":{"attempt":2,"status":"done","task":13}}
+{"ts":"2026-08-28T21:49:11.470935113Z","type":"task_recorded","data":{"attempt":2,"status":"done","task":12}}
+{"ts":"2026-08-28T21:57:03.626608046Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":1}}
+{"ts":"2026-08-28T21:57:57.799949238Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":1,"mode":"intent","slice":1,"wave":1}}
+{"ts":"2026-08-28T21:58:14.175978367Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":4,"mode":"tests","slice":1,"wave":1}}
+{"ts":"2026-08-28T21:58:27.93435926Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":1}}
+{"ts":"2026-08-28T21:59:16.447471254Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":4,"mode":"docs","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:00:37.900381536Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":1,"mode":"consistency","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:07:20.235986718Z","type":"internal_review_recorded","data":{"attempt":2,"candidates":10,"confirmed":5,"slice":1,"wave":1}}
+{"ts":"2026-08-28T22:10:59.047787354Z","type":"wave_closed","data":{"attempt":2,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[12,13],"sha":"","wave":1}}
+{"ts":"2026-08-28T22:11:07.607175017Z","type":"gate_opened","data":{"gate":"wave_failures"}}
+{"ts":"2026-08-28T22:34:30.299839092Z","type":"gate_answered","data":{"choice":"retry","gate":"wave_failures"}}

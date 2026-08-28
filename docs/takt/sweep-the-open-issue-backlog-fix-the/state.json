@@ -294,15 +294,15 @@
         "internal/cli/brief_stable_test.go"
       ],
       "class": "implement",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 12,
-        "attempt": 1,
+        "attempt": 2,
         "status": "done",
-        "summary": "push_pr` now carries `pr_title` and `pr_body_path` from a generated `finish/pr.md` (spec paragraph, goal verdicts, bundle pointer), the template and the `pr` option say `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with no `--fill` left, and the three #51 `cmd_next.go` items (single render, hoisted `ensureSliceDiff`, `lensTasks`) landed with tests.",
+        "summary": "Addressed every review finding — the PR body path is shell-quoted and covered by a space/apostrophe fixture, the corrupt-record failure now names `finish/goals.json` through a fact-gathering hint, the unreachable wrap is gone, `dispatchLenses` reuses `writeDispatchBrief`, and new tests pin the `goals.Parse` branch and the hoisted `ensureSliceDiff`.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T20:56:11.044173439Z"
+        "recorded_at": "2026-08-28T21:49:11.469569108Z"
       }
     },
     {
@@ -318,15 +318,15 @@
         "internal/cli/cmd_answer_test.go"
       ],
       "class": "bounded",
-      "attempt": 1,
+      "attempt": 2,
       "last_digest": {
         "task": 13,
-        "attempt": 1,
+        "attempt": 2,
         "status": "done",
-        "summary": "Added the TAKT_FAKE_REVIEW_CALLS recording hook to fake.go and the six #45/#51 polish tests across gate_test.go, oploop_test.go, close_internal_test.go, record_reviewer_test.go, and cmd_answer_test.go; all verify commands (greps, race tests, lint) pass.",
+        "summary": "Tightened the blind-prompt leak test to count-based assertions that permit only the rubric's own fixed \"correctness and edge cases\" and reject every other occurrence of the lens name; all six files' items are in place with tests, lint and the full suite green.",
         "blockers": "none",
-        "model": "sonnet",
-        "recorded_at": "2026-08-28T20:52:04.365010844Z"
+        "model": "opus",
+        "recorded_at": "2026-08-28T21:39:06.435758719Z"
       }
     },
     {
@@ -352,20 +352,7 @@
       }
     }
   ],
-  "active_wave": {
-    "n": 1,
-    "slice": 1,
-    "attempt": 1,
-    "started_at": "2026-08-28T20:33:54.605360815Z",
-    "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
-    "tasks": [
-      10,
-      11,
-      12,
-      13
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
