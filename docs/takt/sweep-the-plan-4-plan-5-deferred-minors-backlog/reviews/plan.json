@@ -1,0 +1,22 @@
+{
+  "verdict": "rework",
+  "summary": "T6’s verification can pass without a stamped binary, and T2 omits a required integration case.",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "",
+      "line": 0,
+      "title": "T6 verification does not prove version stamping",
+      "detail": "T6 verifies the binary through `version --expect`, but T1 explicitly preserves the dev-build exception, so an unstamped `0.0.0-dev` binary can pass. Compare plain `./takt version` output exactly with `setversion --print` instead."
+    },
+    {
+      "severity": "minor",
+      "file": "",
+      "line": 0,
+      "title": "T2 drops the backslash --dir integration test",
+      "detail": "The spec requires testing both a metacharacter-containing `--dir` and one containing a backslash. T2 only assigns the backslash case to the escaper unit test; add a CLI-level backslash directory case to prove path handling and rule construction together."
+    }
+  ],
+  "provider": "copilot",
+  "model": "gpt-5.6-sol"
+}

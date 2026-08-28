@@ -1,0 +1,16 @@
+{
+  "gate": "plan",
+  "hash": "sha256:4c136addfcebbf848deec3958d2835171dbe3c017d9b12c0b387439600b409b3",
+  "verdict": "rework",
+  "reviewer": {
+    "provider": "copilot",
+    "model": "gpt-5.6-sol"
+  },
+  "findings": "reviews/plan.md",
+  "severities": {
+    "major": 1,
+    "minor": 1
+  },
+  "ts": "2026-08-28T10:23:21.453937483Z",
+  "skipped": null
+}
