@@ -1,0 +1,26 @@
+{
+  "lens": "consistency",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:50:44.05743282Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "internal/cli/cmd_status.go",
+      "line": 598,
+      "title": "alignmentLine's new non-empty branches break loadCommitMessage's documented 'no verdicts → unchanged' contract",
+      "detail": "Task 4 rewrote alignmentLine (used by both status and, per its own doc comment at cmd_status.go:593, by cmd_next.go's loadCommitMessage) so the `Skipped` case now returns the literal \"skipped\" instead of \"\". loadCommitMessage (internal/cli/cmd_next.go:524-553) treats an empty alignmentLine result as \"no verdict artifacts (the audit is disabled, skipped, or has not run yet) — leave the message unchanged\" (its own doc comment says so verbatim) and otherwise appends \" — alignment: \u003cline\u003e\" to the plan→execute commit subject/body. skipAlignment (internal/cli/cmd_answer.go:307-314) writes alignment.json with Skipped=true and no verdicts, and decide.go's decidePlan (internal/decide/decide.go:331-341) treats Skipped as satisfying ClausesPresent/ClausesConfirmed/VerdictsPresent, so the run proceeds straight to ActLoadPlan without ever gaining verdicts. The next `takt next` therefore reaches loadCommitMessage with a non-nil, Skipped alignment digest, and the plan→execute commit now reads \"...— alignment: skipped\" — contradicting loadCommitMessage's own documented behaviour and permanently altering commit history for a path task 4 never mentions touching. No test exercises this: TestLoadCommitMessageOmitsAlignmentWhenAbsent (internal/cli/cmd_next_test.go:346) only covers alignment fully disabled (statusAlignment returns nil), not the skipped-with-clauses case.",
+      "task": 4
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 166,
+      "title": "Two near-identical 'review errored, retry it' options use different verbs",
+      "detail": "The new questionGateReviewErrored's retry option is labelled \"Re-run the review (Recommended)\" (questions.go:166), while the pre-existing questionReviewError (task-review-errored-during-close-wave gate, questions.go:325) uses \"Retry the review (Recommended)\" for the same underlying concept (a review that errored, offering to run it again). Both use choiceRetry and both are the sole recommended option for an errored review; the label text should match or the divergence should be explained, since a user comparing the two gates has no way to tell the wording difference means anything.",
+      "task": 2
+    }
+  ]
+}

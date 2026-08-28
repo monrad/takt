@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "The errored gate review now carries the backend's reason from receipt to question and offers retry/accept/stop instead of revise, `takt answer --choice retry` clears the gate without writing anything, branch_finish recommends the first enabled option (pr when merge is blocked), and questions.go says \"twelve ids\".",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T18:29:57.205627998Z"
+}

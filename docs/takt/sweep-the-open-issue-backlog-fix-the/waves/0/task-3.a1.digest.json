@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added the review-record doctor check (WARN on a gate/findings-file hash mismatch, PASS otherwise), wired it into Default, and added its two tests; all specified verify commands pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:29:57.209311164Z"
+}

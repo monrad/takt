@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 1,
+  "status": "done",
+  "summary": "takt status` now reports planned-but-unmaterialised tasks and a never-bare alignment line (with `clauses`/`skipped`/`verdicts_present` in `--json`), and every `openTarget` bundle failure — including `status` and `unlock` — carries a hint naming `takt/\u003cslug\u003e` when that branch holds the bundle.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T18:29:57.213075328Z"
+}

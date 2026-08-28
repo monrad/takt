@@ -1,0 +1,9 @@
+{
+  "task": 5,
+  "attempt": 1,
+  "status": "blocked",
+  "summary": "CheckCitations, its wiring into readVerdicts, the brief grammar and both test files are complete, lint-clean and passing, but three pre-existing tests in the undeclared file internal/cli/cmd_record_test.go fail because its `streakVerdicts` fixture cites `a.go:1` in a repo that has no `a.go`.",
+  "blockers": "internal/cli/cmd_record_test.go:273 needs `\"citations\":[\"a.go:1\"]` → `\"citations\":[\"README.md:1\"]` (or `[]`); that file is not in my declared list.",
+  "model": "opus",
+  "recorded_at": "2026-08-28T18:31:48.138516254Z"
+}

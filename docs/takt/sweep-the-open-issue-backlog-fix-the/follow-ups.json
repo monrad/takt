@@ -17,6 +17,64 @@
       "detail": "TestFollowUpKeyIsInjective only exercises delimiter/quote collisions in file and title. An implementation omitting gate, wave, task, severity, or line could pass all declared tests and collapse unrelated findings. Add table tests mutating each tuple element independently, distinguishing nil wave from wave 0, and proving string trimming normalization.",
       "source": "override",
       "ts": "2026-08-28T18:00:07.57628887Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "Two-layers design still documents FollowUp.Wave as a plain int and the file as un-de-duplicated",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and \"Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.\" The diff (task 1, closing #44) changes `Wave` to `*int` (so wave 0 round-trips distinctly from no wave) and makes `AppendFollowUps` idempotent with an upgrade rule. The doc's own phrasing anticipated a later change would supersede this, but as written it now describes a shape and behaviour that no longer exist and isn't flagged as superseded.",
+      "source": "internal",
+      "ts": "2026-08-28T18:57:11.8015554Z"
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/takt/sweep-the-open-issue-backlog-fix-the/logs/wave-0.s1.a1.diff",
+      "line": 1,
+      "title": "Task 5 (goal-assessor citation validation, #24) is entirely absent from the reviewed diff",
+      "detail": "None of task 5's required changes appear anywhere in wave-0.s1.a1.diff: no internal/finish/goals.go CheckCitations addition, no internal/cli/cmd_record.go readVerdicts root-param wiring, no internal/brief/templates/goal-assessor.md grammar update, and neither new test file (internal/finish/goals_test.go additions, internal/cli/citations_test.go) is present. Requirement coverage for task 5 is 0% in this diff. (For context: docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json records the task-5 attempt as status \"blocked\" — the implementer reports the core work complete but blocked on a pre-existing fixture in the undeclared file internal/cli/cmd_record_test.go citing a.go:1 in a repo with no a.go — which is presumably why it did not land in this wave's diff. The corresponding code does already exist in the working tree at internal/finish/goals.go:142 (CheckCitations) and internal/cli/cmd_record.go:222, but that is not part of the diff being reviewed here and the task is not marked done.)",
+      "source": "internal",
+      "ts": "2026-08-28T18:57:11.801555597Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 143,
+      "task": 2,
+      "title": "PlanGate.Reason wiring only exercised indirectly, not through gatherGateFacts",
+      "detail": "Both SpecGate and PlanGate literals in gatherGateFacts gain `Reason: s.Reason` (lines 135-137 and 143-145). The spec-gate branch is covered end-to-end by TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt (internal/cli/cmd_answer_retry_test.go), which plants a real error receipt and drives it through gate.Compute → gatherGateFacts → decide → question. The plan-gate branch's Reason threading is only checked via decide_test.go's TestTheGateReviewAskCarriesTheReceiptsReason/plan subtest, which constructs `decide.GateStatus{Verdict: \"error\", Reason: \"x\"}` directly and never calls gatherGateFacts or gate.Compute — so a bug specifically in facts.go's plan-gate literal (e.g. a typo omitting `Reason: s.Reason`) would not be caught by any test.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094471Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 166,
+      "task": 2,
+      "title": "Two near-identical 'review errored, retry it' options use different verbs",
+      "detail": "The new questionGateReviewErrored's retry option is labelled \"Re-run the review (Recommended)\" (questions.go:166), while the pre-existing questionReviewError (task-review-errored-during-close-wave gate, questions.go:325) uses \"Retry the review (Recommended)\" for the same underlying concept (a review that errored, offering to run it again). Both use choiceRetry and both are the sole recommended option for an errored review; the label text should match or the divergence should be explained, since a user comparing the two gates has no way to tell the wording difference means anything.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094772Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 408,
+      "task": 2,
+      "title": "Adopted-branch \"pr\" recommendation label has no test",
+      "detail": "questionBranchFinish's adopted-branch early return now does `pr.Label += suffixRecommended` (line 409), a new behaviour — before this diff the adopted branch never marked any option \"(Recommended)\". TestQuestionBranchFinishRecommendsAChoosableOption (internal/decide/finish_test.go) only covers the non-adopted merge-blocked/merge-allowed cases; the existing adopted-branch assertion in TestBranchFinishOptions (finish_test.go:227-232) checks only option order/choice, never the label text. No test would catch a regression that dropped the suffix or duplicated it in the adopted path.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094815Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/doctor/doctor_test.go",
+      "line": 438,
+      "task": 3,
+      "title": "Tests do not assert the complete finding-level sequence",
+      "detail": "reviewRecordLevel returns one matching level, so duplicate or additional review-record findings could pass. Assert levels(fs, \"review-record\") equals exactly [WARN] or [PASS] as specified.",
+      "source": "approve",
+      "ts": "2026-08-28T19:00:09.364711005Z"
     }
   ]
 }

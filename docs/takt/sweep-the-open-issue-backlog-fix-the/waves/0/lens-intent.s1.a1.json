@@ -1,0 +1,18 @@
+{
+  "lens": "intent",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:45:34.523243577Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "docs/takt/sweep-the-open-issue-backlog-fix-the/logs/wave-0.s1.a1.diff",
+      "line": 1,
+      "title": "Task 5 (goal-assessor citation validation, #24) is entirely absent from the reviewed diff",
+      "detail": "None of task 5's required changes appear anywhere in wave-0.s1.a1.diff: no internal/finish/goals.go CheckCitations addition, no internal/cli/cmd_record.go readVerdicts root-param wiring, no internal/brief/templates/goal-assessor.md grammar update, and neither new test file (internal/finish/goals_test.go additions, internal/cli/citations_test.go) is present. Requirement coverage for task 5 is 0% in this diff. (For context: docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json records the task-5 attempt as status \"blocked\" — the implementer reports the core work complete but blocked on a pre-existing fixture in the undeclared file internal/cli/cmd_record_test.go citing a.go:1 in a repo with no a.go — which is presumably why it did not land in this wave's diff. The corresponding code does already exist in the working tree at internal/finish/goals.go:142 (CheckCitations) and internal/cli/cmd_record.go:222, but that is not part of the diff being reviewed here and the task is not marked done.)",
+      "task": 0
+    }
+  ]
+}
