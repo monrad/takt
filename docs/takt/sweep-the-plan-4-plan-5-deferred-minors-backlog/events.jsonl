@@ -1,3 +1,4 @@
 {"ts":"2026-08-28T09:39:02.939866326Z","type":"init","data":{"base":"main","base_sha":"bd221d99f8a3aee6ef3af9708ce07b763b8ad85c","branch":"monrad/fixes","branch_adopted":true,"slug":"sweep-the-plan-4-plan-5-deferred-minors-backlog"}}
 {"ts":"2026-08-28T09:53:32.264390795Z","type":"spec_written","data":{"hash":"sha256:76c856ad5fb2760ee00af68004c6c9357c717b936b8bd2bdcfe03914d6a14bb5"}}
 {"ts":"2026-08-28T09:56:20.118750294Z","type":"goals_frozen","data":{"count":13,"hash":"sha256:b3741bedd3e2bd3e822c3a27dbb2fb4c662e86b559fdf4e1b38d0618a197f3f6"}}
+{"ts":"2026-08-28T09:59:03.549973629Z","type":"gate_reviewed","data":{"findings":9,"gate":"spec","hash":"sha256:5f1c287d003811662d03f4297bb9fd8d67bb1352ecd82a4fc0c05b984c455b0c","provider":"copilot","verdict":"rework"}}
