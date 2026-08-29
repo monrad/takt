@@ -1,31 +1,31 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition is broadly sound and covers the spec, but execution would start from contradictory API instructions and an invalid first-render data shape. These must be corrected before implementation.",
+  "summary": "The decomposition is broadly sound, but execution should not start: Task 2 contains an impossible boundary invariant, Task 1's proposed test does not prove that the unset fallback is actually enforced, and Tasks 3/4 introduce fail-open zero budgets that can break the required containment.",
   "findings": [
     {
       "severity": "blocking",
       "file": "",
       "line": 0,
-      "title": "Tasks 3 and 4 contradict Task 2's GateReview API",
-      "detail": "Task 2 and the spec define deadline.GateReview(backend time.Duration) with Grace owned internally, while plan.index tasks 3 and 4 instruct callers to pass deadline.Grace as a second argument. Task 2 also requests monotonicity testing over a nonexistent grace input. The corresponding plan.md sections use the correct one-argument form. Normalize tasks 2–4 to the one-argument API and test monotonicity only in the backend-duration argument; otherwise following the indexed tasks produces code that cannot compile."
+      "title": "Task 2 requires an impossible GateReview invariant",
+      "detail": "Task 2 requires every addition to saturate at MaxDuration while also asserting GateReview(bt) \u003e bt without the boundary exception given to Session. For bt == MaxDuration, GateReview must return MaxDuration and therefore cannot be greater than bt. The task and spec must define the saturation-domain exception for GateReview, and its boundary behavior must be tested explicitly."
     },
     {
       "severity": "major",
       "file": "",
       "line": 0,
-      "title": "Task 5's specified context representation cannot render correctly before JSON round-trip",
-      "detail": "Task 5 says decideActiveWave should store backends as []map[string]any but questionReviewError should decode it as []any containing map[string]any. The ask path calls Question immediately with the original context, before persistence converts []map[string]any into []any, so the initial gate would fall back to backends.\u003cname\u003e.timeout instead of rendering the configured entries. Require the renderer to accept both []map[string]any and []any, or construct []any initially; retain a test of the direct decide.Decide path as well as the persisted round-trip."
+      "title": "Task 1's fake-reviewer test does not prove the fallback deadline is honored",
+      "detail": "The test records resolveTimeout(req.Timeout) for an unset request, but exercises cancellation only with a short explicit Timeout. An implementation could record the resolved 15m value while applying a context deadline only for explicit timeouts, and every listed assertion would pass. The seam must observe the deadline on the context actually passed through the fake's work, or otherwise directly test that the resolved fallback is used to construct that context."
     },
     {
-      "severity": "minor",
+      "severity": "major",
       "file": "",
       "line": 0,
-      "title": "Task 1 records a resolved duration without proving the fake honors it",
-      "detail": "Task 1's new test reads TAKT_FAKE_REVIEW_TIMEOUT_FILE, which can pass if fakeReviewer writes resolveTimeout(req.Timeout) but continues using the original context. That does not prove the description's claim that the recorded deadline is actually applied around fakeDelay and the remaining review. Add a short explicit request timeout with a longer TAKT_FAKE_REVIEW_SLEEP and assert the fake returns the timeout error result, while keeping the unset-timeout recording assertion for mirrored-default equality."
+      "title": "Tasks 3 and 4 fail open to undersized budgets on read errors",
+      "detail": "Task 3 says an initial readIndex failure should use a zero Budget and rely on closeWave rereading and surfacing the error; Task 4 similarly maps a finish index-read error to zero commands. This contradicts A2.2's requirement that the outer timeout use the matching binary cap. If a later read succeeds or observes changed bytes, real work can run under Floor or Verify(per, 0). Parse once and thread the value where possible, or propagate the first error instead of emitting/running work, with error-path tests."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:30bdd0a6b1bc9c395f9ab2adfdb230b08aaf7092455c3a5dfdfc02990353be33",
-  "round": 4
+  "hash": "sha256:d50ef435b831adc306fe7af0a6e5c721e05c9b00efffd7084203f22ac26b5176",
+  "round": 5
 }
