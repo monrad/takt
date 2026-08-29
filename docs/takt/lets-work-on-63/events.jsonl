@@ -7,3 +7,4 @@
 {"ts":"2026-08-29T02:19:01.10551678Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-29T02:19:18.754336647Z","type":"gate_reviewed","data":{"findings":1,"gate":"spec","hash":"sha256:63998a4ca20df158fecf436cb42734d6268926f0514f198ce681fb3c56ed99ba","provider":"copilot","verdict":"rework"}}
 {"ts":"2026-08-29T02:19:47.50441919Z","type":"gate_reviewed","data":{"findings":0,"gate":"spec","hash":"sha256:5842e2ad1efb7b19877bc586fc8123d5c4971fbfb1ecf52181452f16af022e89","provider":"copilot","verdict":"approve"}}
+{"ts":"2026-08-29T02:19:53.414325139Z","type":"phase","data":{"from":"brainstorm","to":"plan"}}
