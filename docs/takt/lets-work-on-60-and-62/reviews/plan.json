@@ -1,38 +1,31 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition is broadly sound and covers the requested behavior, but several load-bearing facts and git branches are only tested in isolation. The specified verification could pass while deadline containment, backend filtering, or archived-PR cleanup is wired incorrectly.",
+  "summary": "The decomposition is broadly complete, but it contains one unresolved spec contradiction and one documentation task that would encode behavior opposite to B2. These must be corrected before execution.",
   "findings": [
     {
-      "severity": "major",
+      "severity": "blocking",
       "file": "plan.md",
       "line": 0,
-      "title": "Task 4 does not verify CLI-to-decide deadline facts",
-      "detail": "Task 3 tests closeBudget and Task 4 tests internal/decide using manually populated Facts, but no planned test exercises gatherFacts, gatherWaveFacts, or gatherFinishFacts and compares their values with the binary-side budget. VerifyCommands, ReviewTasks, or finish command counts could remain zero or use the wrong task set while every listed verify command passes, so A2.2/G4's same-work containment is not proved."
+      "title": "Task 2 changes A2.3 instead of resolving the specification conflict",
+      "detail": "Task 2 explicitly tests Close as non-increasing in MaxParallel, while spec A2.3 requires Close to be monotonically non-decreasing in every input. The formula itself makes the literal requirement impossible for MaxParallel, so the plan's interpretation is mathematically sensible, but it is still an unratified change to the spec. Amend A2.3 to exempt MaxParallel and state its required direction, or otherwise record an authoritative spec correction before execution."
     },
     {
       "severity": "major",
-      "file": "plan.md",
+      "file": "plan.index.json",
       "line": 0,
-      "title": "Task 5 does not test reviewer-chain fact gathering",
-      "detail": "TestReviewErrorNamesTheBackendTimeouts constructs ReviewerBackends directly, while Task 1 tests the accessor separately. Nothing verifies that gatherFacts iterates ws.Cfg.Backends.Reviewer in preference order, preserves configured durations, and skips fake and unknown names. A broken or empty integration would still satisfy all listed checks. Add a package-cli test that gathers facts from a mixed configured chain and asserts the resulting slice and rendered gate."
-    },
-    {
-      "severity": "major",
-      "file": "plan.md",
-      "line": 0,
-      "title": "Task 7 misses two explicitly required git branches",
-      "detail": "The planned flow covers a missing tracking ref, equality, and a strictly-ahead branch; the cancelled-context test fails CommitExists before IsAncestor runs. It does not exercise a diverged history or an IsAncestor error. Because the verify commands do not even require an IsAncestor call, an ahead-only implementation or an implementation that propagates the second read error could pass despite contradicting B2. Add explicit divergent-history and second-read-failure cases."
+      "title": "Task 8 documents the wrong ancestry case",
+      "detail": "Task 8 says a present remote-tracking ref that is \"behind or diverged\" should produce `git push origin \u003cbranch\u003e`. Under B2, when the local branch is behind—meaning it is an ancestor of the remote-tracking ref—cleanup must be empty. The push applies when the local branch is ahead or histories have diverged. Replace \"behind\" with \"ahead\" or describe the ancestry predicate directly."
     },
     {
       "severity": "minor",
-      "file": "plan.md",
+      "file": "plan.index.json",
       "line": 0,
-      "title": "Task 1 does not explicitly pin unknown-backend lookup behavior",
-      "detail": "The listed accessor cases cover fake and several known-backend chains but do not explicitly call Timeout with an unknown name, even though A3 requires both fake and unknown names to report no real config key. This should be a direct table row rather than inferred from the fake case."
+      "title": "Task 7's IsAncestor grep does not prove a second call site",
+      "detail": "The command `grep -c 'IsAncestor' internal/cli/archive.go | grep -qvx 1` succeeds for 0 and for any count other than 1, despite the task claiming it requires a second call site. Require a count of at least 2, for example with `awk '$1 \u003e= 2 { found=1 } END { exit !found }'`; retain the behavioral tests as the primary proof."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:66cd0581f1bd04046e152585c967e71437cb3d88a23a5841f6f1402f218d562b",
-  "round": 1
+  "hash": "sha256:1e81a6652cbe7028e904122d6da70b71f205ee58cef210cca6dd40dc6b677ecb",
+  "round": 2
 }

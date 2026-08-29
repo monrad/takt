@@ -7,11 +7,14 @@ a new stdlib-only package `internal/deadline`. Part B (tasks 6–7) commits `fin
 before the session pushes and makes the archived `pr` stop hand the missing push back as
 `cleanup`. Task 8 sweeps the documentation and carries the whole-repository gate (G9).
 
-Dependency shape: tasks 1, 2, 6 and 7 are independent and can run together. Tasks 3 and 4
-both need the deadline package (task 2) and the config accessors (task 1) but touch disjoint
-files, so they can run together after those. Task 5 shares `internal/decide/decide.go`,
-`internal/decide/decide_test.go` and `internal/cli/facts.go` with task 4 and runs after it.
-Task 8 runs last so its `task check` verifies the assembled branch.
+Dependency shape: tasks 1, 2, 6 and 7 are independent and can run together. Task 3 needs
+the deadline package (task 2) and the config accessors (task 1). Task 4 additionally runs
+after task 3, because its integration test compares the facts `gatherFacts` produces
+against task 3's `closeBudget` for one and the same bundle — the equality that makes the
+session's deadline provably contain the binary's. Task 5 shares
+`internal/decide/decide.go`, `internal/decide/decide_test.go` and `internal/cli/facts.go`
+with task 4 and runs after it. Task 8 runs last so its `task check` verifies the assembled
+branch.
 
 Everything is test-first; `task check` (build + `go test ./... -race -count=1` + lint +
 host parity) is the finish gate. No task commits — takt owns every commit.
@@ -42,10 +45,16 @@ host parity) is the finish gate. No task commits — takt owns every commit.
   and read back the deadline that was actually applied.
 - "Which backend's timeout budgets a close" needs one owner used by three tasks (3, 4, 5).
   Task 1 adds two small accessors to `internal/config`: `Backends.Timeout(name)` (the
-  config key for `copilot`/`claude`, reported absent for `fake` or unknown names — exactly
-  the A3 skip rule) and `Backends.ReviewBudgetTimeout()` (the largest timeout among the
-  configured `backends.reviewer` entries that have keys; when none qualifies, the larger of
-  the two shipped fields, so a fake-only chain still budgets something sane).
+  config key for `copilot`/`claude`, reported absent for `fake` and for unknown names —
+  exactly the A3 skip rule, each pinned by its own table row) and
+  `Backends.ReviewBudgetTimeout()` (the largest timeout among the configured
+  `backends.reviewer` entries that have keys; when none qualifies, the larger of the two
+  shipped fields, so a fake-only chain still budgets something sane).
+- `gatherIndexFacts` today validates the index and discards it. The wave/finish counts
+  task 4 adds must come from the *parsed* index whether or not validation passes, because
+  the binary side (`readIndex`) parses without validating — counting only a valid index
+  would let the decide-side budget collapse to the floor while the binary budgets real
+  work, breaking the containment G4 asserts.
 
 ## Tasks
 
@@ -59,9 +68,10 @@ from drifting: `config.TestDefaults` grows the 15m assertions for both backends,
 `ReviewRequest` with no `Timeout` through the fake reviewer using the new
 `TAKT_FAKE_REVIEW_TIMEOUT_FILE` seam and asserts the applied deadline equals
 `config.Defaults().Backends.Copilot.Timeout` (and Claude's). The task also adds the two
-config accessors described above, with table tests, because tasks 3–5 all need "which
-reviewer entries have a real key" answered in one place. Scoped to exactly the two
-constants, the seam, and the accessors — no call-site changes.
+config accessors described above, with table tests whose rows explicitly include
+`Timeout("fake")` and `Timeout("nonesuch")` (an unknown name) both reporting no key —
+A3 requires both, and each is a direct row rather than an inference. Scoped to exactly
+the two constants, the seam, and the accessors — no call-site changes.
 
 ### 2. New package internal/deadline (implement, G2 G3 G4)
 
@@ -89,18 +99,18 @@ state and the plan index are known; the constant and its comment go. The budget 
 by a pure helper `closeBudget(cfg, st, idx) deadline.Budget` — `VerifyTimeout` from
 config, `VerifyCommands` = Σ `len(idx.Task(id).Verify)` over the active wave's pending
 tasks (`t.Wave == aw.N && Status == pending`, the set `resolveTaskResults` actually
-grades), `BackendTimeout` = `cfg.Backends.ReviewBudgetTimeout()`, `ReviewTasks` = that
-same task count when `st.Config.Review.Tasks` else 0, `MaxParallel` from `st.Config` —
-unit-tested in a new package-internal `internal/cli/close_budget_test.go` (an 8×2 wave
-exceeds 30m; review off zeroes the term). `cmd_verify.go:111` becomes
-`deadline.Verify(per, len(cmds))` and the local `verifyMargin` goes; `cmd_review.go:176`
-becomes `deadline.GateReview(time.Duration(be.Timeout), deadline.Grace)` and the local
-`reviewGrace` goes (its doc comment's cross-reference moves with it). Task 4 must count
-the same wave set, which is why both descriptions pin "pending tasks of the active wave"
-— the session's `Session(Close(b))` strictly contains the binary's `Close(b)` only when
-both compute the same `b`.
+grades), `BackendTimeout` = `cfg.Backends.ReviewBudgetTimeout()` (task 1's accessor),
+`ReviewTasks` = that same task count when `st.Config.Review.Tasks` else 0, `MaxParallel`
+from `st.Config` — unit-tested in a new package-internal
+`internal/cli/close_budget_test.go` (an 8×2 wave exceeds 30m; review off zeroes the
+term). `cmd_verify.go:111` becomes `deadline.Verify(per, len(cmds))` and the local
+`verifyMargin` goes; `cmd_review.go:176` becomes
+`deadline.GateReview(time.Duration(be.Timeout), deadline.Grace)` and the local
+`reviewGrace` goes (its doc comment's cross-reference moves with it). Task 4's
+integration test then compares this very helper against the gathered facts, which is why
+both descriptions pin "pending tasks of the active wave".
 
-### 4. Decide-side session deadlines derived from facts (implement, G2 G4; after 1, 2)
+### 4. Decide-side session deadlines derived from facts (implement, G2 G4; after 1, 2, 3)
 
 Deletes `reviewTimeoutS`/`closeTimeoutS` (`decide.go:264-267`) and `verifyTimeoutS`
 (`finish.go:38`). Each `exec` op emits `int(deadline.Session(cap).Seconds())` where cap is
@@ -112,12 +122,21 @@ the matching binary cap: `GateReview(f.BackendTimeout, deadline.Grace)` for
 durations (`LockTTL`, `WaveStaleAfter`): `Facts.BackendTimeout` (via
 `ReviewBudgetTimeout()`) and `Facts.VerifyTimeout` filled in `gatherFacts`;
 `WaveFacts.VerifyCommands`/`WaveFacts.ReviewTasks` counted in `gatherWaveFacts` over the
-active wave's pending tasks from the plan index `gatherIndexFacts` already parses (it now
-hands the parsed index along instead of discarding it); `FinishFacts.VerifyCommands` =
+active wave's pending tasks from the *parsed* index `gatherIndexFacts` hands along (parse
+only, matching `readIndex` — see corrections); `FinishFacts.VerifyCommands` =
 `len(finish.UnionCommands(idx, extra))` in `gatherFinishFacts`, the same union
-`verifyAtHead` runs. Tests in `internal/decide` assert each emitted `timeout_s` equals the
-`Session` of the matching cap and strictly exceeds the cap itself (G4's evidence). No
-doctor change (see corrections).
+`verifyAtHead` runs. Two layers of tests. In `internal/decide`, pure tests assert each
+emitted `timeout_s` equals `Session` of the matching cap and strictly exceeds the cap
+itself. In `internal/cli`, a new package-internal integration test
+(`deadline_facts_test.go`) closes the seam the plan review flagged: it builds one real
+bundle on disk (state with an active wave whose pending set includes a task outside
+`aw.Tasks` and a task missing from the index, a plan index with verify lists), runs the
+real `gatherFacts`, asserts the counted `VerifyCommands`/`ReviewTasks` are non-zero and
+that the budget assembled from the gathered facts equals `closeBudget(cfg, st, idx)`
+field for field — same work, both sides — and, in a finish-phase sub-test on a committed
+bundle, that `Finish.VerifyCommands` equals the non-zero `finish.UnionCommands` count
+`takt verify` would run. A wiring mistake (zero counts, wrong task set, wrong union) now
+fails a test instead of only weakening a deadline. No doctor change (see corrections).
 
 ### 5. review_error names the key and the deadline (implement, G5; after 4)
 
@@ -126,13 +145,19 @@ doctor change (see corrections).
 `Backends.Timeout(name)` — entries with no config key (`fake`, unknown names) are skipped,
 no health probe, no shelling out. `decideActiveWave`'s `review_error` ask (decide.go:451)
 adds a pre-rendered, JSON-round-trip-stable `"backends"` context entry;
-`questionReviewError` (questions.go:321) renders it into the retry option's description
-only: each backend's `backends.<name>.timeout` key with its current deadline and that
+`questionReviewError` (questions.go:321) renders them into the retry option's description
+only: each backend's `backends.<name>.timeout` key with its current deadline, and that
 raising it in `.takt.json` is the fix when the cause was a timeout; when the list is empty
 it falls back to the literal `backends.<name>.timeout` with no deadline. Question text,
-option set and answer commands unchanged. Tests cover the three shapes G5 names:
-a configured set, a set containing a keyless backend (skipped), and an empty set
-(literal fallback).
+option set and answer commands unchanged. Tests in `internal/decide` cover rendering for
+the three shapes G5 names (a keyed set, a set that had a keyless entry skipped, an empty
+set). And — the seam the plan review flagged — a new package-internal
+`internal/cli/reviewer_facts_test.go` runs the real `gatherFacts` over a workspace whose
+chain is mixed (`[claude, fake, nonesuch, copilot]` with two distinct configured
+timeouts), asserts `Facts.ReviewerBackends` is exactly the two keyed entries in preference
+order with their configured durations, then hands those gathered facts to `decide.Decide`
+on a review-errored wave and asserts the rendered retry option names both keys with both
+durations and never mentions the skipped names. A broken or empty fill now fails a test.
 
 ### 6. Commit finish/pr.md when next writes it (bounded, G6)
 
@@ -153,18 +178,25 @@ spec; no design decisions remain.
 function's stated rule — every question is put to git, never to state:
 `refs/remotes/origin/<branch>` missing (`Repo.CommitExists`) → `git push -u origin
 <branch>`; present and `<branch>` an ancestor (`Repo.IsAncestor`) → no cleanup; present
-and not an ancestor (ahead or diverged — the local commits are genuinely absent remotely)
-→ `git push origin <branch>`; either git read erroring → the push is offered and the stop
-still succeeds (the archive already landed; a redundant confirmed suggestion costs
-nothing). The function's doc comment and archive.go's "pr and keep ask for nothing" prose
-are rewritten. Tests: `archive_test.go` gets a pr-disposition flow over a local bare
-`origin` walking three states in sequence (no remote → the `-u` form; after running the
-push → no cleanup on the next `next`; a fresh commit on the branch → the plain push, run
-verbatim via `runShell` and then gone again); a new package-internal
-`archive_internal_test.go` injects the git-read failure by calling `applyDisposition` with
-an already-cancelled context (a non-ExitError, the only kind `CommitExists`/`IsAncestor`
-surface as errors) and asserts the push is still offered and no error fails the stop.
-Session side needs no change (the op table already confirms `cleanup` with the user).
+and not an ancestor (ahead **or diverged** — the local commits are genuinely absent
+remotely) → `git push origin <branch>`; **either** git read erroring → the push is offered
+and the stop still succeeds. The function's doc comment and archive.go's "pr and keep ask
+for nothing" prose are rewritten. Tests now cover all of B2's table, including the two
+branches the plan review found missing. `archive_test.go`'s pr-disposition flow over a
+local bare `origin` walks four states: no remote → the `-u` form; after running the push →
+no cleanup; a fresh commit on the branch → the plain push, run verbatim via `runShell` and
+gone again; then **divergence** — the remote-tracking ref is moved by plumbing
+(`git commit-tree` makes a sibling commit off `HEAD~1`, `git update-ref` points
+`refs/remotes/origin/takt/demo` at it, no checkout needed) so neither side contains the
+other → the plain push again. The package-internal `archive_internal_test.go` injects both
+read failures separately: a cancelled context fails `CommitExists` (a non-ExitError, the
+only error kind it surfaces), and a second test makes `CommitExists` succeed while
+`IsAncestor` errors — the remote-tracking ref is created by `update-ref` but the local
+branch name in state does not exist, so `git merge-base` exits 128, which `IsAncestor`
+reports as an error, not an answer. Both must yield the plain push and a nil error. A
+verify grep additionally requires `IsAncestor` in archive.go, so an ahead-only
+implementation that never asks the ancestry question cannot pass. Session side needs no
+change (the op table already confirms `cleanup` with the user).
 
 ### 8. Documentation and the whole-repository gate (docs, G8 G9; after everything)
 
@@ -180,21 +212,34 @@ did. Class docs: prose only. This task runs last and its verify includes `task c
 which is G9's evidence on the finished branch; the greps are the commands that fail before
 this task's own work.
 
+## Plan review findings — disposition
+
+All four accepted; the design is unchanged, the seams each get a test.
+
+| finding | disposition |
+| --- | --- |
+| major — no test compares gathered facts with the binary-side budget | Task 4 gains `internal/cli/deadline_facts_test.go`: real `gatherFacts` over a real bundle, budget-from-facts == `closeBudget` field for field with non-zero counts, plus the finish-phase union count; task 4 now depends on task 3 (it references `closeBudget`) |
+| major — reviewer-chain fill in `gatherFacts` untested | Task 5 gains `internal/cli/reviewer_facts_test.go`: mixed chain `[claude, fake, nonesuch, copilot]` with distinct timeouts → exactly the keyed entries, in order, with their durations, and the gate rendered from those gathered facts names them |
+| major — diverged history and the second read's failure unexercised | Task 7's flow test adds a plumbing-made diverged remote-tracking ref (no checkout); `archive_internal_test.go` adds the `IsAncestor`-error case (remote ref present, local branch name unresolvable → exit 128 → error); verify now greps for `IsAncestor` in archive.go |
+| minor — unknown-name accessor behaviour only inferred | Task 1's accessor table gets explicit rows: `Timeout("fake")` and `Timeout("nonesuch")` both report no key, and a chain containing an unknown name skips it in `ReviewBudgetTimeout` |
+
 ## Risks
 
 - **Deadline containment depends on both sides computing the same budget.** Mitigated by
   pinning the counted set ("pending tasks of the active wave", the plan-index `Verify`
-  lists, `ReviewBudgetTimeout()`) identically in tasks 3 and 4, and by `SessionMargin`
-  being strictly positive so a small counting divergence still leaves the session outside
-  the binary.
-- **Long-running cli test package.** Tasks 3, 6, 7 all exercise `./internal/cli/` with
+  lists, `ReviewBudgetTimeout()`, parse-only index handling) identically in tasks 3 and 4
+  — and now enforced by task 4's integration test, which fails on any divergence between
+  the gathered facts and `closeBudget`.
+- **Long-running cli test package.** Tasks 3, 4, 5, 6, 7 exercise `./internal/cli/` with
   `-run` filters to keep verify fast; the full suite runs once in task 8's `task check`.
 - **The fake-reviewer seam.** It must not disturb the existing `TAKT_FAKE_REVIEW_CALLS`
   line format (`strings.Cut` parsing in oploop_test.go); the resolved deadline therefore
   goes to its own env-gated file, not onto the call-log line.
 - **`git push` in tests.** Only ever against a local bare repository created by the test;
   no network. The `-u` form is asserted as a string (no remote exists in that state); the
-  plain form is run verbatim through `runShell`, house style.
+  plain form is run verbatim through `runShell`, house style. Divergence and the ancestry
+  failure are injected with `commit-tree`/`update-ref` plumbing, never a checkout, so the
+  archived worktree is left untouched.
 
 ## Class justifications (below implement)
 
