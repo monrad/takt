@@ -81,7 +81,7 @@
     {
       "id": 3,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/cmd_close_wave.go",
         "internal/cli/cmd_verify.go",
@@ -90,7 +90,16 @@
         "internal/backend/live_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "close-wave now runs openTarget/landedClose under deadline.Bootstrap and the remaining close under deadline.Close of a new pure closeBudget built from a single index read, with verify and gate review taking deadline.Verify/deadline.GateReview and the three local constants deleted.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T12:53:08.622399045Z"
+      }
     },
     {
       "id": 4,
@@ -177,16 +186,13 @@
     }
   ],
   "active_wave": {
-    "n": 0,
+    "n": 1,
     "slice": 1,
     "attempt": 1,
-    "started_at": "2026-08-29T11:36:19.478771306Z",
+    "started_at": "2026-08-29T12:43:03.724058909Z",
     "session_id": "b533a4ff-7183-49ac-a2c8-b71a174a7098",
     "tasks": [
-      1,
-      2,
-      6,
-      7
+      3
     ],
     "baseline": []
   },

@@ -19,15 +19,12 @@ import (
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/config"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/gitx"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/wave"
 )
-
-// closeWaveTimeout bounds the whole close — scope, verify commands and every
-// review — matching the 1800 s the exec op tells the session to allow.
-const closeWaveTimeout = 30 * time.Minute
 
 // rubricTask names the per-task review rubric and its brief template.
 const rubricTask = "task"
@@ -39,6 +36,19 @@ const rubricTaskFollowup = "task-followup"
 
 // cmdCloseWave closes the active wave: scope verify, verify commands,
 // review, and the wave commit (spec §7.4 step 4).
+//
+// It runs in two deadlines rather than one. Opening the run and asking
+// whether this dispatch's close has already landed is bounded by
+// [deadline.Bootstrap] — a little git and a few small reads — and a landed
+// close is answered from there alone, with no plan index read at all, so a
+// replayed `exec close-wave` stays the no-op review I1 asks for even for a
+// bundle whose plan.index.json has since gone missing or malformed.
+//
+// Only a close that still has work to do reads the index, and the close it
+// then runs is bounded by what that work actually costs
+// ([deadline.Close] of [closeBudget]) instead of by a fixed constant that
+// budgets nothing. The index is read once and threaded on, so the plan the
+// budget was counted from is the plan the close is graded against.
 func cmdCloseWave(env Env) int {
 	fs := flag.NewFlagSet("close-wave", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -47,7 +57,7 @@ func cmdCloseWave(env Env) int {
 	if _, err := parseInterspersed(fs, env.Args); err != nil {
 		return usageError(env, fs, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), closeWaveTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), deadline.Bootstrap)
 	defer cancel()
 	tgt, code := openTarget(ctx, env, *dirFlag, *slugFlag)
 	if code != 0 {
@@ -56,9 +66,14 @@ func cmdCloseWave(env Env) int {
 	if tgt.st.ActiveWave == nil {
 		return fail(env.Stderr, exitError, "no active wave", "run `takt next`")
 	}
-	c, err := closeWave(ctx, env, tgt)
+	c, err := landedClose(ctx, tgt, tgt.st.ActiveWave)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	if c == nil {
+		if c, err = closeWaveBudgeted(env, tgt); err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
 	}
 	return printJSON(env, map[string]any{
 		keyWave: c.Wave, keyAttempt: c.Attempt, keyCommitted: c.Committed, "commit": c.CommitSHA,
@@ -68,21 +83,69 @@ func cmdCloseWave(env Env) int {
 	})
 }
 
-// closeWave grades every pending task of the active wave that reported, then
-// commits the wave when all of them are done. Re-running it after a
-// successful close is a no-op: the record is reprinted and nothing is
-// written, so an `exec close-wave` the session replays cannot grade a second
-// time or make a second commit (review I1, spec §5.4).
-func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult, error) {
-	aw := tgt.st.ActiveWave
-	landed, err := landedClose(ctx, tgt, aw)
-	if err != nil || landed != nil {
-		return landed, err
-	}
+// closeWaveBudgeted reads the plan index once and runs the close under the
+// deadline the wave's own work asks for: verify_timeout per command across
+// its pending tasks, the backend's timeout per review round, plus overhead.
+//
+// A readIndex failure is the command's failure. Falling back to a zero
+// [deadline.Budget] would floor the close at [deadline.Floor] while it ran
+// real work — the very containment this budget exists to establish — and
+// closeWave cannot grade a task whose plan entry it does not have anyway.
+func closeWaveBudgeted(env Env, tgt *runTarget) (*wave.CloseResult, error) {
 	idx, err := readIndex(tgt.bdir)
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(
+		context.Background(), deadline.Close(closeBudget(tgt.ws.Cfg, tgt.st, idx)))
+	defer cancel()
+	return closeWave(ctx, env, tgt, idx)
+}
+
+// closeBudget is the work this close-wave has to fit into, counted from the
+// run's config and the plan it is about to grade against.
+//
+// The counted set is the active wave's PENDING tasks — exactly the set
+// resolveTaskResults grades, which after a recovery can hold more tasks than
+// the dispatch's own list, and which is also the set internal/decide counts
+// for the session's matching deadline. A task the index does not hold
+// contributes no verify commands (closeWave cannot run commands it cannot
+// read); reviews are counted only when the run has review.tasks on, since a
+// run without it makes no backend call at all.
+func closeBudget(cfg config.Config, st *bundle.State, idx plan.Index) deadline.Budget {
+	b := deadline.Budget{
+		VerifyTimeout:  time.Duration(cfg.VerifyTimeout),
+		BackendTimeout: time.Duration(cfg.Backends.ReviewBudgetTimeout()),
+		MaxParallel:    st.Config.MaxParallel,
+	}
+	if st.ActiveWave == nil {
+		return b
+	}
+	tasks := 0
+	for _, t := range st.Tasks {
+		if t.Wave != st.ActiveWave.N || t.Status != bundle.StatusPending {
+			continue
+		}
+		tasks++
+		if pt := idx.Task(t.ID); pt != nil {
+			b.VerifyCommands += len(pt.Verify)
+		}
+	}
+	if st.Config.Review.Tasks {
+		b.ReviewTasks = tasks
+	}
+	return b
+}
+
+// closeWave grades every pending task of the active wave that reported, then
+// commits the wave when all of them are done. Its caller has already
+// established that this dispatch has no landed close and has parsed the plan
+// index it is handed, so re-running `close-wave` after a successful close
+// never reaches here: the record is reprinted and nothing is written, and an
+// `exec close-wave` the session replays cannot grade a second time or make a
+// second commit (review I1, spec §5.4).
+func closeWave(ctx context.Context, env Env, tgt *runTarget, idx plan.Index) (*wave.CloseResult, error) {
+	aw := tgt.st.ActiveWave
 	internalRec, err := wave.ReadInternalRecord(tgt.bdir, aw.N, sliceOf(aw), aw.Attempt)
 	if err != nil {
 		return nil, err

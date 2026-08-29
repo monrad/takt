@@ -1,0 +1,18 @@
+{
+  "lens": "simplicity",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:56:01.785634839Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 121,
+      "title": "closeBudget's nil-ActiveWave branch is unreachable and untested",
+      "detail": "closeBudget's `if st.ActiveWave == nil { return b }` guard (lines 121-123) protects against a case its only production caller cannot produce: cmdCloseWave already returns an error at line 66-68 (`if tgt.st.ActiveWave == nil { return fail(...) }`) before landedClose or closeWaveBudgeted ever run, so closeBudget is only ever invoked with a non-nil ActiveWave. Grep confirms closeBudget has exactly two call sites in the repo — internal/cli/cmd_close_wave.go:100 (guarded as above) and internal/cli/close_budget_test.go, whose budgetState() helper always sets a non-nil ActiveWave (lines 291-302), so the branch is also untested. It is harmless (the returned zero Budget floors to deadline.Floor via deadline.Close's own Floor logic, matching the no-real-work case), but it is defensive machinery for a state this wave's code never reaches — premature generalisation rather than something an actual caller needs.",
+      "task": 3
+    }
+  ]
+}

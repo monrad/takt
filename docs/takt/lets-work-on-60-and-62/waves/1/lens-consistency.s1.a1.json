@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:58:43.857308251Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 126,
+      "title": "The 'counted set' predicate is duplicated inline instead of shared",
+      "detail": "closeBudget's task filter `t.Wave != st.ActiveWave.N || t.Status != bundle.StatusPending` (line 126) is a verbatim copy of resolveTaskResults' filter `t.Wave != aw.N || t.Status != bundle.StatusPending` (line 280). Both doc comments explicitly assert the two sets must stay identical (closeBudget's comment: 'the set resolveTaskResults grades'), and task-4's cross-check integration test that would guard this invariant doesn't exist yet in this wave. With the predicate spelled out twice rather than factored into one helper (e.g. a shared `pendingWaveTasks(st)` iterator), a future edit to one loop's condition can silently desync the deadline's counted work from the work actually graded, with nothing but human review catching it until the task-4 test lands.",
+      "task": 3
+    }
+  ]
+}

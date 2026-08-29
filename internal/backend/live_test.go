@@ -27,7 +27,7 @@ const healthCheckBudget = 30 * time.Second
 
 // smokeGrace is what a smoke test allows on top of the backend's own
 // Timeout before giving up on the CLI call outright, mirroring
-// cli.reviewGrace: the deadline the reviewer runs under must fire first, so
+// deadline.Grace: the deadline the reviewer runs under must fire first, so
 // a slow reviewer reports its own timeout instead of being cut off here.
 const smokeGrace = 30 * time.Second
 

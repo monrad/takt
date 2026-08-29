@@ -77,6 +77,28 @@
       "detail": "In TestArchivedPROffersThePushUntilItIsDone (also at line 710), the checks `len(got) != 0` / `len(again) != 0` read `o[\"cleanup\"]` without first asserting `o[\"op\"] == \"stop\"` and `o[\"reason\"] == stopArchived` (as the earlier and later checkpoints in the same test do, e.g. lines 673-674, 683-684, 722-723). cleanupOf silently returns an empty slice when the \"cleanup\" key is absent or of the wrong shape, so if `next` regressed to returning a different op entirely at these points, the 'nothing offered' assertions would pass anyway, masking the regression in exactly the rows this test exists to pin (G7's zero-cleanup cases).",
       "source": "internal",
       "ts": "2026-08-29T12:42:47.857600296Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 121,
+      "wave": 1,
+      "task": 3,
+      "title": "closeBudget's nil-ActiveWave guard is untested and unreachable",
+      "detail": "closeBudget's `if st.ActiveWave == nil { return b }` branch (lines 121-123) has no test in close_budget_test.go. It's also unreachable in production: closeBudget is only called from closeWaveBudgeted, which cmdCloseWave only reaches after already checking tgt.st.ActiveWave != nil. Low risk since it's dead code on the real call path, but as written it's a new branch a regression in could go uncaught.",
+      "source": "internal",
+      "ts": "2026-08-29T13:09:01.537915978Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 126,
+      "wave": 1,
+      "task": 3,
+      "title": "The 'counted set' predicate is duplicated inline instead of shared",
+      "detail": "closeBudget's task filter `t.Wave != st.ActiveWave.N || t.Status != bundle.StatusPending` (line 126) is a verbatim copy of resolveTaskResults' filter `t.Wave != aw.N || t.Status != bundle.StatusPending` (line 280). Both doc comments explicitly assert the two sets must stay identical (closeBudget's comment: 'the set resolveTaskResults grades'), and task-4's cross-check integration test that would guard this invariant doesn't exist yet in this wave. With the predicate spelled out twice rather than factored into one helper (e.g. a shared `pendingWaveTasks(st)` iterator), a future edit to one loop's condition can silently desync the deadline's counted work from the work actually graded, with nothing but human review catching it until the task-4 test lands.",
+      "source": "internal",
+      "ts": "2026-08-29T13:09:01.537916166Z"
     }
   ]
 }
