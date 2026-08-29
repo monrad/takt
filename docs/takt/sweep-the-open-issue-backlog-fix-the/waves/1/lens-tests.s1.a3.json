@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 3,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T22:58:09.724026778Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/backend/fake.go",
+      "line": 30,
+      "title": "New TAKT_FAKE_REVIEW_CALLS error branches are never exercised",
+      "detail": "Review() now opens/writes/closes a calls-log file (lines 30-42) and returns an errorResult on any OpenFile, WriteString, or Close failure. No test in the wave (or elsewhere in the repo) drives any of these three failure modes — e.g. by pointing TAKT_FAKE_REVIEW_CALLS at an unwritable path or a directory. This is brand-new logic that other tests now depend on for correctness (oploop_test.go's TestSpecGateSpendsASecondScopedReviewOnABlockingRework and close_internal_test.go's TestBlindTaskReviewPromptNeverSeesTheLensClaims both rely on this file being written correctly to look up a call's exact LogID), so a silent regression in the write/error path (e.g. swallowing the error instead of returning it, or writing a malformed line) would go undetected.",
+      "task": 13
+    }
+  ]
+}

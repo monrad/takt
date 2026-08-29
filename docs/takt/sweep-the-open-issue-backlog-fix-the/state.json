@@ -294,15 +294,15 @@
         "internal/cli/brief_stable_test.go"
       ],
       "class": "implement",
-      "attempt": 2,
+      "attempt": 3,
       "last_digest": {
         "task": 12,
-        "attempt": 2,
+        "attempt": 3,
         "status": "done",
-        "summary": "Addressed every review finding — the PR body path is shell-quoted and covered by a space/apostrophe fixture, the corrupt-record failure now names `finish/goals.json` through a fact-gathering hint, the unreachable wrap is gone, `dispatchLenses` reuses `writeDispatchBrief`, and new tests pin the `goals.Parse` branch and the hoisted `ensureSliceDiff`.",
+        "summary": "Corrected the push_pr template to the mandated `--body-file {{.PRBodyPath}}` form, fixed the malformed-record hint to stop advising a delete that leaves goals_checked_sha intact, made waivers key on map presence, unwrapped the doubled goals.md error, and added coverage for preparePushPR's own ReadGoals branch and the pr option's description.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T21:49:11.469569108Z"
+        "recorded_at": "2026-08-28T22:47:36.044443239Z"
       }
     },
     {
@@ -318,15 +318,15 @@
         "internal/cli/cmd_answer_test.go"
       ],
       "class": "bounded",
-      "attempt": 2,
+      "attempt": 3,
       "last_digest": {
         "task": 13,
-        "attempt": 2,
+        "attempt": 3,
         "status": "done",
-        "summary": "Tightened the blind-prompt leak test to count-based assertions that permit only the rubric's own fixed \"correctness and edge cases\" and reject every other occurrence of the lens name; all six files' items are in place with tests, lint and the full suite green.",
+        "summary": "Strengthened the malformed-revision-event test to actually exercise the hash type assertion, made the nil-severities test discriminating (three-row table plus on-disk shape), and replaced the blind-prompt \"correctness\" allowance with a data-block absence check plus a template-derived baseline; tests and lint green.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T21:39:06.435758719Z"
+        "recorded_at": "2026-08-28T22:47:53.505499919Z"
       }
     },
     {
@@ -352,7 +352,18 @@
       }
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 1,
+    "slice": 1,
+    "attempt": 3,
+    "started_at": "2026-08-28T22:34:30.320319322Z",
+    "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
+    "tasks": [
+      12,
+      13
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

@@ -114,3 +114,18 @@
 {"ts":"2026-08-28T22:10:59.047787354Z","type":"wave_closed","data":{"attempt":2,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[12,13],"sha":"","wave":1}}
 {"ts":"2026-08-28T22:11:07.607175017Z","type":"gate_opened","data":{"gate":"wave_failures"}}
 {"ts":"2026-08-28T22:34:30.299839092Z","type":"gate_answered","data":{"choice":"retry","gate":"wave_failures"}}
+{"ts":"2026-08-28T22:34:30.332495124Z","type":"wave_dispatched","data":{"attempt":3,"slice":1,"tasks":[12,13],"wave":1}}
+{"ts":"2026-08-28T22:47:36.04595094Z","type":"task_recorded","data":{"attempt":3,"status":"done","task":12}}
+{"ts":"2026-08-28T22:47:53.507275992Z","type":"task_recorded","data":{"attempt":3,"status":"done","task":13}}
+{"ts":"2026-08-28T22:52:55.559324008Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:54:53.15082555Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:55:09.363333507Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:56:00.580316385Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":4,"mode":"docs","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:58:09.724603309Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":1,"mode":"tests","slice":1,"wave":1}}
+{"ts":"2026-08-28T22:59:07.95883571Z","type":"lens_recorded","data":{"attempt":3,"dropped":0,"findings":3,"mode":"consistency","slice":1,"wave":1}}
+{"ts":"2026-08-28T23:02:45.495495351Z","type":"reviewer_invalid","data":{"mode":"verify","problems":["no JSON block in the verifier's message: backend: no JSON object found in reviewer output"]}}
+{"ts":"2026-08-28T23:08:51.377788836Z","type":"internal_review_recorded","data":{"attempt":3,"candidates":8,"confirmed":4,"slice":1,"wave":1}}
+{"ts":"2026-08-28T23:08:51.378150061Z","type":"reviewer_attempts_reset","data":{"mode":"verify","reason":"recorded"}}
+{"ts":"2026-08-28T23:14:23.051714237Z","type":"wave_closed","data":{"attempt":3,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[12],"rework":[13],"sha":"","wave":1}}
+{"ts":"2026-08-28T23:14:35.673776281Z","type":"gate_opened","data":{"gate":"review_error"}}
+{"ts":"2026-08-29T00:12:38.918432695Z","type":"gate_answered","data":{"choice":"retry","gate":"review_error"}}

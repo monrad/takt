@@ -1,0 +1,194 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 3,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T23:08:51.377276072Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "title": "Claude Code op-table prompt still hardcodes `gh pr create --fill` for push_pr",
+      "detail": "The `run` row's push_pr parenthetical still reads \"...then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", which no longer matches the op's actual rendered instructions (title/body-file generated from the run's own artifacts, never `--fill`). This is the live prompt loaded for the `/takt` command and should describe the new command. Unaddressed since attempt 2's review.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 194,
+      "title": "§4.2's bundle file listing omits the new finish/pr.md artifact",
+      "detail": "The `### 4.2 Files` tree enumerates every file a bundle can contain — `finish/verify.json`, `finish/goals.json`, `finish/retro-inputs.json`, etc. — but this wave adds `finish/pr.md` (finish.PRPath/WritePR, written by preparePushPR on every push_pr op) and the tree was not updated to list it. Unaddressed since attempt 2's review.",
+      "id": "c2",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 861,
+      "title": "Design spec §7.5 step 4 still documents push_pr as `gh pr create --fill`",
+      "detail": "The spec reads: \"`pr`: `run push_pr` — the session runs `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`, then `done --step push_pr --url \u003cpr-url\u003e`\". This wave replaces `--fill` with a generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` (internal/finish/pr.go, internal/brief/templates/run-push_pr.md, internal/decide/questions.go's `pr` option) specifically so no committed tree describes inputs that don't exist — but this authoritative design doc was left unchanged and now contradicts the exact behaviour it is meant to describe. Unaddressed since attempt 2's review.",
+      "id": "c3",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "title": "Copilot host skill still hardcodes `gh pr create --fill` for push_pr",
+      "detail": "Same stale parenthetical as commands/takt.md line 31 — \"`gh pr create --base \u003cbase\u003e --fill`\" — no longer matches the op's rendered instructions (`--title`/`--body-file`). Both host prompts are meant to carry the same op table and are now stale together. Unaddressed since attempt 2's review.",
+      "id": "c4",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/backend/fake.go",
+      "line": 30,
+      "title": "New TAKT_FAKE_REVIEW_CALLS error branches are never exercised",
+      "detail": "Review() now opens/writes/closes a calls-log file (lines 30-42) and returns an errorResult on any OpenFile, WriteString, or Close failure. No test in the wave (or elsewhere in the repo) drives any of these three failure modes — e.g. by pointing TAKT_FAKE_REVIEW_CALLS at an unwritable path or a directory. This is brand-new logic that other tests now depend on for correctness (oploop_test.go's TestSpecGateSpendsASecondScopedReviewOnABlockingRework and close_internal_test.go's TestBlindTaskReviewPromptNeverSeesTheLensClaims both rely on this file being written correctly to look up a call's exact LogID), so a silent regression in the write/error path (e.g. swallowing the error instead of returning it, or writing a malformed line) would go undetected.",
+      "id": "c5",
+      "task": 13,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 275,
+      "title": "singleQuoted duplicates the existing shellQuote escaping algorithm",
+      "detail": "internal/cli/archive.go:353-355 already defines `shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` for exactly this POSIX single-quote close-escape-reopen technique, with a comment explaining the same rationale repeated almost verbatim in the new singleQuoted's doc comment (internal/brief/brief.go:265-274). The new PRTitleQuoted (internal/brief/brief.go:275-281) reimplements the same one-line escaping rule in a different package instead of sharing it, so a future fix or hardening of the shell-escaping rule (e.g. for control characters) has two independent copies to update.",
+      "id": "c6",
+      "task": 12,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "title": "Body path interpolated unquoted in the same shell command whose title is carefully quoted",
+      "detail": "`gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` quotes the title (via singleQuoted/PRTitleQuoted, added specifically because a shell would otherwise split the command on spaces) but leaves `--body-file {{.PRBodyPath}}` bare. PRBodyPath is finish.PRPath(bdir), an absolute path under the workspace/repo root, which can contain spaces just as much as any other filesystem path — the exact risk internal/cli/archive.go's shellQuote (used for discardSweep's `git clean -fd -- '\u003crel\u003e'`) exists to guard against ('a worktree path is whatever the user's filesystem says — a space in it would otherwise split the command into arguments'). brief.go:279-280 asserts PRBodyPath is safe to interpolate bare 'since it is takt's own \u003cbundle\u003e/finish/pr.md', but that reasoning is exactly what shellQuote's own doc comment rejects for repo/bundle-relative paths. The same command should quote both arguments.",
+      "id": "c7",
+      "task": 12,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/oploop_test.go",
+      "line": 881,
+      "title": "TAKT_FAKE_REVIEW_CALLS log-parsing loop duplicated across two test files",
+      "detail": "internal/cli/oploop_test.go:881-891 and internal/cli/close_internal_test.go:324-333 (both added by this same task) contain near-identical logic: split the calls file on newlines, `strings.Cut` each line on the first space to get (rubric, logID), filter by rubric, then `strings.Cut` the matching line again to pull out the LogID for the logs/\u003cid\u003e.prompt read. A small shared helper (e.g. `callsForRubric(t, callsFile, rubric string) []string`) in the cli test package would avoid the two copies drifting (e.g. one trims trailing newline before splitting, the other doesn't need to since it reuses the same TrimRight call — but any future change to the calls-file format must be made in both places).",
+      "id": "c8",
+      "task": 13,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "commands/takt.md:31 does still say `gh pr create --base \u003cbase\u003e --fill`, and that file is not touched anywhere in this diff. But the plan explicitly defers exactly this edit to a later task/wave: plan.md line 19 says 'Wave 3 — T9 (after T8 and T12): the prose that publishes the push_pr command to the session, which must not exist before the op it describes,' and line 36-37 says 'the pr option's description changes in T12, the same task that creates inputs.pr_title, inputs.pr_body_path and finish/pr.md, and the skill rows and design §7.5 change in T9, one wave later.' Task 12's and task 13's 'Files you may change' lists (task-12.a3.md, task-13.a3.md) both omit commands/takt.md; editing it would have been reverted as out-of-scope. This is a deliberate, documented sequencing choice, not an omission in this diff.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:19",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:36",
+        "commands/takt.md:31"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "false_positive",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md's §4.2 file listing (around line 194) indeed omits finish/pr.md, and this file is untouched by the diff. But this design doc is not in T12's or T13's editable file set (task-12.a3.md, task-13.a3.md 'Files you may change' lists), so this diff correctly leaves it alone; any edit to it would have been reverted as out of scope for this task/slice. No task in plan.md is shown updating §4.2 either, so this is at most a pre-existing plan gap, not a defect this diff introduced or should have fixed.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:194",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/1/task-12.a3.md:20"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "false_positive",
+      "evidence": "Design §7.5's `--fill` sentence (line 861) is indeed stale, but plan.md is explicit that this exact edit is not part of this wave: plan.md:19 'Wave 3 — T9 (after T8 and T12): the prose that publishes the push_pr command,' and T8's own description (plan.md:165-166) says 'Design §7.5's --fill sentence is not this task's: it describes the push_pr command and moves to T9, after the command exists. No code.' The diff under review is T12+T13 (Wave 2 in the plan / internal wave 1), so the design doc's update is scheduled for a not-yet-run task.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:165",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:861"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "false_positive",
+      "evidence": "hosts/copilot/skills/takt/SKILL.md:32 does still carry `--fill`, but exactly like commands/takt.md it is explicitly T9's edit (Wave 3), per plan.md:19 and :259-268 ('T9 — publish the push_pr command: the two skill rows, design §7.5, and the absolute-path invariant ... Wave 3, after T12 ... and T8'). Neither task-12.a3.md nor task-13.a3.md lists this file as editable, so its staleness in this diff is by design, not a regression.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:257",
+        "hosts/copilot/skills/takt/SKILL.md:32"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "internal/backend/fake.go:30-42 adds three new fallible operations (os.OpenFile, fh.WriteString, fh.Close) each returning errorResult on failure, all newly introduced in this diff. Searching the whole repository for TAKT_FAKE_REVIEW_CALLS usage in tests (oploop_test.go, close_internal_test.go) shows only the success path exercised — no test points TAKT_FAKE_REVIEW_CALLS at an unwritable path or directory to drive OpenFile/WriteString/Close failures.",
+      "citations": [
+        "internal/backend/fake.go:30-42"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "internal/brief/brief.go:275 `func singleQuoted(s string) string { return strings.ReplaceAll(s, \"'\", `'\\''`) }` duplicates the identical one-line escaping rule already defined in internal/cli/archive.go:353-355 `func shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` (shellQuote just wraps the same ReplaceAll in outer quotes). Both comments independently explain the same close-escape-reopen POSIX technique. The two packages cannot share the helper without restructuring (cli already imports brief), but the core algorithm is genuinely duplicated in two places.",
+      "citations": [
+        "internal/brief/brief.go:275",
+        "internal/cli/archive.go:353-355"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "internal/brief/templates/run-push_pr.md:4 reads `gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` — the title is wrapped in single quotes with its apostrophes escaped, but PRBodyPath is interpolated bare. PRBodyPath = finish.PRPath(r.bdir), and r.bdir is built via bundle.Dir.Bundle(slug) = filepath.Join(repoRoot or externalBase, ..., slug) (internal/bundle/dir.go:59-64) — repoRoot is 'the absolute work-tree root', wherever the user's filesystem places it, with no validation against spaces or shell metacharacters (internal/bundle/paths.go's CheckRelPath and ValidSlug validate the slug and relative bundle dir, never the repo root). brief.go:279-280's own comment justifies the bare interpolation as safe 'since it is takt's own `\u003cbundle\u003e/finish/pr.md`', but only the trailing `finish/pr.md` segment is takt's own; the bundle-root prefix is the user's checkout path, exactly the class of value internal/cli/archive.go's shellQuote exists to guard ('a worktree path is whatever the user's filesystem says — a space in it would otherwise split the command into arguments').",
+      "citations": [
+        "internal/brief/templates/run-push_pr.md:4",
+        "internal/brief/brief.go:277-281",
+        "internal/bundle/dir.go:59-64"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/oploop_test.go:880-893 and internal/cli/close_internal_test.go's TestBlindTaskReviewPromptNeverSeesTheLensClaims contain near-identical logic: `for line := range strings.SplitSeq(strings.TrimRight(string(callsRaw), \"\\n\"), \"\\n\") { if rubric, _, ok := strings.Cut(line, \" \"); ok \u0026\u0026 rubric == \"\u003cx\u003e\" { ... } }` followed by `strings.Cut` again to pull the LogID and read `filepath.Join(bdir, \"logs\", logID+\".prompt\")`. Both blocks were added in this same diff, and no shared helper factors the parsing out.",
+      "citations": [
+        "internal/cli/oploop_test.go:876-893",
+        "internal/cli/close_internal_test.go:408-424"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c5",
+    "c6",
+    "c7",
+    "c8"
+  ]
+}
