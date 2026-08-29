@@ -1,0 +1,9 @@
+{
+  "task": 1,
+  "attempt": 3,
+  "status": "done",
+  "summary": "Fixed the heading test in `internal/spec`'s row loop so a pipe-separated data row beginning with `#` (e.g. `#63 | Yes | … | user-confirmed`) is parsed as data rather than truncating the table, split the ATX-heading and `## `-section predicates apart, and added two regression tests covering both directions.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T11:50:28.090934587Z"
+}

@@ -1,0 +1,43 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 3,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:55:55.055405571Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "internal/spec/assumptions.go",
+      "line": 74,
+      "title": "No test distinguishes 'stop at first table' from 'skip to a later valid table' when a table's headers are malformed",
+      "detail": "ParseAssumptions breaks out of the scan entirely (line 76: `if !ok { break }`) once it finds a header row with a valid separator whose column names don't match — per the doc comment this is intentional: the parser reads only the 'first markdown table' under the heading, even if that table is malformed, and must not fall through to a later well-formed table in the same section. The existing 'missing source header' subtest in TestParseAssumptionsTolerant (assumptions_test.go:431) only has one candidate table in its fixture, so it exercises the `!ok` branch but cannot distinguish `break` from `continue`: both produce the same empty result there. No fixture anywhere in the suite places a second, genuinely well-formed table (valid header names) after a first table with a bad header name in the same section, so this documented 'first table wins, even when malformed' contract is unverified — a regression that made the parser fall through to the next table would pass every existing test.",
+      "id": "c1",
+      "task": 1,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "ParseAssumptions breaks the entire scan (not continue) when match(header) fails: `cols, ok := match(header); if !ok { break }` (assumptions.go:72-74, diff lines 74-76), matching the doc comment's contract that only 'the first markdown table under the heading' is read. The only test reaching this branch, TestParseAssumptionsTolerant's 'missing source header' case (assumptions_test.go:226-231, diff lines 431-436), has a fixture with exactly one candidate table, so a buggy `continue` in place of `break` would still return the same empty slice — the test cannot tell them apart. No fixture in the file places a second, well-formed table after a first bad-header table in the same section, so the 'first table wins even if malformed' contract is unverified.",
+      "citations": [
+        "internal/spec/assumptions.go:72-74",
+        "internal/spec/assumptions_test.go:226-231"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1"
+  ]
+}
