@@ -1,0 +1,31 @@
+Thirty issues are open. Most were filed by takt's own runs — the dogfood run (#20),
+the #41 and #47 branch reviews, PR #52's retro — and about half of them name a
+one-file defect and the fix. They have sat because each is too small to be a branch.
+Landing them as one sweep is cheaper than eighteen branches, and it keeps the
+backlog a place where findings get fixed rather than forgotten.
+
+## Goals
+
+- G1 — A wave-0 follow-up round-trips through `follow-ups.json` with `"wave": 0` while a gate follow-up still has no `wave` key, and `AppendFollowUps` is idempotent on the identity `[gate, wave, task, severity, file, line, title]` (a JSON array, so a delimiter in a file name or title cannot collide): a repeat is not appended, and a repeat whose source is `override` over a stored `approve` upgrades that one item's source in place. — achieved
+- G2 — `runReview` writes findings, carry, `gate_reviewed` event and receipt in that order and fails on the event write like every other write; the receipt and the event carry the backend's `reason`; on an `error` verdict the `gate_review` question states the reason, says `reviews/<gate>.md` describes the previous pass, and offers `retry` (recommended, re-run the review), `accept` and `stop` but not `revise`; `reviews/<gate>.json` carries `hash` and `round`; and a new `review-record` doctor check WARNs when that hash differs from a non-error, non-skipped receipt's. — achieved
+- G3 — `finish/retro-inputs.json` counts every review once: `review_findings` is the sum of every `gate_reviewed` event's findings and every `wave_closed` event's `review_findings` (each attempt's own graded task reviews, stored on its close record too), split as `gate_review_findings` and `task_review_findings`; and `wave_timings` has one entry per dispatched attempt that closed, paired through `wave_closed` (which now carries `slice`), with `closed_at`, `committed` and — only when it committed, via `omitzero` — `committed_at`. — achieved
+- G4 — `takt status` on a run in the plan phase prints `tasks: N planned (not yet materialised)` when the index exists and no task has been materialised, and never prints a bare `alignment:` label: it says `skipped`, `N clauses awaiting confirmation`, `N clauses confirmed, verdicts pending`, or the verdict counts; the `--json` document carries `tasks.planned` and the alignment digest's `clauses`, `skipped` and `verdicts_present`. — achieved
+- G5 — `takt status --slug` and `takt unlock --slug` for a run whose bundle is not on the checked-out branch exit 1 with a non-empty hint that names the branch when `takt/<slug>` exists (`check it out, or pass --dir`), and every other `loadBundle` failure in `openTarget` carries a hint too, with `loadStatus` opening through `openTarget`. — achieved
+- G6 — `takt record --agent goal-assessor` rejects a reply whose citation is not `path:line` or `path:start-end`, names a path that is absolute, escapes the repo, or is not a regular file, resolves through a symlink to outside the repository, or cites a line past the file's end — `{"valid": false, "problems": […]}` naming the goal and the citation, the `goals_invalid` event appended and no goal record written — while a well-formed citation into a real file and an empty citations list are accepted; the assessor brief and agent definition state the grammar and the check. — achieved
+- G7 — The `push_pr` op carries `inputs.pr_title` (the spec's H1, else the topic's first 72 characters) and `inputs.pr_body_path` pointing at `finish/pr.md` — the spec's first prose paragraph, a `## Goals` list with each goal's verdict, waiver or `not assessed`, and a `## Run` pointer to the bundle — and its instructions, `commands/takt.md` and `SKILL.md` all say `gh pr create --base <base> --title '<title>' --body-file <path>` with the title single-quoted and `'` escaped, none of them `--fill`. — achieved
+- G8 — When merge is blocked, `branch_finish` lists `pr` first labelled "(Recommended)", then `keep`, then the disabled `merge` with its reason, then `discard`; when merge is allowed the order is unchanged; exactly one option is ever recommended and it is enabled. — achieved
+- G9 — A task brief names the run's `spec.md` by absolute path and tells the implementer to read it as data, and no longer quotes the spec's text: `brief.TaskData` has `SpecPath` and no `SpecExcerpt`, and no rendered brief contains a `spec-excerpt` block. — achieved
+- G10 — The copilot reviewer runs with `--no-custom-instructions`, and design §8.2's command line shows the flag and says why. — achieved
+- G11 — Every #45 and #51 item the spec lists has landed: "twelve" in `questions.go`'s comment, no `MkdirAll` in `writeResultJSON`, only `gate.Verdict*` constants compared in `cmd_review.go`, the malformed-revision-event and nil-severities tests, the `LogID`-addressed scoped-review test, the minimal follow-ups fixture, the tightened reject clause, newline-safe `PriorFindingLines`, the §6 carry sentence, a single render in `writeStableBrief`, `ensureSliceDiff` hoisted out of `verifyBrief`'s closure, the blind-prompt leak-marker test, the three strengthened assertions, an atomic `writeTaskFindings`, and a `lensTasks` without the dead parameter. — achieved
+- G12 — The four documents say what the code does: design §4.6 states the `lock_taken` rule by the holder with the single generated-over-generated exemption; `commands/takt.md` and `SKILL.md` carry the absolute-path invariant beside the never-edit-the-bundle one; the plan doc's Task 8 names `docs/takt/<slug>/retro.md` and the `pr` choice; the README's binary install section describes the quarantine hook, the Open Anyway fallback and the `xattr` command, linking #17. — achieved
+- G13 — The branch is green on the repository's own checks. — achieved
+
+## Run
+
+Bundle: docs/takt/sweep-the-open-issue-backlog-fix-the/ — spec.md, plan.md, reviews/, retro.md
+
+## Issues
+
+Closes #53, closes #44, closes #43, closes #23, closes #25, closes #33, closes #8, closes #24, closes #36, closes #26, closes #45, closes #54, closes #37, closes #35, closes #18.
+
+Refs #51 (all but the user-directory lens override), #49 (item 1 only; items 2–3 remain), #31 (the path reference only; `--brief-path` stays deferred). #34, #27 and #7 were fixed by hand in `4c5026d` on this branch.
