@@ -156,3 +156,6 @@
 {"ts":"2026-08-29T01:27:33.310722602Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[],"sha":"6a4ea6e152ec3668b097841a56c0cbe26724516b","wave":2}}
 {"ts":"2026-08-29T01:27:39.273112941Z","type":"wave_cleared","data":{"wave":2}}
 {"ts":"2026-08-29T01:27:39.278398676Z","type":"phase","data":{"from":"execute","to":"finish"}}
+{"ts":"2026-08-29T01:28:50.641593485Z","type":"verify","data":{"commands":116,"passed":true,"sha":"770ba26f4b9f2c629bc4a82a235d45de0d566778"}}
+{"ts":"2026-08-29T01:36:30.023293695Z","type":"goal_check","data":{"achieved":13,"missed":0,"partial":0,"sha":"770ba26f4b9f2c629bc4a82a235d45de0d566778","waived":0}}
+{"ts":"2026-08-29T01:39:05.716975595Z","type":"retro","data":{"hash":"sha256:20155c3ea7464902a04543cdd688715ac5342c2de7a806e2e61a2a3705fc74c5"}}

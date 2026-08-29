@@ -363,7 +363,7 @@
   ],
   "active_wave": null,
   "pending_gate": null,
-  "verified_sha": null,
-  "goals_checked_sha": null,
+  "verified_sha": "770ba26f4b9f2c629bc4a82a235d45de0d566778",
+  "goals_checked_sha": "770ba26f4b9f2c629bc4a82a235d45de0d566778",
   "disposition": null
 }
