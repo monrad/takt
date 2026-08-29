@@ -64,7 +64,11 @@ helper in a new `internal/cli/retro.go`, extended to parse the spec's assumption
 retro op gains `skeleton_path`. **One ownership model, fixed here and binding on task 7:**
 `retroRunOp` is the sole caller of `writeRetroArtifacts` — it derives the pair once and then
 builds the op. Both `nextRun.run` and task 7's `cmdRetro` call `retroRunOp` and nothing else,
-so neither path can derive and write the two files twice. The replay test (run `next` twice, byte-identical pair) is
+so neither path can derive and write the two files twice. Because the derivation is
+deterministic, a second call would be invisible to every behavioural test — so the rule is
+pinned statically instead: `retro.go` holds exactly two occurrences of the name (declaration
+and the one call), it is the only non-test file in `internal/cli` that mentions it, and task
+7 asserts `cmd_retro.go` mentions it zero times. The replay test (run `next` twice, byte-identical pair) is
 G3's evidence and lives in `finish_test.go`, which is why tasks 6 and 7 are ordered after
 this one. Depends on 3 (the renderer) and 4 (the `SkeletonPath` field the op data fills).
 
@@ -85,9 +89,11 @@ helper).
 **Task 8 — the design doc (G11, docs).** Class `docs` because it is prose in one file with
 no behaviour: §4.2 gains the skeleton line, §7.5 step 3 is rewritten around the seven
 sections and the disposition's first-pass absence, and §5.1's command table gains `retro`
-(§6 is the command prompt, not the command list). Its verify commands are section-scoped —
-each greps only inside the section the edit belongs to — so a string that lands somewhere
-else in a 1100-line document does not pass for the edit. It has no dependencies — the spec
+(§6 is the command prompt, not the command list). Its verify commands are scoped to the exact edit rather than to the
+document or even to §7.5: the step-3 checks read only between the `3. **Retro**` and
+`4. **Disposition**` markers, and they assert step 3's substance — the skeleton file, the
+section names, the `wave_committed` row semantics, the prose slots, the first-pass
+`not yet chosen` line, the `archived` behaviour — so an incomplete rewrite cannot pass. It has no dependencies — the spec
 fully determines the content — so it can land in the first wave.
 
 **Task 9 — host prompts, parity, and the branch-green gates (G12, G13, bounded).** Below

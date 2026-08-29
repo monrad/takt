@@ -1,31 +1,24 @@
 {
-  "verdict": "rework",
-  "summary": "The decomposition covers the specification, but several declared verification paths can pass while load-bearing requirements are violated. Strengthen Tasks 5, 7, and 8 before execution.",
+  "verdict": "approve",
+  "summary": "The decomposition covers the specification end to end, preserves its exclusions, has coherent dependencies and plausible file scopes, and places repository-wide validation after all implementation work. Two verification details could be strengthened but do not require restructuring before execution.",
   "findings": [
     {
-      "severity": "major",
+      "severity": "minor",
       "file": "plan.md",
       "line": 0,
-      "title": "Task 5 does not verify its sole-caller and exactly-once ownership rule",
-      "detail": "Task 5 makes retroRunOp the sole caller of writeRetroArtifacts and explicitly forbids either command path from deriving the pair twice, but its checks only remove writeRetroInputs and establish byte-identical replay. Because derivation is deterministic, calling writeRetroArtifacts twice would still pass every listed test. Add a static call-site assertion or an instrumented test proving one derivation per command; Task 7 should also assert cmdRetro has no direct call."
-    },
-    {
-      "severity": "major",
-      "file": "plan.md",
-      "line": 0,
-      "title": "Task 8's verification does not prove the required design-document rewrite",
-      "detail": "Task 8 claims its checks scope the edit to §7.5 step 3, but the sed range covers all of §7.5. The checks only require retro-skeleton.md, not yet chosen, and archived somewhere in that section; they do not prove that step 3 names the seven sections, shipped-event semantics, decision sources, Not-proven seed, follow-up bucketing, Numbers, copying/filling prose slots, or the done guard. Scope checks to step 3 and assert the load-bearing content so an incomplete documentation edit cannot pass."
+      "title": "Task 3's repeat-render test does not prove renderer purity",
+      "detail": "Task 3 cites TestRenderSkeletonIsPure as evidence that RenderSkeleton performs no filesystem, clock, or lookup operations, but rendering the same input twice only establishes repeatability during that test; stable filesystem, environment, or time-derived data could still pass. Source review or an AST/static restriction on RenderSkeleton and its rendering helpers would better enforce the stated purity boundary."
     },
     {
       "severity": "minor",
       "file": "plan.md",
       "line": 0,
-      "title": "Task 7 leaves the required --dir path untested",
-      "detail": "Task 7 requires the standard --slug/--dir pair, but every described command test uses --slug and the verification commands add no coverage for --dir. Add a successful rewrite test targeting a run through --dir so omission or incorrect wiring of that required flag is detected."
+      "title": "Task 8's documentation checks prove placement but not asserted semantics",
+      "detail": "Task 8 says its scoped greps prove wave_committed row semantics, first-pass disposition behavior, and archived done behavior, but the commands only require isolated tokens such as wave_committed, not yet chosen, and archived. Contrary or incomplete prose containing those words would pass. Grepping distinctive required phrases such as one row per wave_committed event and accepted in finish and archived would make the checks match the description."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:94daac40badd86d7b33ec667f74e03962f96a3b87d5a56e979477086a1263b67",
-  "round": 2
+  "hash": "sha256:e2fa8deae73fea63e64cc6f8cc7b27f25e2de75c7c9ede5c4fc2f10f7fcf648a",
+  "round": 3
 }
