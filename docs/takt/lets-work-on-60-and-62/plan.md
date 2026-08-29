@@ -31,11 +31,13 @@ host parity) is the finish gate. No task commits — takt owns every commit.
   as exported `Grace` (30s, value unchanged) and `cmd_review.go` passes `deadline.Grace`.
   This serves the spec's own stated goal — the containment relation as a property of one
   package — better than a mirrored constant would.
-- G3 says the functions are "monotonically non-decreasing in every input". For
-  `Budget.MaxParallel` that is the wrong direction by construction: more parallelism can
-  only shrink the review term. The invariant test asserts non-decreasing in the four work
-  inputs (`VerifyTimeout`, `VerifyCommands`, `BackendTimeout`, `ReviewTasks`) and
-  non-increasing in `MaxParallel`, which is the sound reading.
+- Spec A2.3 and G3 originally said the functions are "monotonically non-decreasing in
+  every input". For `Budget.MaxParallel` that is unsatisfiable by construction: it is a
+  divisor, so more parallelism can only shrink the review term. Rather than let the plan
+  override the spec silently, **spec A2.3 and goals G3 were amended** to require
+  non-decreasing in the four work inputs (`VerifyTimeout`, `VerifyCommands`,
+  `BackendTimeout`, `ReviewTasks`) and non-*increasing* in `MaxParallel`. The invariant
+  test asserts exactly that, and the plan and the spec now agree.
 - G1's evidence wants the unset-`Timeout` fallback observed "through the fake reviewer".
   Today only `runCLI` applies the fallback and the fake never calls it. Task 1 adds a
   shared `resolveTimeout` helper (used by `runCLI` unchanged in behaviour) and a small

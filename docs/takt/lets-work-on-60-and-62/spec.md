@@ -127,7 +127,12 @@ three packages that no single test can observe:
 - `Close(b) >= b.VerifyTimeout*b.VerifyCommands` and, when `b.ReviewTasks >= 1`,
   `Close(b) >= 2*b.BackendTimeout`.
 - `GateReview(bt, g) > bt`; `Verify(per, n) >= per*n`.
-- `Close`, `Verify` and `GateReview` are monotonically non-decreasing in every input.
+- `Close`, `Verify` and `GateReview` are monotonically non-decreasing in every input
+  that adds work — `VerifyTimeout`, `VerifyCommands`, `BackendTimeout`, `ReviewTasks`,
+  and `GateReview`'s two arguments. `MaxParallel` is the one exception and goes the
+  other way: it is a divisor (reviews fan out across it), so `Close` is monotonically
+  non-*increasing* in it. Requiring non-decreasing in every input without this
+  exemption would be unsatisfiable for the stated formula.
 - `Close(b) >= Floor` for every `b`, including the zero value.
 
 ### A3. Name the key and the deadline on the `review_error` gate

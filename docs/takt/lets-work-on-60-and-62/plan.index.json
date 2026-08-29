@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "spec_hash": "sha256:8e9805bffef688ef52d01df932faad023d495cd86b65647f7bcfdd8769f63790",
+  "spec_hash": "sha256:cd001ddceec67f27aa10cd1a29e7af550bb7de226675f38e8c8633e9dd4bc32c",
   "tasks": [
     {
       "id": 1,
@@ -188,7 +188,7 @@
       "verify": [
         "grep -q 'case dispositionPR' internal/cli/archive.go",
         "grep -q 'git push -u origin' internal/cli/archive.go",
-        "grep -c 'IsAncestor' internal/cli/archive.go | grep -qvx 1",
+        "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
         "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
         "grep -q 'commit-tree' internal/cli/archive_test.go",
         "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
@@ -205,7 +205,7 @@
     {
       "id": 8,
       "title": "Documentation: 15m in both config examples, the derived-budget rule, the corrected pr-archive prose; whole-repo gate",
-      "description": "Spec A4 and B3, running last so its task check verifies the assembled branch (G9). README.md:151-152: both `\"timeout\": \"5m\"` -\u003e `\"15m\"`; no other README change. docs/superpowers/specs/2026-08-24-takt-design.md: (1) the section-12 config example lines 1133-1134 likewise -\u003e \"15m\"; (2) section 12's \"Timeouts everywhere takt waits\" bullet (lines 1178-1179) gains the derived-budget rule in one or two sentences: the deadlines that WRAP a backend call — close-wave, verify, gate review, and the session-side timeout_s on their exec ops — are derived from the run's config and plan by internal/deadline (verify budgeted per command and serial, reviews divided by max_parallel, Session strictly containing every binary cap), never fixed constants; (3) section 7.5 step 5, line 886: replace \"`pr` and `keep` ask git for nothing at this step.\" with: `keep` asks git for nothing; `pr` asks whether the branch holds commits the remote-tracking ref does not (no ref -\u003e `git push -u origin \u003cbranch\u003e`; behind or diverged -\u003e `git push origin \u003cbranch\u003e`; a failed git read still offers the push) and hands the push back as `cleanup` — \"that commit is the run's last one\" is unaffected, the push being a cleanup command, not a commit; (4) the section-5.2 sentence at lines 480-481 (\"a `keep` or a `pr` archive asks git for nothing and carries neither\") is corrected to match: a `keep` archive carries neither; a `pr` archive carries the push as cleanup exactly when the remote-tracking ref is missing commits. Keep both documents' tone and line-wrapping style. The greps below are this task's own fail-before commands; `task check` (build + go test ./... -race -count=1 + lint + host parity) is G9's evidence on the finished branch.",
+      "description": "Spec A4 and B3, running last so its task check verifies the assembled branch (G9). README.md:151-152: both `\"timeout\": \"5m\"` -\u003e `\"15m\"`; no other README change. docs/superpowers/specs/2026-08-24-takt-design.md: (1) the section-12 config example lines 1133-1134 likewise -\u003e \"15m\"; (2) section 12's \"Timeouts everywhere takt waits\" bullet (lines 1178-1179) gains the derived-budget rule in one or two sentences: the deadlines that WRAP a backend call — close-wave, verify, gate review, and the session-side timeout_s on their exec ops — are derived from the run's config and plan by internal/deadline (verify budgeted per command and serial, reviews divided by max_parallel, Session strictly containing every binary cap), never fixed constants; (3) section 7.5 step 5, line 886: replace \"`pr` and `keep` ask git for nothing at this step.\" with: `keep` asks git for nothing; `pr` asks whether the branch holds commits the remote-tracking ref does not (no ref -\u003e `git push -u origin \u003cbranch\u003e`; the branch is an ancestor of the remote-tracking ref (fully pushed) -\u003e no cleanup; ahead or diverged, i.e. the branch holds commits the ref does not -\u003e `git push origin \u003cbranch\u003e`; a failed git read still offers the push) and hands the push back as `cleanup` — \"that commit is the run's last one\" is unaffected, the push being a cleanup command, not a commit; (4) the section-5.2 sentence at lines 480-481 (\"a `keep` or a `pr` archive asks git for nothing and carries neither\") is corrected to match: a `keep` archive carries neither; a `pr` archive carries the push as cleanup exactly when the remote-tracking ref is missing commits. Keep both documents' tone and line-wrapping style. The greps below are this task's own fail-before commands; `task check` (build + go test ./... -race -count=1 + lint + host parity) is G9's evidence on the finished branch.",
       "files": [
         "README.md",
         "docs/superpowers/specs/2026-08-24-takt-design.md"
