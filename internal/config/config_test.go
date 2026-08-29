@@ -44,6 +44,94 @@ func TestDefaults(t *testing.T) {
 	if len(d.Backends.Reviewer) != 2 || d.Backends.Reviewer[0] != "copilot" {
 		t.Fatalf("reviewer chain = %v", d.Backends.Reviewer)
 	}
+	// The shipped review deadline (spec §A1): 15m for both backends, and
+	// internal/backend's unset-Timeout fallback is asserted equal to it in
+	// internal/cli, the only package that imports both.
+	copilot, claude := time.Duration(d.Backends.Copilot.Timeout), time.Duration(d.Backends.Claude.Timeout)
+	if copilot != shippedBackendTimeout || claude != shippedBackendTimeout {
+		t.Fatalf("backend timeouts = copilot %s, claude %s, want %s each", copilot, claude, shippedBackendTimeout)
+	}
+}
+
+// The deadlines the accessor tests below build a Backends value from:
+// shippedBackendTimeout is what Defaults ships, and the copilot/claude pair
+// is deliberately distinct and distinct from it, so a row asserting "the
+// larger" cannot pass by reading the wrong field.
+const (
+	shippedBackendTimeout = 15 * time.Minute
+	copilotTimeout        = 7 * time.Minute
+	claudeTimeout         = 11 * time.Minute
+)
+
+// backendsFixture is the Backends value the accessor tests read, with chain
+// supplied per case.
+func backendsFixture(chain []string) config.Backends {
+	return config.Backends{
+		Reviewer: chain,
+		Copilot:  config.Backend{Timeout: config.Duration(copilotTimeout)},
+		Claude:   config.Backend{Timeout: config.Duration(claudeTimeout)},
+	}
+}
+
+// TestBackendsTimeoutOnlyAnswersForKeysThatExist covers spec §A3: the
+// review_error gate names backends.<name>.timeout for a backend, so the
+// accessor must report false for every name that has no such key — the
+// registry's "fake" and any unknown name alike — rather than a zero
+// deadline the gate would render as a real one.
+func TestBackendsTimeoutOnlyAnswersForKeysThatExist(t *testing.T) {
+	t.Parallel()
+	b := backendsFixture(nil)
+	for _, tc := range []struct {
+		name   string
+		want   time.Duration
+		wantOK bool
+	}{
+		{name: "copilot", want: copilotTimeout, wantOK: true},
+		{name: "claude", want: claudeTimeout, wantOK: true},
+		{name: "fake", wantOK: false},
+		{name: "nonesuch", wantOK: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := b.Timeout(tc.name)
+			if ok != tc.wantOK {
+				t.Fatalf("Timeout(%q) ok = %v, want %v", tc.name, ok, tc.wantOK)
+			}
+			if ok && time.Duration(got) != tc.want {
+				t.Fatalf("Timeout(%q) = %s, want %s", tc.name, time.Duration(got), tc.want)
+			}
+			if !ok && got != 0 {
+				t.Fatalf("Timeout(%q) = %s for a name with no key, want 0", tc.name, time.Duration(got))
+			}
+		})
+	}
+}
+
+// TestReviewBudgetTimeoutTakesTheWorstSizeableCandidate covers the budget
+// side of the same rule: a chain entry with no config key cannot be sized
+// and is skipped, and a chain that leaves nothing sizeable still yields the
+// deadline a run would actually honour instead of zero.
+func TestReviewBudgetTimeoutTakesTheWorstSizeableCandidate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		chain []string
+		want  time.Duration
+	}{
+		{name: "both keys take the larger", chain: []string{"copilot", "claude"}, want: claudeTimeout},
+		{name: "one key takes its own", chain: []string{"claude"}, want: claudeTimeout},
+		{name: "keyless entries are skipped", chain: []string{"fake", "nonesuch", "copilot"}, want: copilotTimeout},
+		{name: "no sizeable entry falls back", chain: []string{"fake"}, want: claudeTimeout},
+		{name: "empty chain falls back", chain: nil, want: claudeTimeout},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := time.Duration(backendsFixture(tc.chain).ReviewBudgetTimeout())
+			if got != tc.want {
+				t.Fatalf("ReviewBudgetTimeout() = %s, want %s", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestLoadPrecedence(t *testing.T) {

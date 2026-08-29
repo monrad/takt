@@ -146,7 +146,7 @@
     {
       "id": 7,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/archive.go",
         "internal/cli/archive_test.go",

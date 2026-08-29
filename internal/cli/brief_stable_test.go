@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -157,12 +158,17 @@ func prFixture(t *testing.T) (*nextRun, string) {
 
 // TestPreparePushPRWritesTheBodyAndNamesIt covers the op's happy path at the
 // unit the end-to-end test cannot reach into: the body is written where the
-// inputs point, and both inputs are filled from what the run wrote.
+// inputs point, and both inputs are filled from what the run wrote. The
+// fixture's workspace is a zero *workspace* (Dir.InRepo false), so the
+// commitBundle call preparePushPR now makes is the documented
+// external-bundle no-op ("", false, nil) rather than a commit — asserted
+// directly below, so the fixture explains why a bundle outside a repository
+// is not committed.
 func TestPreparePushPRWritesTheBodyAndNamesIt(t *testing.T) {
 	t.Parallel()
 	r, dir := prFixture(t)
 	data, inputs := brief.RunData{}, map[string]any{}
-	if err := r.preparePushPR(&data, inputs); err != nil {
+	if err := r.preparePushPR(context.Background(), &data, inputs); err != nil {
 		t.Fatal(err)
 	}
 	if data.PRTitle != "Add a greeting" || inputs["pr_title"] != "Add a greeting" {
@@ -179,6 +185,10 @@ func TestPreparePushPRWritesTheBodyAndNamesIt(t *testing.T) {
 		!strings.Contains(string(body), "Bundle: "+dir+"/") {
 		t.Fatalf("body:\n%s", body)
 	}
+	_, committed, err := commitBundle(context.Background(), r.ws, r.bdir, r.slug, "pr body")
+	if committed || err != nil {
+		t.Fatalf("bundle outside a repository must not be committed: committed=%v err=%v", committed, err)
+	}
 }
 
 // assertPreparePushPRRefuses runs the preparation on a broken bundle and
@@ -188,7 +198,7 @@ func TestPreparePushPRWritesTheBodyAndNamesIt(t *testing.T) {
 func assertPreparePushPRRefuses(t *testing.T, r *nextRun, dir string) error {
 	t.Helper()
 	data, inputs := brief.RunData{}, map[string]any{}
-	err := r.preparePushPR(&data, inputs)
+	err := r.preparePushPR(context.Background(), &data, inputs)
 	if err == nil {
 		t.Fatal("a broken bundle must not produce a pull request")
 	}

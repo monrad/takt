@@ -451,8 +451,11 @@ func TestBranchFinishAdoptedOffersPrAndKeepOnly(t *testing.T) {
 	if o = d.nextOp(); o["op"] != "stop" || o["reason"] != "archived" {
 		t.Fatalf("%v", o)
 	}
-	if o["cleanup"] != nil {
-		t.Fatalf("takt never touches an adopted branch: %v", o["cleanup"])
+	// The pr hand-off is a command for the session, not takt touching the
+	// adopted branch: this repository has no remote at all, so what comes
+	// back is the first-push form for the branch takt was handed.
+	if got := cleanupOf(t, o); len(got) != 1 || got[0] != "git push -u origin feature" {
+		t.Fatalf("the push is handed back for an adopted branch too: %v", got)
 	}
 	st, _ := bundle.LoadState(bdir)
 	if st.Disposition == nil || st.Disposition.PRURL != adoptedPRURL || !st.Disposition.Applied {
@@ -626,5 +629,104 @@ func TestArchiveCommitIsRetriedAfterASoftReset(t *testing.T) {
 	st, err := bundle.LoadState(bdir)
 	if err != nil || st.Phase != bundle.PhaseArchived || st.Disposition == nil || !st.Disposition.Applied {
 		t.Fatalf("%v %+v", err, st)
+	}
+}
+
+// The two forms of the push the pr disposition hands back for this run's
+// branch: the plain one, and the first-push form for a branch no
+// remote-tracking ref has heard of yet.
+const (
+	pushDemo         = "git push origin takt/demo"
+	pushDemoUpstream = "git push -u origin takt/demo"
+)
+
+// cleanupOf reads a stop op's cleanup commands as strings.
+func cleanupOf(t *testing.T, o map[string]any) []string {
+	t.Helper()
+	raw, _ := o["cleanup"].([]any)
+	out := make([]string, 0, len(raw))
+	for _, x := range raw {
+		s, ok := x.(string)
+		if !ok {
+			t.Fatalf("a cleanup command must be a string: %v", x)
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// TestArchivedPROffersThePushUntilItIsDone is the pr disposition's hand-off
+// (spec §7.5 step 5). The session pushed the branch when it opened the pull
+// request, and takt then made two commits no push has carried — `push_pr
+// done` and the archive itself — so the archived stop hands that push back.
+// Which push, and whether there is one at all, is asked of git on every
+// call and never of state: no remote-tracking ref takes the -u form, a ref
+// that already contains the branch takes nothing, and a branch holding
+// commits the ref does not — including one that has diverged from it —
+// takes the plain push.
+func TestArchivedPROffersThePushUntilItIsDone(t *testing.T) {
+	t.Parallel()
+	d, bdir, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "pr", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	o := d.nextOp()
+	if o["op"] != "run" || o["step"] != "push_pr" {
+		t.Fatalf("pr → push_pr: %v", o)
+	}
+	if code, _, errb := d.cmd("done", "--step", "push_pr", "--url", fixturePRURL, "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	// Nothing is configured as a remote here, so refs/remotes/origin/takt/demo
+	// does not resolve and the hand-off is the form that also sets upstream.
+	o = d.nextOp()
+	if o["op"] != "stop" || o["reason"] != stopArchived {
+		t.Fatalf("%v", o)
+	}
+	if got := cleanupOf(t, o); len(got) != 1 || got[0] != pushDemoUpstream {
+		t.Fatalf("no remote-tracking ref → the -u form: %v", got)
+	}
+	// A remote that has the branch: the remote-tracking ref `git push` wrote
+	// contains every local commit, so there is nothing left to hand back.
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	testutil.Git(t, d.root, "init", "--bare", "-q", bare)
+	testutil.Git(t, d.root, "remote", "add", "origin", bare)
+	testutil.Git(t, d.root, "push", "-q", "origin", "takt/demo")
+	o = d.nextOp()
+	if got := cleanupOf(t, o); len(got) != 0 {
+		t.Fatalf("a fully pushed branch is offered nothing: %v", got)
+	}
+	// One commit later the branch holds what the remote-tracking ref does
+	// not, and the push is offered again — and it runs exactly as printed.
+	testutil.WriteFile(t, d.root, "notes.txt", "work the push did not carry\n")
+	testutil.Commit(t, d.root, "after the push")
+	got := cleanupOf(t, d.nextOp())
+	if len(got) != 1 || got[0] != pushDemo {
+		t.Fatalf("commits the remote-tracking ref lacks → the plain push: %v", got)
+	}
+	if code, out := runShell(t, d.root, got[0]); code != 0 {
+		t.Fatalf("the printed cleanup must run as-is: exit %d\n%s", code, out)
+	}
+	if again := cleanupOf(t, d.nextOp()); len(again) != 0 {
+		t.Fatalf("a push the user has run is not offered again: %v", again)
+	}
+	// A diverged branch, made by plumbing so this worktree never moves: a
+	// sibling commit off HEAD~1 carrying this branch's tree, with the
+	// remote-tracking ref pointed at it. Neither side contains the other
+	// now, so the branch is not "ahead" — but its commits are genuinely
+	// absent remotely, and the push is offered all the same.
+	tree := testutil.Git(t, d.root, "rev-parse", "HEAD^{tree}")
+	sibling := testutil.Git(t, d.root, "commit-tree", tree, "-p", "HEAD~1", "-m", "other")
+	testutil.Git(t, d.root, "update-ref", "refs/remotes/origin/takt/demo", sibling)
+	o = d.nextOp()
+	if o["op"] != "stop" || o["reason"] != stopArchived {
+		t.Fatalf("%v", o)
+	}
+	if diverged := cleanupOf(t, o); len(diverged) != 1 || diverged[0] != pushDemo {
+		t.Fatalf("a diverged branch is still offered the push: %v", diverged)
+	}
+	st, _ := bundle.LoadState(bdir)
+	if st.Disposition == nil || st.Disposition.PRURL != fixturePRURL || !st.Disposition.Applied {
+		t.Fatalf("the archive keeps the recorded pull request: %+v", st.Disposition)
 	}
 }

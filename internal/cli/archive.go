@@ -32,6 +32,17 @@ const (
 	keyDeleted = "deleted"
 )
 
+// The pieces of the pr disposition's cleanup command. trackingRef is the
+// remote-tracking ref the push would update — read through the full
+// refs/remotes/ path, so a local branch or a tag of the same name can never
+// answer for it. pushSetUpstream is the form for a branch the remote has
+// never seen: -u also records the upstream the branch has never had.
+const (
+	trackingRef     = "refs/remotes/origin/"
+	pushBranch      = "git push origin "
+	pushSetUpstream = "git push -u origin "
+)
+
 // The `git branch` flags the two destructive dispositions delete with. They
 // name the git flag and nothing more: -d is git's own "already merged"
 // check, -D is unconditional. Neither says anything about what takt checked
@@ -178,8 +189,10 @@ func discardCopy(ws *workspace, st *bundle.State, bdir string) error {
 // applyDisposition does the git side of merge and discard and reports what
 // is left for the session. Every question it asks is put to git, never to
 // state, so calling it on an already-finished disposition is a no-op rather
-// than a repeat. pr and keep ask for nothing: the pull request is already
-// open, and keeping the branch is the absence of an action.
+// than a repeat. keep asks for nothing — keeping the branch is the absence
+// of an action; pr asks git one question, whether the branch holds commits
+// the remote-tracking ref does not, and hands the push back when it does
+// (see prCleanup).
 func applyDisposition(
 	ctx context.Context, ws *workspace, st *bundle.State, bdir string,
 ) ([]string, map[string]any, error) {
@@ -191,6 +204,8 @@ func applyDisposition(
 	switch st.Disposition.Choice {
 	case dispositionMerge:
 		return applyMerge(ctx, ws, st, cleanup, details)
+	case dispositionPR:
+		return prCleanup(ctx, ws, st), details, nil
 	case dispositionDiscard:
 		if dir := ws.Dir.Discarded(st.Slug); dirExists(dir) {
 			details["discarded_copy"] = dir
@@ -198,6 +213,44 @@ func applyDisposition(
 		return deleteOrHandOff(ctx, ws, st, cleanup, details, deleteForce, discardSweep(ws, bdir))
 	}
 	return cleanup, details, nil
+}
+
+// prCleanup is the pull request disposition's hand-off: the commits the
+// session's own push could not have carried — `push_pr done` and the archive
+// commit itself, both made after it — are pushed by the session, because
+// takt never talks to a remote (spec §4.7).
+//
+// The question is put to git and to git alone, so a `takt next` on an
+// already-pushed archived run stops offering a push the user has run: it is
+// whether the branch holds commits refs/remotes/origin/<branch> does not,
+// which is not the same as being strictly ahead. A diverged branch fails the
+// ancestor test too and is still offered the push — those commits really are
+// absent remotely, and a push git refuses as a non-fast-forward tells the
+// user something true about their branch.
+//
+// Neither read can fail the archived stop, which is why this returns cleanup
+// and no error at all: the archive has already landed, the session confirms
+// every cleanup command before running it, and a redundant suggestion costs
+// nothing beside a push that silently went missing.
+func prCleanup(ctx context.Context, ws *workspace, st *bundle.State) []string {
+	tracking := trackingRef + st.Branch
+	exists, err := ws.Repo.CommitExists(ctx, tracking)
+	if err != nil {
+		return []string{pushBranch + st.Branch}
+	}
+	if !exists {
+		// Nothing on the remote to compare against, so the first push is
+		// also the one that gives the branch its upstream.
+		return []string{pushSetUpstream + st.Branch}
+	}
+	contained, err := ws.Repo.IsAncestor(ctx, st.Branch, tracking)
+	if err != nil {
+		return []string{pushBranch + st.Branch}
+	}
+	if contained {
+		return nil
+	}
+	return []string{pushBranch + st.Branch}
 }
 
 // applyMerge brings the run branch into the base in the primary worktree.

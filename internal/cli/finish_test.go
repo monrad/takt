@@ -786,6 +786,32 @@ func TestPushPRDoneRecordsTheURL(t *testing.T) {
 	}
 }
 
+// TestPushPRLeavesTheBodyInHead covers B1/G6: the `next` that emits push_pr
+// commits finish/pr.md before handing the op to the session, so the body a
+// pull request is created from is in the branch being pushed rather than
+// left for `takt done --step push_pr` to sweep up after the push already
+// happened. The commit is replay-safe by construction — the body is
+// re-derived on every `next` that emits this op, and commitBundle stages the
+// bundle then reports no commit when nothing is staged — so an immediate
+// replay (push_pr not yet done, so the same op is re-derived) must add no
+// commit.
+func TestPushPRLeavesTheBodyInHead(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	atPushPROp(t, d, bdir)
+	if out := testutil.Git(t, d.root, "ls-tree", "HEAD", "--", "docs/takt/demo/finish/pr.md"); out == "" {
+		t.Fatal("finish/pr.md must be committed in HEAD before push_pr is handed to the session")
+	}
+	if subject := testutil.Git(t, d.root, "log", "-1", "--format=%s"); subject != "takt(demo): pr body" {
+		t.Fatalf("subject: %q", subject)
+	}
+	before := testutil.Git(t, d.root, "rev-parse", "HEAD")
+	d.nextOp() // push_pr not yet done, so `next` re-derives the same op
+	if after := testutil.Git(t, d.root, "rev-parse", "HEAD"); after != before {
+		t.Fatal("an immediate replay must add no commit")
+	}
+}
+
 // countEvents is how many events of one type the run has logged.
 func countEvents(t *testing.T, bdir, typ string) int {
 	t.Helper()

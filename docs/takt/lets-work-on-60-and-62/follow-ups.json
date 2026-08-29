@@ -66,6 +66,17 @@
       "detail": "The new `if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\"); err != nil { return err }` propagates a commit failure exactly like the pre-existing read/write failures preparePushPR already returns, but no test forces commitBundle to fail here (e.g. a broken repo/lock) to confirm the error surfaces through preparePushPR and ultimately fails `run` the same way assertPreparePushPRRefuses covers for the spec/goals reads. The codebase already has a pattern for simulating git-commit failures (internal/cli/archive_test.go's TestArchiveCommitIsRetriedAfterASoftReset) that could have been reused here.",
       "source": "internal",
       "ts": "2026-08-29T12:08:06.657021017Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/archive_test.go",
+      "line": 696,
+      "wave": 0,
+      "task": 7,
+      "title": "Cleanup-empty checkpoints skip op/reason assertions",
+      "detail": "In TestArchivedPROffersThePushUntilItIsDone (also at line 710), the checks `len(got) != 0` / `len(again) != 0` read `o[\"cleanup\"]` without first asserting `o[\"op\"] == \"stop\"` and `o[\"reason\"] == stopArchived` (as the earlier and later checkpoints in the same test do, e.g. lines 673-674, 683-684, 722-723). cleanupOf silently returns an empty slice when the \"cleanup\" key is absent or of the wrong shape, so if `next` regressed to returning a different op entirely at these points, the 'nothing offered' assertions would pass anyway, masking the regression in exactly the rows this test exists to pin (G7's zero-cleanup cases).",
+      "source": "internal",
+      "ts": "2026-08-29T12:42:47.857600296Z"
     }
   ]
 }
