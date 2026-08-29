@@ -59,9 +59,12 @@ host parity) is the finish gate. No task commits — takt owns every commit.
   Today only `runCLI` applies the fallback and the fake never calls it. Task 1 adds a
   shared `resolveTimeout` helper (used by `runCLI` unchanged in behaviour) and a small
   env-gated seam on the fake (`TAKT_FAKE_REVIEW_TIMEOUT_FILE`: the fake resolves
-  `req.Timeout` through the same helper, applies it to its context, and records the
-  resolved value), so an `internal/cli` test can drive a `ReviewRequest` with no `Timeout`
-  and read back the deadline that was actually applied.
+  `req.Timeout` through the same helper, applies it to its context, and records the time
+  **remaining on that work context** — `ctx.Deadline()`, not the value it resolved), so an
+  `internal/cli` test can drive a `ReviewRequest` with no `Timeout` and read back the
+  deadline that was actually applied. Recording the resolved value would not distinguish
+  an implementation that resolves the fallback and then ignores it; recording the live
+  context's remaining time does.
 - "Which backend's timeout budgets a close" needs one owner used by three tasks (3, 4, 5).
   Task 1 adds two small accessors to `internal/config`: `Backends.Timeout(name)` (the
   config key for `copilot`/`claude`, reported absent for `fake` and for unknown names —
@@ -85,8 +88,9 @@ host parity) is the finish gate. No task commits — takt owns every commit.
 from drifting: `config.TestDefaults` grows the 15m assertions for both backends, and a new
 `internal/cli/backend_timeout_test.go` (the one package importing both sides) drives a
 `ReviewRequest` with no `Timeout` through the fake reviewer using the new
-`TAKT_FAKE_REVIEW_TIMEOUT_FILE` seam and asserts the applied deadline equals
-`config.Defaults().Backends.Copilot.Timeout` (and Claude's). The task also adds the two
+`TAKT_FAKE_REVIEW_TIMEOUT_FILE` seam and asserts the applied deadline is within a small
+tolerance of `config.Defaults().Backends.Copilot.Timeout` (and Claude's), with a second
+row driving a short explicit `Timeout` against a longer sleep to prove cancellation. The task also adds the two
 config accessors described above, with table tests whose rows explicitly include
 `Timeout("fake")` and `Timeout("nonesuch")` (an unknown name) both reporting no key —
 A3 requires both, and each is a direct row rather than an inference. Scoped to exactly
