@@ -23,6 +23,49 @@
       "detail": "Task 2 classifies MaxDuration-SessionMargin and MaxDuration-Grace as saturation points where only non-strict bounds are asserted. At exactly those inputs, adding the margin produces representable MaxDuration and is still strictly greater than the input. Assert the strict relation at equality, reserving the non-strict-only rule for inputs above the threshold.",
       "source": "override",
       "ts": "2026-08-29T11:27:53.51200805Z"
+    },
+    {
+      "severity": "blocking",
+      "file": "commands/takt.md",
+      "line": 45,
+      "wave": 0,
+      "title": "Prompt invariant \"never push except push_pr\" is now false: archived pr cleanup pushes too",
+      "detail": "This wave's archive.go change (prCleanup, archive.go:179-198) makes an `archived` stop's `cleanup` list carry a literal `git push origin \u003cbranch\u003e` / `git push -u origin \u003cbranch\u003e` command for the pr disposition — a second place a takt op instructs a push, not covered by this line's sole named exception `(push_pr)`. The op-table's `stop` bullet (commands/takt.md:33) already generically tells the agent to run confirmed cleanup commands, so this line now contradicts it inside the same file: an LLM strictly honouring the Invariants section's 'never push except push_pr' could refuse the very cleanup push task 7 exists to hand back. The identical stale sentence is duplicated in hosts/copilot/skills/takt/SKILL.md:46 (same text, not part of the crossHostInvariants test set, so it won't be caught by TestPromptInvariantsReadTheSameOnEveryHost either). Neither file is mentioned anywhere in this run's own docs/takt/lets-work-on-60-and-62/plan.md task 8, which only targets README.md and the design spec — so this gap is not already tracked to be fixed by a later task in this run.",
+      "source": "internal",
+      "ts": "2026-08-29T12:02:45.045201947Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/backend/fake.go",
+      "line": 45,
+      "wave": 0,
+      "task": 1,
+      "title": "recordReviewDeadline's failure path is never exercised",
+      "detail": "The new block `if p := f.getenv(\"TAKT_FAKE_REVIEW_TIMEOUT_FILE\"); p != \"\" { if err := recordReviewDeadline(ctx, p); err != nil { return errorResult(...) } }` (fake.go:45-49) has no test that makes the write fail (e.g. a path in a nonexistent directory), so the errorResult branch this new code adds is untested. TestBackendFallbackMatchesTheShippedDefault only exercises the success path via a valid t.TempDir() file.",
+      "source": "internal",
+      "ts": "2026-08-29T12:08:06.656143429Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/brief_stable_test.go",
+      "line": 188,
+      "wave": 0,
+      "task": 6,
+      "title": "Added assertion re-invokes commitBundle rather than checking preparePushPR's own call",
+      "detail": "Lines 188-191 call `commitBundle(context.Background(), r.ws, r.bdir, r.slug, \"pr body\")` a second, separate time to assert `committed==false`. Since `r.ws` is the same zero-value workspace (Dir.InRepo false) that preparePushPR's own internal commitBundle call at line 171 already ran through without error, this second call is a fresh, independent invocation rather than an observation of what preparePushPR actually did — it documents commitBundle's no-op behaviour in isolation more than it verifies the integration point, though it does satisfy the brief's explicit request for 'one assertion making that explicit'.",
+      "source": "internal",
+      "ts": "2026-08-29T12:08:06.657020915Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1066,
+      "wave": 0,
+      "task": 6,
+      "title": "preparePushPR's new commitBundle error path is untested",
+      "detail": "The new `if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\"); err != nil { return err }` propagates a commit failure exactly like the pre-existing read/write failures preparePushPR already returns, but no test forces commitBundle to fail here (e.g. a broken repo/lock) to confirm the error surfaces through preparePushPR and ultimately fails `run` the same way assertPreparePushPRRefuses covers for the spec/goals reads. The codebase already has a pattern for simulating git-commit failures (internal/cli/archive_test.go's TestArchiveCommitIsRetriedAfterASoftReset) that could have been reused here.",
+      "source": "internal",
+      "ts": "2026-08-29T12:08:06.657021017Z"
     }
   ]
 }

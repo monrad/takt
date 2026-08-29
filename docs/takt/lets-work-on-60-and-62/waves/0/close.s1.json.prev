@@ -1,0 +1,398 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "tasks": [
+    {
+      "task": 1,
+      "status": "done",
+      "files_changed": [
+        "internal/backend/fake.go",
+        "internal/backend/run.go",
+        "internal/cli/backend_timeout_test.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -Eq 'defaultBackendTimeout += 15 \\* time\\.Minute' internal/config/config.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q '15 \\* time.Minute' internal/backend/run.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func resolveTimeout' internal/backend/run.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TAKT_FAKE_REVIEW_TIMEOUT_FILE' internal/backend/fake.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func (b Backends) ReviewBudgetTimeout' internal/config/config.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'nonesuch' internal/config/config_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestBackendFallbackMatchesTheShippedDefault' internal/cli/backend_timeout_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TAKT_FAKE_REVIEW_SLEEP' internal/backend/fake.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'Deadline()' internal/backend/fake.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/config/... ./internal/backend/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/config\t1.011s\nok  \tgithub.com/monrad/takt/internal/backend\t1.312s",
+          "elapsed_ms": 1494
+        },
+        {
+          "command": "go test -race -count=1 -run TestBackendFallback ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.011s",
+          "elapsed_ms": 1234
+        },
+        {
+          "command": "golangci-lint run ./internal/config/... ./internal/backend/... ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 380
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The implementation matches the task: both shipped and mirrored fallback deadlines are 15 minutes, timeout resolution is centralized and applied to fake review work, the configuration accessors follow the specified name and fallback rules, and the tests tightly pin fallback behavior without altering the existing call-log format.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "internal/backend/fake.go",
+          "line": 45,
+          "title": "recordReviewDeadline's failure path is never exercised",
+          "detail": "The new block `if p := f.getenv(\"TAKT_FAKE_REVIEW_TIMEOUT_FILE\"); p != \"\" { if err := recordReviewDeadline(ctx, p); err != nil { return errorResult(...) } }` (fake.go:45-49) has no test that makes the write fail (e.g. a path in a nonexistent directory), so the errorResult branch this new code adds is untested. TestBackendFallbackMatchesTheShippedDefault only exercises the success path via a valid t.TempDir() file.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    },
+    {
+      "task": 2,
+      "status": "done",
+      "files_changed": [
+        "internal/deadline/deadline.go",
+        "internal/deadline/deadline_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func Close(b Budget) time.Duration' internal/deadline/deadline.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func Session(' internal/deadline/deadline.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'Grace' internal/deadline/deadline.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestSessionStrictlyContainsEveryInner' internal/deadline/deadline_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestCloseBudgetsTheWave' internal/deadline/deadline_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func Grace\\|Grace =' internal/deadline/deadline.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'MaxDuration' internal/deadline/deadline.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestSaturatesInsteadOfWrapping' internal/deadline/deadline_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestMonotonicity' internal/deadline/deadline_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/deadline/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/deadline\t1.009s",
+          "elapsed_ms": 1158
+        },
+        {
+          "command": "golangci-lint run ./internal/deadline/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Path: \\\"_test\\\\\\\\.go\\\", Linters: \\\"bodyclose, dupl, errcheck, funlen, goconst, gosec, noctx, wrapcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 337
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The implementation matches the specified API and formulas, applies consistent clamping and saturating arithmetic, computes review rounds without integer overflow, and thoroughly tests containment, flooring, saturation, boundary behavior, and monotonicity. Changes are confined to the two declared files with no secrets or unrelated additions.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "task": 6,
+      "status": "done",
+      "files_changed": [
+        "internal/cli/brief_stable_test.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q '\"pr body\"' internal/cli/cmd_next.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPushPRLeavesTheBodyInHead' internal/cli/finish_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'preparePushPR(context' internal/cli/brief_stable_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.492s",
+          "elapsed_ms": 1707
+        },
+        {
+          "command": "golangci-lint run ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\n0 issues.",
+          "elapsed_ms": 374
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The change matches the task: context is threaded through the sole production call path, finish/pr.md is committed with the required subject before push_pr is emitted, commit failures propagate, replay produces no additional commit, direct test callers are updated, and the requested repository/external-bundle behavior is covered.",
+        "findings": null,
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "nit",
+          "file": "internal/cli/brief_stable_test.go",
+          "line": 188,
+          "title": "Added assertion re-invokes commitBundle rather than checking preparePushPR's own call",
+          "detail": "Lines 188-191 call `commitBundle(context.Background(), r.ws, r.bdir, r.slug, \"pr body\")` a second, separate time to assert `committed==false`. Since `r.ws` is the same zero-value workspace (Dir.InRepo false) that preparePushPR's own internal commitBundle call at line 171 already ran through without error, this second call is a fresh, independent invocation rather than an observation of what preparePushPR actually did — it documents commitBundle's no-op behaviour in isolation more than it verifies the integration point, though it does satisfy the brief's explicit request for 'one assertion making that explicit'.",
+          "lenses": [
+            "tests"
+          ]
+        },
+        {
+          "severity": "minor",
+          "file": "internal/cli/cmd_next.go",
+          "line": 1066,
+          "title": "preparePushPR's new commitBundle error path is untested",
+          "detail": "The new `if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\"); err != nil { return err }` propagates a commit failure exactly like the pre-existing read/write failures preparePushPR already returns, but no test forces commitBundle to fail here (e.g. a broken repo/lock) to confirm the error surfaces through preparePushPR and ultimately fails `run` the same way assertPreparePushPRRefuses covers for the spec/goals reads. The codebase already has a pattern for simulating git-commit failures (internal/cli/archive_test.go's TestArchiveCommitIsRetriedAfterASoftReset) that could have been reused here.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    },
+    {
+      "task": 7,
+      "status": "review_error",
+      "reason": "timeout after 5m0s",
+      "files_changed": [
+        "internal/cli/archive.go",
+        "internal/cli/archive_internal_test.go",
+        "internal/cli/archive_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'case dispositionPR' internal/cli/archive.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'git push -u origin' internal/cli/archive.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'commit-tree' internal/cli/archive_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestArchivedPRPushIsOfferedWhenTheAncestryReadFails' internal/cli/archive_internal_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.620s",
+          "elapsed_ms": 1842
+        },
+        {
+          "command": "golangci-lint run ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 373
+        }
+      ],
+      "review": {
+        "verdict": "error",
+        "summary": "review failed",
+        "findings": null,
+        "provider": "copilot",
+        "model": "gpt-5.6-sol",
+        "reason": "timeout after 5m0s"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "internal/cli/archive_test.go",
+          "line": 696,
+          "title": "Cleanup-empty checkpoints skip op/reason assertions",
+          "detail": "In TestArchivedPROffersThePushUntilItIsDone (also at line 710), the checks `len(got) != 0` / `len(again) != 0` read `o[\"cleanup\"]` without first asserting `o[\"op\"] == \"stop\"` and `o[\"reason\"] == stopArchived` (as the earlier and later checkpoints in the same test do, e.g. lines 673-674, 683-684, 722-723). cleanupOf silently returns an empty slice when the \"cleanup\" key is absent or of the wrong shape, so if `next` regressed to returning a different op entirely at these points, the 'nothing offered' assertions would pass anyway, masking the regression in exactly the rows this test exists to pin (G7's zero-cleanup cases).",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": false,
+  "closed_at": "2026-08-29T12:02:57.303629336Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": [
+    7
+  ]
+}

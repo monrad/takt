@@ -38,7 +38,7 @@
     {
       "id": 1,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/config/config.go",
         "internal/config/config_test.go",
@@ -47,18 +47,36 @@
         "internal/cli/backend_timeout_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Raised the shipped backend review deadline to 15m in config and pinned internal/backend's mirrored fallback to it via a fake-reviewer deadline probe, plus the two Backends accessors and their table tests.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:42:58.026163379Z"
+      }
     },
     {
       "id": 2,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/deadline/deadline.go",
         "internal/deadline/deadline_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "New standard-library-only `internal/deadline` package with `Close`/`Verify`/`GateReview`/`Session`, saturating arithmetic, the overflow-safe ceil, and the moved `Grace` constant, covered by table tests for containment, the wave budget, saturation boundaries and monotonicity (100% coverage, lint clean).",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:45:42.515298993Z"
+      }
     },
     {
       "id": 3,
@@ -107,14 +125,23 @@
     {
       "id": 6,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/cmd_next.go",
         "internal/cli/finish_test.go",
         "internal/cli/brief_stable_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 6,
+        "attempt": 1,
+        "status": "done",
+        "summary": "preparePushPR now commits finish/pr.md (\"pr body\") after writing it, threaded through a new ctx parameter on run/preparePushPR; added TestPushPRLeavesTheBodyInHead and updated brief_stable_test.go's two direct callers plus its zero-workspace no-op assertion.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T11:46:01.990950203Z"
+      }
     },
     {
       "id": 7,
@@ -126,7 +153,16 @@
         "internal/cli/archive_internal_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 7,
+        "attempt": 1,
+        "status": "done",
+        "summary": "The `pr` disposition's archived stop now hands back `git push [-u] origin \u003cbranch\u003e` exactly when git says the branch holds commits the remote-tracking ref does not (diverged included), degrades to the push when either git read fails, and never fails the stop; covered by one end-to-end test over all four rows and two internal tests for the two read failures.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:45:22.395204866Z"
+      }
     },
     {
       "id": 8,
@@ -140,7 +176,20 @@
       "attempt": 0
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 0,
+    "slice": 1,
+    "attempt": 1,
+    "started_at": "2026-08-29T11:36:19.478771306Z",
+    "session_id": "b533a4ff-7183-49ac-a2c8-b71a174a7098",
+    "tasks": [
+      1,
+      2,
+      6,
+      7
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

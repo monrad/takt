@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "New standard-library-only `internal/deadline` package with `Close`/`Verify`/`GateReview`/`Session`, saturating arithmetic, the overflow-safe ceil, and the moved `Grace` constant, covered by table tests for containment, the wave budget, saturation boundaries and monotonicity (100% coverage, lint clean).",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T11:45:42.515298993Z"
+}

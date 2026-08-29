@@ -1,0 +1,9 @@
+{
+  "task": 6,
+  "attempt": 1,
+  "status": "done",
+  "summary": "preparePushPR now commits finish/pr.md (\"pr body\") after writing it, threaded through a new ctx parameter on run/preparePushPR; added TestPushPRLeavesTheBodyInHead and updated brief_stable_test.go's two direct callers plus its zero-workspace no-op assertion.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:46:01.990950203Z"
+}
