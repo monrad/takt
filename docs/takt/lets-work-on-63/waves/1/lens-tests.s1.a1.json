@@ -1,0 +1,66 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:17:59.14916458Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 397,
+      "title": "in.Verify.Skipped branch of notProven never exercised",
+      "detail": "The task spec requires the Not proven section to seed from `in.Verify when Overridden != \"\" or Skipped` (skeleton.go:395-401). No fixture in internal/finish/skeleton_test.go ever sets VerifyRecord.Skipped = true; only Overridden is covered (fullRun's Verify at diff-relative test line ~649). The literal 'verification — skipped, the run had no commands to run' string and its whole code path are untested — a regression or typo there would not be caught.",
+      "task": 3
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 106,
+      "title": "Legacy slice-less wave_committed events never tested for the documented floor-to-1 behaviour",
+      "detail": "BuildShipped's doc comment and the task brief both call out that a commit's slice is 'floored to 1 exactly as timingKeyOf does', covering an event written before slices existed (missing 'slice' key, decodes to 0). The test helper `committed(w, sl, a int, ...)` in internal/finish/skeleton_test.go:30 always supplies an explicit slice, and no fixture omits the key or passes 0/absent slice data. This backward-compatibility path — explicitly named as required behaviour — has zero coverage.",
+      "task": 3
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 508,
+      "title": "'task omitted when 0' formatting never asserted for a fully-rendered follow-up line",
+      "detail": "followUpWhere's `if f.Task != 0 { where += \"/task %d\" }` (task-omission rule from the brief) is only exercised by a Severity:\"nit\" fixture (skeleton_test.go, fullRun FollowUps, Wave: new(1) with no Task) — but nit/minor items never go through followUpLine/followUpWhere at all, only through the count line (bucketFollowUps only sends blocking/major to `full`). No blocking or major fixture has Wave set with Task==0, so the actual rendered text for a wave-only (no task) blocking/major follow-up is never checked against a golden.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 328,
+      "title": "Markdown table cell escaping (cellEscaper) is untested",
+      "detail": "cell()/cellEscaper exists specifically to protect the What-shipped table from a task title or SHA containing '|' or a newline, but no test fixture ever includes such a character in a title or SHA. If the escaping regresses (e.g. only single-char replace, or breaks the table structure), TestRenderSkeletonGolden and friends would not detect it since none of the fixtures need escaping.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 475,
+      "title": "otherSeverities / unknown-severity counting path untested",
+      "detail": "countsLine/otherSeverities is written to count any follow-up severity beyond the known blocking/major/minor/nit set ('Anything else a reviewer wrote is counted too, under its own name'), but no test fixture uses an unrecognised Severity value, so this defensive branch and its sort-for-determinism guarantee are never exercised.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 529,
+      "title": "Numbers block's nil-to-empty-slice WaveTimings substitution untested",
+      "detail": "`timings := in.WaveTimings; if timings == nil { timings = []WaveTiming{} }` only matters when in.Internal != nil and len(in.WaveTimings) == 0 (so the early 'none' return is skipped) — a case that would otherwise marshal `\"wave_timings\": null`. No golden fixture combines a non-nil Internal with a genuinely absent WaveTimings, so this substitution (json:[] vs null) is never checked.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 182,
+      "title": "BuildDecisions' nil *bundle.State guard untested",
+      "detail": "`if st != nil \u0026\u0026 st.Disposition != nil` guards against a nil State pointer, but every test call passes a non-nil *bundle.State (either with or without a Disposition); none passes st == nil. A regression that panics or misbehaves on a nil State (a legitimate input per the signature) would not be caught.",
+      "task": 3
+    }
+  ]
+}

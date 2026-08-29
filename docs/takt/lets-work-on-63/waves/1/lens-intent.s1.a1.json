@@ -1,0 +1,18 @@
+{
+  "lens": "intent",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:20:15.025348421Z",
+  "findings": [
+    {
+      "severity": "nit",
+      "file": "internal/finish/skeleton.go",
+      "line": 337,
+      "title": "Placeholder disposition line sits out of source order",
+      "detail": "BuildDecisions places a real disposition in source-order position 4 (after goal waivers, before spec_assumption rows), but renderDecisions always appends the 'not yet chosen' placeholder after every rendered bullet, including spec_assumption ones. So on a run with spec-assumption decisions but no disposition yet, the placeholder trails the assumptions; once the disposition is actually chosen in a later pass, it will instead appear before them. The task text does not mandate a position for the placeholder, so this is very low-impact, but it is a real positional inconsistency across the two states of the same section.",
+      "task": 3
+    }
+  ]
+}

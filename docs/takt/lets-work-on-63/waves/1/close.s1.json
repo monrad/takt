@@ -1,0 +1,121 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "tasks": [
+    {
+      "task": 3,
+      "status": "done",
+      "files_changed": [
+        "internal/finish/skeleton.go",
+        "internal/finish/skeleton_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func RenderSkeleton' internal/finish/skeleton.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func BuildShipped' internal/finish/skeleton.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func BuildDecisions' internal/finish/skeleton.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'not yet chosen' internal/finish/skeleton.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func SkeletonPath' internal/finish/skeleton.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 2
+        },
+        {
+          "command": "grep -q 'TestRenderSkeletonIsPure' internal/finish/skeleton_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/finish/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/finish\t1.023s",
+          "elapsed_ms": 1206
+        },
+        {
+          "command": "golangci-lint run ./internal/finish/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 363
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The implementation matches the requested builders, decision-source ordering and omissions, deterministic seven-section renderer, shipped-table behavior, follow-up bucketing, Numbers output, and atomic path/write helpers. The tests comprehensively cover the required golden cases, purity, legacy slices, unknown task IDs, decision filtering, and disposition states; no actionable defects found.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "major",
+          "file": "internal/finish/skeleton.go",
+          "line": 133,
+          "title": "shippedTasks' skip-non-numeric-item branch has no test",
+          "detail": "shippedTasks (skeleton.go:128-146) explicitly skips any tasks-array item that isn't a float64 (`n, isNum := item.(float64); if !isNum { continue }`), per its own doc comment. No fixture in internal/finish/skeleton_test.go ever puts a non-numeric entry in a wave_committed event's tasks list, so this branch — and the resulting row's task count/order when a bogus entry is mixed with valid ids — is completely unexercised. A regression here (e.g. accidentally keeping the item with ID 0, or mis-indexing subsequent tasks) would not be caught by TestBuildShippedResolvesTitlesAndKeepsUnknownIdsBare or TestBuildShippedFloorsASliceLessCommitToOne, both of which only use well-formed float64 ids.",
+          "lenses": [
+            "tests"
+          ]
+        },
+        {
+          "severity": "major",
+          "file": "internal/finish/skeleton.go",
+          "line": 325,
+          "title": "sliceColumn carries a dead branch that can never fire given the codebase's own slice-floor invariant",
+          "detail": "sliceColumn (skeleton.go:325-337) builds a `seen map[int]int` and, for each key, checks both `k.slice \u003e 1` and (if that's false) `seen[k.wave] != k.slice`. But every production producer of a ShippedRow or WaveTiming goes through timingKeyOf (internal/finish/retro.go:305-310, `slice: max(int(sl), 1)`) — BuildShipped calls it directly (skeleton.go:111) and waveTimings does too (retro.go:328) — so k.slice is never \u003c 1 anywhere in the pipeline (verified: the only production assignment of RetroInputs.WaveTimings is `in.WaveTimings = waveTimings(events)` at retro.go:153, and the only ShippedRow constructor is BuildShipped; grepped the repo for `ShippedRow{` and `WaveTiming{` and found no other constructor, in tests or code, that supplies a slice below 1). Given that invariant, any two different slice values seen for the same wave must include one that is \u003e1, so the first `if k.slice \u003e 1 { return true }` always fires before the `seen` comparison could ever produce a different verdict — the `seen` map and its comparison are unreachable dead weight. The function's own doc comment even states the sufficient rule outright ('since slices are numbered from one, any number above it is a second slice by itself'), which describes the simpler `k.slice \u003e 1`-only check that would make sliceKeys/seen unnecessary; the code keeps the extra machinery anyway. This is exactly the kind of premature-generalisation/dead-fallback complexity the lens is meant to catch: an allocation, an extra loop-carried map and a second branch defending against a case the type's real producers structurally cannot create.",
+          "lenses": [
+            "simplicity"
+          ]
+        },
+        {
+          "severity": "major",
+          "file": "internal/finish/skeleton.go",
+          "line": 567,
+          "title": "followUpLine's no-Detail path for full-severity follow-ups is untested",
+          "detail": "followUpLine (skeleton.go:564-573) only appends ' — \u003cdetail\u003e' when f.Detail != \"\". Every blocking/major fixture across all TestRenderSkeletonGolden subtests (fullRunFollowUps, unrulyIn) sets Detail on every full-severity entry, so the branch where a blocking or major follow-up has no Detail is never rendered/asserted. Since follow-ups routinely lack a detail in practice, a formatting bug in this path (e.g. a stray trailing '— ' or missing space) would ship into every retro document undetected.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "closed_at": "2026-08-29T12:57:44.065278992Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

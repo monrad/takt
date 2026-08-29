@@ -1,0 +1,26 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:55:09.080859828Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 133,
+      "title": "shippedTasks' skip-non-numeric-item branch has no test",
+      "detail": "shippedTasks (skeleton.go:128-146) explicitly skips any tasks-array item that isn't a float64 (`n, isNum := item.(float64); if !isNum { continue }`), per its own doc comment. No fixture in internal/finish/skeleton_test.go ever puts a non-numeric entry in a wave_committed event's tasks list, so this branch — and the resulting row's task count/order when a bogus entry is mixed with valid ids — is completely unexercised. A regression here (e.g. accidentally keeping the item with ID 0, or mis-indexing subsequent tasks) would not be caught by TestBuildShippedResolvesTitlesAndKeepsUnknownIdsBare or TestBuildShippedFloorsASliceLessCommitToOne, both of which only use well-formed float64 ids.",
+      "task": 3
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 567,
+      "title": "followUpLine's no-Detail path for full-severity follow-ups is untested",
+      "detail": "followUpLine (skeleton.go:564-573) only appends ' — \u003cdetail\u003e' when f.Detail != \"\". Every blocking/major fixture across all TestRenderSkeletonGolden subtests (fullRunFollowUps, unrulyIn) sets Detail on every full-severity entry, so the branch where a blocking or major follow-up has no Detail is never rendered/asserted. Since follow-ups routinely lack a detail in practice, a formatting bug in this path (e.g. a stray trailing '— ' or missing space) would ship into every retro document undetected.",
+      "task": 3
+    }
+  ]
+}

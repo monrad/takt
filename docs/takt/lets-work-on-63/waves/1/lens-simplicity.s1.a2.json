@@ -1,0 +1,18 @@
+{
+  "lens": "simplicity",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:53:08.202379893Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 325,
+      "title": "sliceColumn carries a dead branch that can never fire given the codebase's own slice-floor invariant",
+      "detail": "sliceColumn (skeleton.go:325-337) builds a `seen map[int]int` and, for each key, checks both `k.slice \u003e 1` and (if that's false) `seen[k.wave] != k.slice`. But every production producer of a ShippedRow or WaveTiming goes through timingKeyOf (internal/finish/retro.go:305-310, `slice: max(int(sl), 1)`) — BuildShipped calls it directly (skeleton.go:111) and waveTimings does too (retro.go:328) — so k.slice is never \u003c 1 anywhere in the pipeline (verified: the only production assignment of RetroInputs.WaveTimings is `in.WaveTimings = waveTimings(events)` at retro.go:153, and the only ShippedRow constructor is BuildShipped; grepped the repo for `ShippedRow{` and `WaveTiming{` and found no other constructor, in tests or code, that supplies a slice below 1). Given that invariant, any two different slice values seen for the same wave must include one that is \u003e1, so the first `if k.slice \u003e 1 { return true }` always fires before the `seen` comparison could ever produce a different verdict — the `seen` map and its comparison are unreachable dead weight. The function's own doc comment even states the sufficient rule outright ('since slices are numbered from one, any number above it is a second slice by itself'), which describes the simpler `k.slice \u003e 1`-only check that would make sliceKeys/seen unnecessary; the code keeps the extra machinery anyway. This is exactly the kind of premature-generalisation/dead-fallback complexity the lens is meant to catch: an allocation, an extra loop-carried map and a second branch defending against a case the type's real producers structurally cannot create.",
+      "task": 3
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Rewrote internal/finish/skeleton.go and its tests, addressing every review finding — timings-aware slice-column detection, line folding for all free text, the literal `disposition: not yet chosen` line in source-order position, always-rendered reasons, a handled JSON marshal error, and coverage for the legacy slice-less commit, nil state, skipped verification, empty wave_timings, wave-only follow-ups and unknown severities.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T12:46:55.070876059Z"
+}

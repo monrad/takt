@@ -59,3 +59,25 @@
 {"ts":"2026-08-29T11:57:32.584137502Z","type":"gate_opened","data":{"gate":"wave_failures"}}
 {"ts":"2026-08-29T12:00:22.005020461Z","type":"task_waived","data":{"reason":"The reviewer reversed its own attempt-1 finding. Attempt 1 required 'table discovery should identify a header/separator pair rather than aborting at the first pipe-bearing line'; attempt 3 requires the opposite, 'return empty once an apparent assumptions header has an invalid separator'. The parser at HEAD passes go test -race, golangci-lint and its own greps, and parses this repository's real specs (16 rows from this run's spec.md, empty for the two older design docs whose column set differs). The disputed case is prose containing a pipe before a table, which no takt-generated spec produces. Open question carried to the retro: whether an invalid separator should abort the section scan or be skipped as prose.","task":1}}
 {"ts":"2026-08-29T12:00:39.948717137Z","type":"gate_answered","data":{"choice":"waive","gate":"wave_failures"}}
+{"ts":"2026-08-29T12:00:47.001660996Z","type":"wave_committed","data":{"attempt":3,"sha":"1f18bcff10eb3bf85309ef8f2c682436d4c1586c","slice":1,"tasks":[],"wave":0}}
+{"ts":"2026-08-29T12:00:47.001681898Z","type":"wave_closed","data":{"attempt":3,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":0,"rework":[],"sha":"1f18bcff10eb3bf85309ef8f2c682436d4c1586c","slice":1,"wave":0}}
+{"ts":"2026-08-29T12:00:55.168097818Z","type":"wave_cleared","data":{"wave":0}}
+{"ts":"2026-08-29T12:00:55.176989062Z","type":"wave_dispatched","data":{"attempt":1,"slice":1,"tasks":[3],"wave":1}}
+{"ts":"2026-08-29T12:11:59.328627046Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":3}}
+{"ts":"2026-08-29T12:17:31.413915898Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:17:37.809518501Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"docs","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:17:59.149598041Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":7,"mode":"tests","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:18:46.770993584Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":2,"mode":"correctness","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:20:15.025881603Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":1,"mode":"intent","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:20:54.319333232Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":2,"mode":"consistency","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:28:40.827674736Z","type":"internal_review_recorded","data":{"attempt":1,"candidates":12,"confirmed":11,"slice":1,"wave":1}}
+{"ts":"2026-08-29T12:33:31.574165478Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":4,"rework":[3],"sha":"","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:33:40.599764319Z","type":"wave_dispatched","data":{"attempt":2,"slice":1,"tasks":[3],"wave":1}}
+{"ts":"2026-08-29T12:46:55.074575262Z","type":"task_recorded","data":{"attempt":2,"status":"done","task":3}}
+{"ts":"2026-08-29T12:51:20.525800605Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:52:07.204674334Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":0,"mode":"docs","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:53:08.203158395Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":1,"mode":"simplicity","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:53:15.721904438Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:54:36.659944042Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":0,"mode":"consistency","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:55:09.081643816Z","type":"lens_recorded","data":{"attempt":2,"dropped":0,"findings":2,"mode":"tests","slice":1,"wave":1}}
+{"ts":"2026-08-29T12:57:39.424780004Z","type":"internal_review_recorded","data":{"attempt":2,"candidates":3,"confirmed":3,"slice":1,"wave":1}}

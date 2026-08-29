@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added internal/finish/skeleton.go with BuildShipped, BuildDecisions, the pure RenderSkeleton and the SkeletonPath/WriteSkeleton pair, plus golden, purity, builder and bare-heading tests; `go test -race ./internal/finish/...` and `golangci-lint run ./internal/finish/...` are clean.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T12:11:59.322987779Z"
+}

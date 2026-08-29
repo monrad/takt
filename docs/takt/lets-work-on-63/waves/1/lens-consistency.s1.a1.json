@@ -1,0 +1,26 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:20:54.318648534Z",
+  "findings": [
+    {
+      "severity": "nit",
+      "file": "internal/finish/skeleton.go",
+      "line": 230,
+      "title": "Idempotency citation diverges from the sibling doc comment it mirrors",
+      "detail": "RenderSkeleton's doc comment cites \"(design §5.4)\" for the claim \"re-emitting the retro op is free\", but BuildRetroInputs's doc comment in the same package (internal/finish/retro.go:128) makes the identical claim and cites \"(spec §5.4)\". The skeleton.go comment says it states the property \"as BuildRetroInputs's doc does\", so the two should share one citation form rather than two for the same rule.",
+      "task": 3
+    },
+    {
+      "severity": "nit",
+      "file": "internal/finish/skeleton_test.go",
+      "line": 261,
+      "title": "Bare int literals for FollowUp.Wave/Task where the neighbouring package names them",
+      "detail": "internal/gate/followup_test.go establishes named constants (waveZero, waveOne, taskTwo) for gate.FollowUp{Wave: new(...), Task: ...} fixtures. skeleton_test.go's minorsOnlyIn/fullRun fixtures instead write `Wave: new(0)`, `Wave: new(1)`, `Task: 1`, `Task: 4` inline (lines 261-... and the fullRun FollowUps slice around line 96-101), a minor stylistic divergence from the convention the sibling package set for the same struct fields.",
+      "task": 3
+    }
+  ]
+}
