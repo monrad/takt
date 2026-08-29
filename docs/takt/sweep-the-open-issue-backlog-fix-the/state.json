@@ -308,7 +308,7 @@
     {
       "id": 13,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/backend/fake.go",
         "internal/gate/gate_test.go",
@@ -318,15 +318,15 @@
         "internal/cli/cmd_answer_test.go"
       ],
       "class": "bounded",
-      "attempt": 3,
+      "attempt": 4,
       "last_digest": {
         "task": 13,
-        "attempt": 3,
+        "attempt": 4,
         "status": "done",
-        "summary": "Strengthened the malformed-revision-event test to actually exercise the hash type assertion, made the nil-severities test discriminating (three-row table plus on-disk shape), and replaced the blind-prompt \"correctness\" allowance with a data-block absence check plus a template-derived baseline; tests and lint green.",
+        "summary": "Reworked the calls-log tests so the blind-review case asserts a single total reviewer call, added a cli test that drives the recording hook's failure branch, and de-duplicated the call-log parsing into shared helpers.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-28T22:47:53.505499919Z"
+        "recorded_at": "2026-08-29T01:06:23.441138245Z"
       }
     },
     {
@@ -352,7 +352,17 @@
       }
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 1,
+    "slice": 1,
+    "attempt": 4,
+    "started_at": "2026-08-29T00:56:22.393710075Z",
+    "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
+    "tasks": [
+      13
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

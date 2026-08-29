@@ -333,6 +333,44 @@ func TestRecordVerifyZeroCandidatesFails(t *testing.T) {
 	}
 }
 
+// assertVerifiedRecord checks the two candidates and two verdicts
+// TestRecordVerifyWritesInternalRecordAndCarriesUnattributed's fixture
+// produces: c1 attributed to task 3 in a.go, c2 unattributed (task 0) in
+// other.go, both confirmed with the evidence and citation the verify
+// message gave.
+func assertVerifiedRecord(t *testing.T, rec *wave.InternalRecord) {
+	t.Helper()
+	if len(rec.Candidates) != 2 {
+		t.Fatalf("candidates = %+v", rec.Candidates)
+	}
+	byID := map[string]wave.Candidate{}
+	for _, c := range rec.Candidates {
+		byID[c.ID] = c
+	}
+	if c1 := byID["c1"]; c1.Task != 3 || c1.File != "a.go" {
+		t.Fatalf("c1 = %+v", c1)
+	}
+	if c2 := byID["c2"]; c2.Task != 0 || c2.File != "other.go" {
+		t.Fatalf("c2 = %+v", c2)
+	}
+	if len(rec.Verdicts) != 2 {
+		t.Fatalf("verdicts = %+v", rec.Verdicts)
+	}
+	vByID := map[string]wave.CandidateVerdict{}
+	for _, v := range rec.Verdicts {
+		vByID[v.ID] = v
+	}
+	v1, v2 := vByID["c1"], vByID["c2"]
+	if v1.Verdict != wave.VerdictConfirmed || v1.Evidence != "read a.go:2-8; span shows it" ||
+		len(v1.Citations) != 1 || v1.Citations[0] != "a.go:4" {
+		t.Fatalf("c1 verdict = %+v", v1)
+	}
+	if v2.Verdict != wave.VerdictConfirmed || v2.Evidence != "read other.go; stale doc" ||
+		len(v2.Citations) != 1 || v2.Citations[0] != "other.go:1" {
+		t.Fatalf("c2 verdict = %+v", v2)
+	}
+}
+
 func TestRecordVerifyWritesInternalRecordAndCarriesUnattributed(t *testing.T) {
 	t.Parallel()
 	root, bdir := reviewerRun(t)
@@ -360,6 +398,7 @@ func TestRecordVerifyWritesInternalRecordAndCarriesUnattributed(t *testing.T) {
 	if len(rec.Confirmed) != 2 || rec.Confirmed[0] != "c1" || rec.Confirmed[1] != "c2" {
 		t.Fatalf("confirmed = %v", rec.Confirmed)
 	}
+	assertVerifiedRecord(t, rec)
 	fups, err := gate.ReadFollowUps(bdir)
 	if err != nil {
 		t.Fatal(err)
@@ -462,6 +501,9 @@ func TestRecordVerifyEnforcesTheEvidenceBar(t *testing.T) {
 	}
 	if !problemsMention(t, out, "c2") {
 		t.Fatalf("problems must name candidate c2: %v", out["problems"])
+	}
+	if rec, _ := wave.ReadInternalRecord(bdir, 0, 1, 1); rec != nil {
+		t.Fatalf("nothing must be written on a rejected reply: %+v", rec)
 	}
 
 	// An unknown candidate id.

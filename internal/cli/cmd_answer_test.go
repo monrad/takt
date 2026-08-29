@@ -203,6 +203,9 @@ func TestAnswerAgentInvalidSkipRecordsInternalReviewSkipped(t *testing.T) {
 	if ev.Data["wave"] != 0.0 || ev.Data["slice"] != 1.0 || ev.Data["attempt"] != 1.0 {
 		t.Fatalf("internal_review_skipped event must carry the active wave/slice/attempt: %+v", ev.Data)
 	}
+	if ev.Data["reason"] != "agent_invalid" {
+		t.Fatalf("internal_review_skipped event must carry reason=agent_invalid: %+v", ev.Data)
+	}
 }
 
 // TestAnswerAgentInvalidRetryResetsReviewerAttempts covers the reviewer's

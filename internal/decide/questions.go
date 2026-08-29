@@ -396,9 +396,11 @@ func questionBranchFinish(q *op.Op, ctx map[string]any) {
 	q.Question = fmt.Sprintf("Run %v is verified on %v (base %v). What should happen to the branch?",
 		ctx[ctxSlug], ctx["branch"], ctx["base"])
 	pr := op.Option{
-		Choice:      "pr",
-		Label:       "Push and open a pull request",
-		Description: "The session pushes the branch and runs `gh pr create --base <base> --fill`, then `takt done --step push_pr`.",
+		Choice: "pr",
+		Label:  "Push and open a pull request",
+		Description: "The session pushes the branch and runs `gh pr create --base <base> " +
+			"--title '<title>' --body-file <path>` with the op's `pr_title` and `pr_body_path` " +
+			"inputs, then `takt done --step push_pr`.",
 	}
 	keep := op.Option{
 		Choice:      "keep",

@@ -102,7 +102,8 @@ func closeWave(ctx context.Context, env Env, tgt *runTarget) (*wave.CloseResult,
 	if err = resolveTaskResults(ctx, env, tgt, idx, sc, &res, internalByTask); err != nil {
 		return nil, err
 	}
-	graded := gradedIDs(res.Tasks) // before persistClose carries earlier rounds forward
+	res.ReviewFindings = reviewFindingsOf(res.Tasks) // this attempt's own reviews, before the carry-forward
+	graded := gradedIDs(res.Tasks)                   // before persistClose carries earlier rounds forward
 	applyTaskStatuses(tgt.st, &res)
 	res.Committed = sliceDone(tgt.st, aw.N)
 	// state.json and the close record are written before the commit, so the one
@@ -152,6 +153,21 @@ func gradedIDs(tasks []wave.TaskResult) []int {
 	}
 	sort.Ints(ids)
 	return ids
+}
+
+// reviewFindingsOf counts the findings across the task reviews this close
+// round graded — tr.Review is the grading pass, the scoped one when a scoped
+// pass ran. closeWave reads it before persistClose's carryForward merges the
+// retired attempt's results in, so every task review is counted exactly once,
+// in the attempt that ran it (#23).
+func reviewFindingsOf(tasks []wave.TaskResult) int {
+	n := 0
+	for _, tr := range tasks {
+		if tr.Review != nil {
+			n += len(tr.Review.Findings)
+		}
+	}
+	return n
 }
 
 // verifyWaveScope partitions what changed since the baseline by the wave's
@@ -380,10 +396,14 @@ func recordCloseOutcome(tgt *runTarget, res *wave.CloseResult, ids []int) error 
 			return err
 		}
 	}
+	// slice and review_findings make the log the retro's source: the slice
+	// pairs this close with its dispatch, and the count survives the record
+	// a later attempt's close deletes (#23, #25).
 	return bundle.AppendEvent(tgt.bdir, "wave_closed", map[string]any{
-		keyWave: res.Wave, keyAttempt: res.Attempt, keyCommitted: res.Committed,
+		keyWave: res.Wave, keySlice: res.Slice, keyAttempt: res.Attempt, keyCommitted: res.Committed,
 		keySHA: res.CommitSHA, "nothing_to_commit": res.NothingToCommit,
-		"failed": res.Failed, "blocked": res.Blocked, statusRework: res.Rework,
+		"review_findings": res.ReviewFindings, "failed": res.Failed,
+		"blocked": res.Blocked, statusRework: res.Rework,
 		"review_errors": res.ReviewErrors, "reverted": res.Reverted,
 	})
 }

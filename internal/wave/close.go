@@ -44,13 +44,19 @@ type CloseResult struct {
 	// max_parallel goes out in slices that all run at attempt 1, so the
 	// attempt alone cannot tell one slice's record from the next one's —
 	// and each slice commits on its own, so each keeps its own record.
-	Slice      int          `json:"slice"`
-	Attempt    int          `json:"attempt"`
-	Tasks      []TaskResult `json:"tasks"`
-	OutOfScope []string     `json:"out_of_scope"`
-	Reverted   []string     `json:"reverted"`
-	Committed  bool         `json:"committed"`
-	CommitSHA  string       `json:"commit_sha,omitempty"`
+	Slice   int          `json:"slice"`
+	Attempt int          `json:"attempt"`
+	Tasks   []TaskResult `json:"tasks"`
+	// ReviewFindings is the findings across the task reviews THIS attempt
+	// graded. It is computed before carryForward merges the retired
+	// record's results into Tasks, so a review is counted exactly once, in
+	// the attempt that ran it — the attempt whose record a later close
+	// deletes still reported its own count, on its wave_closed event (#23).
+	ReviewFindings int      `json:"review_findings"`
+	OutOfScope     []string `json:"out_of_scope"`
+	Reverted       []string `json:"reverted"`
+	Committed      bool     `json:"committed"`
+	CommitSHA      string   `json:"commit_sha,omitempty"`
 	// NothingToCommit records a close that decided the wave was finished and
 	// found nothing of its making left to stage — an external bundle whose
 	// tasks were all waived, say. It is a landed outcome, not a failure, so

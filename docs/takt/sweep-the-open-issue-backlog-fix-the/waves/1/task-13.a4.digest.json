@@ -1,0 +1,9 @@
+{
+  "task": 13,
+  "attempt": 4,
+  "status": "done",
+  "summary": "Reworked the calls-log tests so the blind-review case asserts a single total reviewer call, added a cli test that drives the recording hook's failure branch, and de-duplicated the call-log parsing into shared helpers.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T01:06:23.441138245Z"
+}

@@ -132,3 +132,11 @@
 {"ts":"2026-08-29T00:15:05.195225189Z","type":"wave_closed","data":{"attempt":3,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[13],"sha":"","wave":1}}
 {"ts":"2026-08-29T00:15:14.643380092Z","type":"gate_opened","data":{"gate":"wave_failures"}}
 {"ts":"2026-08-29T00:56:22.372946768Z","type":"gate_answered","data":{"choice":"retry","gate":"wave_failures"}}
+{"ts":"2026-08-29T00:56:22.402803337Z","type":"wave_dispatched","data":{"attempt":4,"slice":1,"tasks":[13],"wave":1}}
+{"ts":"2026-08-29T01:06:23.442319156Z","type":"task_recorded","data":{"attempt":4,"status":"done","task":13}}
+{"ts":"2026-08-29T01:09:17.623662899Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":1}}
+{"ts":"2026-08-29T01:09:41.611810387Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"docs","slice":1,"wave":1}}
+{"ts":"2026-08-29T01:10:28.593670175Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":1}}
+{"ts":"2026-08-29T01:11:15.072443592Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"tests","slice":1,"wave":1}}
+{"ts":"2026-08-29T01:11:56.153485184Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"consistency","slice":1,"wave":1}}
+{"ts":"2026-08-29T01:14:07.972594769Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":1}}

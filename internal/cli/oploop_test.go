@@ -653,6 +653,58 @@ func writeAt(t *testing.T, path, content string) {
 	}
 }
 
+// reviewCall is one line of the call log the fake reviewer appends to when
+// TAKT_FAKE_REVIEW_CALLS names a file: the rubric a call was rendered from
+// and the LogID takt minted for it.
+type reviewCall struct{ rubric, logID string }
+
+// reviewCalls parses the whole call log, in call order. Every line is parsed
+// and none is skipped, so a test can assert how many backend calls a command
+// spent in total — not only that the calls it expected are among them.
+func reviewCalls(t *testing.T, path string) []reviewCall {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []reviewCall
+	for line := range strings.SplitSeq(string(b), "\n") {
+		if line == "" {
+			continue
+		}
+		rubric, logID, ok := strings.Cut(line, " ")
+		if !ok || rubric == "" || logID == "" {
+			t.Fatalf("malformed call log line %q in %s", line, b)
+		}
+		calls = append(calls, reviewCall{rubric: rubric, logID: logID})
+	}
+	return calls
+}
+
+// withRubric keeps the calls made with one rubric, in call order.
+func withRubric(calls []reviewCall, rubric string) []reviewCall {
+	var out []reviewCall
+	for _, c := range calls {
+		if c.rubric == rubric {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// callPrompt reads the prompt log the fake wrote for one recorded call,
+// addressed by that call's own LogID. Scanning logs/ instead cannot tell two
+// calls of the same rubric apart, and a newest-file heuristic would pick a
+// different call on a slow machine.
+func callPrompt(t *testing.T, bdir string, c reviewCall) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(bdir, "logs", c.logID+".prompt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 // TestOpLoopEndToEndWithFakeReviewer drives one whole run through cli.Main
 // the way the command prompt will: init → brainstorm → goals → spec review →
 // planner → plan review → alignment (clauses, confirm, verdicts) → load →
@@ -836,8 +888,10 @@ func TestSpecGateSpendsASecondScopedReviewOnABlockingRework(t *testing.T) {
 	const blocking = `{"verdict":"rework","summary":"one blocking","findings":[` +
 		`{"severity":"blocking","file":"spec.md","line":1,"title":"wrong claim",` +
 		`"detail":"executeRun does not set ActiveWave"}]}`
+	callsFile := filepath.Join(t.TempDir(), "calls.log")
 	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{
 		"TAKT_SESSION": "S", "TAKT_FAKE_REVIEW": blocking,
+		"TAKT_FAKE_REVIEW_CALLS": callsFile,
 	}}
 	// Drive to the spec gate, answer revise, edit spec.md, then let the loop
 	// take its second pass. Switch d.env["TAKT_FAKE_REVIEW"] to an approve
@@ -870,19 +924,47 @@ func TestSpecGateSpendsASecondScopedReviewOnABlockingRework(t *testing.T) {
 	if n := gate.Rounds(events, gate.Spec); n != 2 {
 		t.Fatalf("spec review calls = %d, want 2 (one blocking pass, one scoped confirmation)", n)
 	}
-	logs, err := os.ReadDir(filepath.Join(bdir, "logs"))
-	if err != nil {
-		t.Fatal(err)
+
+	// The fake recorded every call it took, so the second spec pass's prompt
+	// log is read by the LogID that call itself carries.
+	calls := reviewCalls(t, callsFile)
+	spec := withRubric(calls, gate.Spec)
+	if len(spec) != 2 {
+		t.Fatalf("spec review calls recorded = %d, want 2 (matching the round count): %+v", len(spec), calls)
 	}
-	var scoped bool
-	for _, e := range logs {
-		b, rerr := os.ReadFile(filepath.Join(bdir, "logs", e.Name()))
-		if rerr == nil && strings.Contains(string(b), "Do NOT raise new findings") {
-			scoped = true
-		}
+	if p := callPrompt(t, bdir, spec[1]); !strings.Contains(p, "Do NOT raise new findings") {
+		t.Fatalf("the second pass must be rendered from the scoped rubric: %s", p)
 	}
-	if !scoped {
-		t.Fatal("the second pass must be rendered from the scoped rubric")
+}
+
+// TestSpecReviewFailsLoudlyWhenTheCallLogCannotBeWritten covers the recording
+// hook the LogID lookup above rests on. When TAKT_FAKE_REVIEW_CALLS names
+// something that cannot be appended to, the fake reports an error verdict
+// carrying the reason rather than reviewing unrecorded: a call log that
+// silently lost a line would leave the test above reading some other call's
+// prompt — or none — and a swallowed write error would hide that.
+func TestSpecReviewFailsLoudlyWhenTheCallLogCannotBeWritten(t *testing.T) {
+	t.Parallel()
+	root, bdir := setupRun(t)
+	testutil.WriteFile(t, root, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root, nil, "done", "--step", "goals", "--slug", "demo")
+
+	// A directory is the portable unwritable path: opening one for append
+	// fails, and it fails before the reviewer has answered anything.
+	unwritable := t.TempDir()
+	env := map[string]string{"TAKT_FAKE_REVIEW_CALLS": unwritable}
+	c, r, e := runIn(t, root, env, "review", "spec", "--slug", "demo")
+	if c != 0 || r["verdict"] != "error" {
+		t.Fatalf("an unwritable call log must surface as an error verdict: %d %v %s", c, r, e)
+	}
+	rc, err := gate.ReadReceipt(bdir, gate.Spec)
+	if err != nil || rc == nil || rc.Verdict != gate.VerdictError {
+		t.Fatalf("the failure must reach the receipt: %+v %v", rc, err)
+	}
+	if !strings.Contains(rc.Reason, unwritable) {
+		t.Fatalf("the reason must name the call log that could not be written: %+v", rc)
 	}
 }
 

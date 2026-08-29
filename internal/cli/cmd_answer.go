@@ -201,10 +201,10 @@ func acceptRevision(bdir, which string) error {
 // The event is appended before the findings are carried, deliberately: if
 // the write dies between the two, a retry re-appends gate_overridden, and a
 // duplicate of that event is inert — gate.Compute stops at the first one
-// that matches the current hash. Carrying findings a second time is not
-// inert, since follow-ups.json has no de-duplication and a repeat would
-// show up as noise in the retro. Ordering it this way fails toward the
-// harmless duplicate.
+// that matches the current hash. The carry is now idempotent on the
+// follow-up's own identity (gate.AppendFollowUps keys each item by
+// gate.FollowUp.Key), so a repeated carry is inert too; the event-first
+// order is kept for the inert-duplicate reason alone.
 func overrideGate(bdir, which, reason string) error {
 	if strings.TrimSpace(reason) == "" {
 		return errorf("accepting a %s review verdict needs --reason", which)

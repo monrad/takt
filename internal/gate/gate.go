@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -195,6 +196,23 @@ func ReadReceipt(bundleDir, gate string) (*Receipt, error) {
 // has already answered.
 func WriteReceipt(bundleDir string, r Receipt) error {
 	return bundle.WriteJSONAtomic(receiptPath(bundleDir, r.Gate), r)
+}
+
+// RemoveReceipt deletes gates/<gate>.json, reporting an absent file as
+// success: there is nothing to retire and the caller wanted none.
+//
+// A forced review starts by retiring the receipt that already answers,
+// whatever hash it is at. Without that, a `takt review --force` pass that
+// fails before writing its own receipt would leave the prior one in place,
+// and the next unforced `takt review` would return that stale verdict as
+// cached instead of re-running the pass the user forced. Retiring it first
+// means a forced pass that fails before its own receipt leaves none rather
+// than the stale one.
+func RemoveReceipt(bundleDir, gate string) error {
+	if err := os.Remove(receiptPath(bundleDir, gate)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // eventString reads a string field out of an event's data map. Data is

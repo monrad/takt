@@ -155,18 +155,54 @@ func TestPlannerAndReviewBriefs(t *testing.T) {
 		Slug: "demo", Topic: "t", SpecPath: "/b/spec.md", GoalsPath: "/b/goals.md",
 		Branch: "takt/demo", Base: "main",
 		RetroPath: "/b/retro.md", InputsPath: "/b/finish/retro-inputs.json",
+		// The title comes from a spec heading and can carry an apostrophe;
+		// the body path is takt's own, and is interpolated bare.
+		PRTitle: "x'y", PRBodyPath: "/b/finish/pr.md",
 	}
 	for step, want := range map[string]string{
 		"run-brainstorm": "/b/spec.md", "run-goals": "/b/goals.md",
-		"run-retro": "/b/finish/retro-inputs.json", "run-push_pr": "takt/demo",
+		"run-retro": "/b/finish/retro-inputs.json",
+		// push_pr names the branch and the whole `gh pr create` line: the
+		// title single-quoted with every `'` escaped as `'\''`, and the body
+		// the run generated at pr_body_path (#36).
+		"run-push_pr": "takt/demo",
 	} {
 		s, err := brief.Render(step, runData)
 		if err != nil || !strings.Contains(s, want) {
 			t.Fatalf("%s: %v\n%s", step, err, s)
 		}
 	}
+	pushPR, perr := brief.Render("run-push_pr", runData)
+	want := `--title 'x'\''y' --body-file /b/finish/pr.md`
+	if perr != nil || !strings.Contains(pushPR, want) {
+		t.Fatalf("run-push_pr: %v\nwant %s in:\n%s", perr, want, pushPR)
+	}
+	if strings.Contains(pushPR, "--fill") {
+		t.Fatalf("the pull request is written from the run, never filled from the commits:\n%s", pushPR)
+	}
 	if _, err := brief.Render("nope", nil); err == nil {
 		t.Fatal("unknown template must error")
+	}
+}
+
+// TestPRTitleQuotedEscapesEveryQuote covers the one shell-quoting rule the
+// push_pr instruction depends on: a single-quoted word ends at the next
+// apostrophe, so a title with an apostrophe in it is one argument only if
+// each one is rewritten
+//
+//	'  →  '\''
+//
+// — close, escaped literal, reopen. The template supplies the outer quotes,
+// so the method returns the content between them: everything else the shell
+// would read as syntax is already inert inside them.
+func TestPRTitleQuotedEscapesEveryQuote(t *testing.T) {
+	t.Parallel()
+	d := brief.RunData{PRTitle: "Add O'Brien's greeting"}
+	if got := d.PRTitleQuoted(); got != `Add O'\''Brien'\''s greeting` {
+		t.Fatalf("PRTitleQuoted() = %q", got)
+	}
+	if got := (brief.RunData{PRTitle: "no quotes"}).PRTitleQuoted(); got != "no quotes" {
+		t.Fatalf("PRTitleQuoted() = %q", got)
 	}
 }
 

@@ -21,9 +21,16 @@ type RetroInputs struct {
 	Retries        []RetroRetry   `json:"retries"`
 	Failures       []RetroFailure `json:"failures"`
 	ReviewFindings int            `json:"review_findings"`
-	WaveTimings    []WaveTiming   `json:"wave_timings"`
-	Verify         *VerifyRecord  `json:"verify,omitempty"`
-	Goals          *GoalsRecord   `json:"goals,omitempty"`
+	// GateReviewFindings and TaskReviewFindings split ReviewFindings, which
+	// is their sum: the findings every gate pass raised, and the findings
+	// every attempt's task reviews raised. Both are read from the event log
+	// — the only append-only record of an attempt whose close record a
+	// later attempt retired (#23).
+	GateReviewFindings int           `json:"gate_review_findings"`
+	TaskReviewFindings int           `json:"task_review_findings"`
+	WaveTimings        []WaveTiming  `json:"wave_timings"`
+	Verify             *VerifyRecord `json:"verify,omitempty"`
+	Goals              *GoalsRecord  `json:"goals,omitempty"`
 	// FollowUps are review findings that closed with their gate instead of
 	// being acted on — an approving pass's minors, or a verdict the user
 	// overrode. The retro lists them so they reach a human (#29).
@@ -84,23 +91,36 @@ type RetroFailure struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// WaveTiming is dispatch → commit for the slice-attempt that committed.
+// WaveTiming is dispatch → close for one dispatched attempt that closed —
+// one per attempt, so a wave that was reworked reports the attempt that was
+// thrown away as well as the one that landed. Committed says whether that
+// attempt's close made a commit; CommittedAt is present only when it did.
 type WaveTiming struct {
 	Wave         int       `json:"wave"`
 	Slice        int       `json:"slice"`
 	Attempt      int       `json:"attempt"`
 	DispatchedAt time.Time `json:"dispatched_at"`
-	CommittedAt  time.Time `json:"committed_at"`
+	ClosedAt     time.Time `json:"closed_at"`
+	Committed    bool      `json:"committed"`
+	// CommittedAt is omitted for an attempt that closed without committing.
+	// omitzero, not omitempty: encoding/json never omits a zero-valued
+	// struct under omitempty and would write a year-1 timestamp, while Go
+	// 1.24+ omits a zero time.Time under omitzero (#25).
+	CommittedAt time.Time `json:"committed_at,omitzero"`
 }
 
-// The event types the wave timings are paired from, and the data keys that
-// identify which dispatch each one belongs to.
+// The event types the retro counts and pairs, and the data keys that
+// identify which dispatch each one belongs to and what it counted.
 const (
-	evDispatched = "wave_dispatched"
-	evCommitted  = "wave_committed"
-	keyWave      = "wave"
-	keySlice     = "slice"
-	keyAttempt   = "attempt"
+	evDispatched      = "wave_dispatched"
+	evCommitted       = "wave_committed"
+	evClosed          = "wave_closed"
+	evGateReviewed    = "gate_reviewed"
+	keyWave           = "wave"
+	keySlice          = "slice"
+	keyAttempt        = "attempt"
+	keyFindings       = "findings"
+	keyReviewFindings = "review_findings"
 )
 
 // BuildRetroInputs is pure: state + index + events + close records → inputs.
@@ -129,13 +149,7 @@ func BuildRetroInputs(
 		}
 	}
 	in.Waves = len(waves)
-	for _, c := range closes {
-		for _, tr := range c.Tasks {
-			if tr.Review != nil {
-				in.ReviewFindings += len(tr.Review.Findings)
-			}
-		}
-	}
+	countReviewFindings(&in, events)
 	in.WaveTimings = waveTimings(events)
 	in.Internal = buildInternalReview(internals, closes)
 	if in.Internal != nil {
@@ -146,6 +160,27 @@ func BuildRetroInputs(
 		}
 	}
 	return in
+}
+
+// countReviewFindings sums every review the run recorded — gate passes and
+// each attempt's task reviews, kept apart so the retro can say which is
+// which — from the event log rather than the close records on disk: the
+// record of a reworked attempt is deleted when the next attempt closes,
+// while its wave_closed event, carrying the findings it graded, stays. A
+// wave_closed written before that key existed counts zero, which is the
+// status quo (#23).
+func countReviewFindings(in *RetroInputs, events []bundle.Event) {
+	for _, e := range events {
+		switch e.Type {
+		case evGateReviewed:
+			n, _ := e.Data[keyFindings].(float64)
+			in.GateReviewFindings += int(n)
+		case evClosed:
+			n, _ := e.Data[keyReviewFindings].(float64)
+			in.TaskReviewFindings += int(n)
+		}
+	}
+	in.ReviewFindings = in.GateReviewFindings + in.TaskReviewFindings
 }
 
 // overlapLineTolerance is how close a backend finding must be to a confirmed
@@ -259,37 +294,69 @@ func lastReasons(closes []wave.CloseResult) map[int]string {
 	return out
 }
 
-// waveTimings pairs each wave_committed with the wave_dispatched of the same
-// dispatch — wave, slice and attempt. A wave that was retried therefore
-// reports the attempt that actually landed, not the whole span of the wave,
-// and a wave larger than max_parallel reports one span per slice: its slices
-// all run at attempt 1, so wave and attempt alone would collapse them into
-// one. An event written before slices were recorded carries no slice key and
-// decodes to 0, which is floored to 1: that is the number takt heals a
-// slice-less wave to, so a bundle that upgraded mid-run — an old
-// wave_dispatched answered by a healed wave_committed that says slice 1 —
-// still pairs, and two old events still pair with each other.
+// timingKey is the dispatch an event belongs to: wave, slice and attempt.
+type timingKey struct{ wave, slice, attempt int }
+
+// timingKeyOf reads one event's dispatch key. An event written before slices
+// were recorded carries no slice key and decodes to 0, which is floored to
+// 1: that is the number takt heals a slice-less wave to, so a bundle that
+// upgraded mid-run — an old wave_dispatched answered by a healed event that
+// says slice 1 — still pairs, and two old events still pair with each other.
+func timingKeyOf(e bundle.Event) timingKey {
+	w, _ := e.Data[keyWave].(float64)
+	sl, _ := e.Data[keySlice].(float64)
+	a, _ := e.Data[keyAttempt].(float64)
+	return timingKey{wave: int(w), slice: max(int(sl), 1), attempt: int(a)}
+}
+
+// waveTimings reports one span per dispatched attempt that closed: each
+// wave_closed is paired with the wave_dispatched of the same wave, slice and
+// attempt, and carries the commit time of the wave_committed with that key
+// when the attempt committed. A wave that was reworked therefore reports the
+// attempt that was thrown away as well as the one that landed, and a wave
+// larger than max_parallel reports one span per slice: its slices all run at
+// attempt 1, so wave and attempt alone would collapse them into one. A
+// dispatch with no wave_closed — an attempt still running — is omitted, and
+// the spans come out ordered by wave, then slice, then attempt (#25).
 func waveTimings(events []bundle.Event) []WaveTiming {
-	type key struct{ w, s, a int }
-	dispatched := map[key]time.Time{}
+	dispatched, committed := collectDispatches(events)
 	out := []WaveTiming{}
 	for _, e := range events {
-		w, _ := e.Data[keyWave].(float64)
-		sl, _ := e.Data[keySlice].(float64)
-		a, _ := e.Data[keyAttempt].(float64)
-		k := key{int(w), max(int(sl), 1), int(a)}
+		if e.Type != evClosed {
+			continue
+		}
+		k := timingKeyOf(e)
+		d, ok := dispatched[k]
+		if !ok {
+			continue
+		}
+		wt := WaveTiming{Wave: k.wave, Slice: k.slice, Attempt: k.attempt, DispatchedAt: d, ClosedAt: e.TS}
+		if at, done := committed[k]; done {
+			wt.Committed, wt.CommittedAt = true, at
+		}
+		out = append(out, wt)
+	}
+	slices.SortStableFunc(out, func(a, b WaveTiming) int {
+		return cmp.Or(
+			cmp.Compare(a.Wave, b.Wave), cmp.Compare(a.Slice, b.Slice), cmp.Compare(a.Attempt, b.Attempt))
+	})
+	return out
+}
+
+// collectDispatches indexes the dispatch and commit times by the dispatch
+// they belong to, so waveTimings can walk the closes once and pair each one
+// with events that may sit anywhere in the log.
+func collectDispatches(events []bundle.Event) (map[timingKey]time.Time, map[timingKey]time.Time) {
+	dispatched, committed := map[timingKey]time.Time{}, map[timingKey]time.Time{}
+	for _, e := range events {
 		switch e.Type {
 		case evDispatched:
-			dispatched[k] = e.TS
+			dispatched[timingKeyOf(e)] = e.TS
 		case evCommitted:
-			if d, ok := dispatched[k]; ok {
-				out = append(out,
-					WaveTiming{Wave: k.w, Slice: k.s, Attempt: k.a, DispatchedAt: d, CommittedAt: e.TS})
-			}
+			committed[timingKeyOf(e)] = e.TS
 		}
 	}
-	slices.SortStableFunc(out, func(a, b WaveTiming) int { return cmp.Compare(a.Wave, b.Wave) })
-	return out
+	return dispatched, committed
 }
 
 // RetroInputsPath is where `next` writes the inputs for the run op.

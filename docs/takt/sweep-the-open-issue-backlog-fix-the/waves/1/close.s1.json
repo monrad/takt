@@ -1,7 +1,7 @@
 {
   "wave": 1,
   "slice": 1,
-  "attempt": 3,
+  "attempt": 4,
   "tasks": [
     {
       "task": 12,
@@ -157,8 +157,7 @@
     },
     {
       "task": 13,
-      "status": "rework",
-      "reason": "The recording hook and most requested assertions are implemented, but the new blind-review test does not prove that only one reviewer call occurred.",
+      "status": "done",
       "files_changed": [
         "internal/backend/fake.go",
         "internal/cli/close_internal_test.go",
@@ -221,64 +220,32 @@
           "command": "go test -race -count=1 ./internal/backend/... ./internal/gate/... ./internal/cli/...",
           "exit": 0,
           "passed": true,
-          "tail": "ok  \tgithub.com/monrad/takt/internal/backend\t1.310s\nok  \tgithub.com/monrad/takt/internal/gate\t1.026s\nok  \tgithub.com/monrad/takt/internal/cli\t6.556s",
-          "elapsed_ms": 6784
+          "tail": "ok  \tgithub.com/monrad/takt/internal/backend\t1.310s\nok  \tgithub.com/monrad/takt/internal/gate\t1.027s\nok  \tgithub.com/monrad/takt/internal/cli\t6.409s",
+          "elapsed_ms": 6636
         },
         {
           "command": "golangci-lint run ./internal/backend/... ./internal/gate/... ./internal/cli/...",
           "exit": 0,
           "passed": true,
-          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
-          "elapsed_ms": 374
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 382
         }
       ],
       "review": {
-        "verdict": "rework",
-        "summary": "The recording hook and most requested assertions are implemented, but the new blind-review test does not prove that only one reviewer call occurred.",
-        "findings": [
-          {
-            "severity": "major",
-            "file": "internal/cli/close_internal_test.go",
-            "line": 323,
-            "title": "Test ignores unexpected scoped reviewer calls",
-            "detail": "The test filters the calls file down to rubric `task` before asserting its length. If the non-blocking finding incorrectly triggered an additional `task-followup` scoped review, the file would contain two lines but this assertion would still pass; both fake responses approve, so `committed == true` would not catch it either. The task explicitly requires asserting that the calls file has exactly one line and that line uses rubric `task`. Parse all non-empty lines, require exactly one, then extract and validate that line's rubric and LogID."
-          }
-        ],
+        "verdict": "approve",
+        "summary": "The implementation fulfills the requested recording hook and all specified test updates. Call-specific prompt lookup uses the recorded LogID, malformed revision and nil-severity behavior are covered, blind-review data leakage is checked without confusing the template's generic prose for a lens disclosure, persisted reviewer records receive the requested assertions, and the agent-invalid reason is verified.",
+        "findings": null,
         "provider": "copilot",
         "model": "gpt-5.6-sol"
-      },
-      "internal": [
-        {
-          "severity": "major",
-          "file": "internal/backend/fake.go",
-          "line": 30,
-          "title": "New TAKT_FAKE_REVIEW_CALLS error branches are never exercised",
-          "detail": "Review() now opens/writes/closes a calls-log file (lines 30-42) and returns an errorResult on any OpenFile, WriteString, or Close failure. No test in the wave (or elsewhere in the repo) drives any of these three failure modes — e.g. by pointing TAKT_FAKE_REVIEW_CALLS at an unwritable path or a directory. This is brand-new logic that other tests now depend on for correctness (oploop_test.go's TestSpecGateSpendsASecondScopedReviewOnABlockingRework and close_internal_test.go's TestBlindTaskReviewPromptNeverSeesTheLensClaims both rely on this file being written correctly to look up a call's exact LogID), so a silent regression in the write/error path (e.g. swallowing the error instead of returning it, or writing a malformed line) would go undetected.",
-          "lenses": [
-            "tests"
-          ]
-        },
-        {
-          "severity": "minor",
-          "file": "internal/cli/oploop_test.go",
-          "line": 881,
-          "title": "TAKT_FAKE_REVIEW_CALLS log-parsing loop duplicated across two test files",
-          "detail": "internal/cli/oploop_test.go:881-891 and internal/cli/close_internal_test.go:324-333 (both added by this same task) contain near-identical logic: split the calls file on newlines, `strings.Cut` each line on the first space to get (rubric, logID), filter by rubric, then `strings.Cut` the matching line again to pull out the LogID for the logs/\u003cid\u003e.prompt read. A small shared helper (e.g. `callsForRubric(t, callsFile, rubric string) []string`) in the cli test package would avoid the two copies drifting (e.g. one trims trailing newline before splitting, the other doesn't need to since it reuses the same TrimRight call — but any future change to the calls-file format must be made in both places).",
-          "lenses": [
-            "consistency"
-          ]
-        }
-      ]
+      }
     }
   ],
   "out_of_scope": null,
   "reverted": null,
-  "committed": false,
-  "closed_at": "2026-08-29T00:12:45.326520255Z",
+  "committed": true,
+  "closed_at": "2026-08-29T01:14:15.259633425Z",
   "failed": [],
   "blocked": [],
-  "rework": [
-    13
-  ],
+  "rework": [],
   "review_errors": []
 }
