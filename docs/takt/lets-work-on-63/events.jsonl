@@ -2,3 +2,5 @@
 {"ts":"2026-08-29T02:13:41.502894496Z","type":"spec_written","data":{"hash":"sha256:f5aa8c55af3b82f1eca536aff7f32b4b9323a83f024663c4a69e75492374c107"}}
 {"ts":"2026-08-29T02:14:40.616515632Z","type":"goals_frozen","data":{"count":13,"hash":"sha256:1f81d40851585a8540365349149adde28d739b154b9b42587dc452e7d5c4afd9"}}
 {"ts":"2026-08-29T02:17:05.945814843Z","type":"gate_reviewed","data":{"findings":6,"gate":"spec","hash":"sha256:b9ea2b803aec9df7a932e8ef6d3d7c3130dd23e080173059cc1ba9bbbf00c016","provider":"copilot","verdict":"rework"}}
+{"ts":"2026-08-29T02:17:11.556491293Z","type":"gate_opened","data":{"gate":"gate_review"}}
+{"ts":"2026-08-29T02:18:57.570058542Z","type":"goals_amended","data":{"count":13,"new":"sha256:c900d87214746ed0fcbee5edd45cdae8123816d0cbd480cb4d075f372d177143","old":"sha256:1f81d40851585a8540365349149adde28d739b154b9b42587dc452e7d5c4afd9"}}

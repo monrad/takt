@@ -29,14 +29,49 @@
     "max_parallel": 8,
     "max_rework": 1
   },
-  "goals_hash": "sha256:1f81d40851585a8540365349149adde28d739b154b9b42587dc452e7d5c4afd9",
+  "goals_hash": "sha256:c900d87214746ed0fcbee5edd45cdae8123816d0cbd480cb4d075f372d177143",
   "gates": {
     "plan": "pending",
     "spec": "pending"
   },
   "tasks": [],
   "active_wave": null,
-  "pending_gate": null,
+  "pending_gate": {
+    "id": "gate_review",
+    "opened_at": "2026-08-29T02:17:11.541556531Z",
+    "payload": {
+      "op": "ask",
+      "narration": "spec review asked for rework",
+      "gate": "gate_review",
+      "question": "The spec review verdict is rework: see reviews/spec.md. How do you want to proceed?",
+      "options": [
+        {
+          "choice": "revise",
+          "label": "Revise and re-review (Recommended)",
+          "description": "Edit the spec with the findings in reviews/spec.md; the gate re-arms on the new hash."
+        },
+        {
+          "choice": "accept",
+          "label": "Accept as is",
+          "description": "Record an override with a reason (`--reason`); the findings are carried to the retro."
+        },
+        {
+          "choice": "stop",
+          "label": "Stop",
+          "description": "Keep the gate open and end the turn."
+        }
+      ],
+      "context": {
+        "blocking": true,
+        "gate": "spec",
+        "reason": "",
+        "slug": "lets-work-on-63",
+        "summary": "see reviews/spec.md",
+        "verdict": "rework"
+      },
+      "answer": "takt answer --gate gate_review --choice \u003cchoice\u003e --slug lets-work-on-63"
+    }
+  },
   "verified_sha": null,
   "goals_checked_sha": null,
   "disposition": null
