@@ -224,3 +224,59 @@ func TestAnswerAgentInvalidRetryResetsReviewerAttempts(t *testing.T) {
 		t.Fatal("retry must append a reviewer_attempts_reset event")
 	}
 }
+
+// TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty covers spec §5.1:
+// gate_answered carries the user's --reason when one was given, omits the
+// key entirely when it was not, and an event written before the field
+// existed reads back the same way as a reasonless one.
+func TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty(t *testing.T) {
+	t.Parallel()
+	root, bdir := specCapFixture(t)
+	if _, o, _ := next(t, root, nil); o["op"] != "ask" || o["gate"] != "gate_review_capped" {
+		t.Fatalf("%v", o)
+	}
+	if c, _, e := runIn(t, root, nil,
+		"answer", "--gate", "gate_review_capped", "--choice", "accept", "--reason", "good enough", "--slug", "demo",
+	); c != 0 {
+		t.Fatal(e)
+	}
+	ev := lastEventOfType(t, bdir, "gate_answered")
+	if ev.Data["reason"] != "good enough" {
+		t.Fatalf("gate_answered must carry the given reason: %+v", ev.Data)
+	}
+
+	root2, bdir2 := setupRun(t)
+	testutil.WriteFile(t, root2, "docs/takt/demo/spec.md", "# spec\n")
+	runIn(t, root2, nil, "done", "--step", "brainstorm", "--slug", "demo")
+	testutil.WriteFile(t, root2, "docs/takt/demo/goals.md", goalsMD)
+	runIn(t, root2, nil, "done", "--step", "goals", "--slug", "demo")
+	env := map[string]string{"TAKT_FAKE_REVIEW": `{"verdict":"rework","summary":"too vague",` +
+		`"findings":[{"severity":"major","file":"spec.md","line":1,"title":"vague","detail":"say more"}]}`}
+	if c, r, e := runIn(t, root2, env, "review", "spec", "--slug", "demo"); c != 0 || r["verdict"] != "rework" {
+		t.Fatalf("%d %v %s", c, r, e)
+	}
+	if _, o, _ := next(t, root2, nil); o["op"] != "ask" || o["gate"] != "gate_review" {
+		t.Fatalf("%v", o)
+	}
+	if c, _, e := runIn(t, root2, nil,
+		"answer", "--gate", "gate_review", "--choice", "revise", "--slug", "demo"); c != 0 {
+		t.Fatal(e)
+	}
+	ev2 := lastEventOfType(t, bdir2, "gate_answered")
+	if _, ok := ev2.Data["reason"]; ok {
+		t.Fatalf("a reasonless answer must omit the reason key entirely: %+v", ev2.Data)
+	}
+
+	_, bdir3 := setupRun(t)
+	if err := bundle.AppendEvent(bdir3, "gate_answered", map[string]any{"gate": "x", "choice": "y"}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := bundle.ReadEvents(bdir3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := events[len(events)-1]
+	if _, ok := legacy.Data["reason"]; ok {
+		t.Fatalf("a legacy gate_answered event must read back with no reason key: %+v", legacy.Data)
+	}
+}

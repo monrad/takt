@@ -155,6 +155,7 @@ func TestPlannerAndReviewBriefs(t *testing.T) {
 		Slug: "demo", Topic: "t", SpecPath: "/b/spec.md", GoalsPath: "/b/goals.md",
 		Branch: "takt/demo", Base: "main",
 		RetroPath: "/b/retro.md", InputsPath: "/b/finish/retro-inputs.json",
+		SkeletonPath: "/b/finish/retro-skeleton.md",
 		// The title comes from a spec heading and can carry an apostrophe;
 		// the body path is takt's own, and is interpolated bare.
 		PRTitle: "x'y", PRBodyPath: "/b/finish/pr.md",
@@ -182,6 +183,54 @@ func TestPlannerAndReviewBriefs(t *testing.T) {
 	}
 	if _, err := brief.Render("nope", nil); err == nil {
 		t.Fatal("unknown template must error")
+	}
+}
+
+// TestRunRetroTemplateNamesTheSkeletonAndSevenSections covers the retro
+// template's rewrite around the skeleton (spec §6): the session is told to
+// start from finish/retro-skeleton.md, the seven section headings task 3
+// renders are all present, and the old "dispatch→commit" wording is gone
+// (closing the sweep run's follow-up 19). The template's instructions are
+// the only enforcement of the writing workflow — there is no code that
+// checks a rewrite followed them — so each load-bearing instruction gets its
+// own table row naming which one failed if it were ever dropped.
+func TestRunRetroTemplateNamesTheSkeletonAndSevenSections(t *testing.T) {
+	t.Parallel()
+	s, err := brief.Render("run-retro", brief.RunData{
+		Slug: "demo", RetroPath: "/b/retro.md", InputsPath: "/b/finish/retro-inputs.json",
+		SkeletonPath: "/b/finish/retro-skeleton.md",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, heading := range []string{
+		"## What shipped", "## Decisions", "## What went well / what was hard",
+		"## Not proven", "## Lessons", "## Follow-ups", "## Numbers",
+	} {
+		if !strings.Contains(s, heading) {
+			t.Errorf("missing section heading %q in:\n%s", heading, s)
+		}
+	}
+	for _, want := range []string{"/b/finish/retro-skeleton.md", "<!-- prose:"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "dispatch→commit") {
+		t.Errorf("the old dispatch→commit wording must be gone (WaveTiming became dispatch→close):\n%s", s)
+	}
+	for _, tc := range []struct {
+		instruction, want string
+	}{
+		{"prohibition on rewriting the rendered sections", "Do not rewrite the rendered sections"},
+		{`the numbers-only scope of "grounded in the inputs"`, `"grounded in the inputs" applies to`},
+		{"the invitation to the session's own account of driving the run", "the session's own account of driving this run"},
+		{"the fresh-session no-invention rule", "do not invent an account of a run you did not drive"},
+		{"the closing takt done --step retro command line", "takt done --step retro --slug"},
+	} {
+		if !strings.Contains(s, tc.want) {
+			t.Errorf("missing %s (%q) in:\n%s", tc.instruction, tc.want, s)
+		}
 	}
 }
 
