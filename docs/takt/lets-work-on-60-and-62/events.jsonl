@@ -1,2 +1,3 @@
 {"ts":"2026-08-29T02:07:54.763257508Z","type":"init","data":{"base":"main","base_sha":"7d72a259a473984f0f838b107ad3e8312b218944","branch":"monrad/6062","branch_adopted":true,"slug":"lets-work-on-60-and-62"}}
 {"ts":"2026-08-29T02:14:34.991182178Z","type":"spec_written","data":{"hash":"sha256:df3ea0412e84532f5b5abaabbf4d157521cf22a98cb9e661f9c7aaa104103cf4"}}
+{"ts":"2026-08-29T02:15:03.356635678Z","type":"goals_frozen","data":{"count":7,"hash":"sha256:2195534fddc4bdb2e187b0498d9cb7807a47c8cb125ffbe4cda6d72fafc48016"}}
