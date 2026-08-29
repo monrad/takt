@@ -1,17 +1,12 @@
 {
   "gate": "spec",
-  "hash": "sha256:c50115da2a3835db85c81ffaf197b01c8329b654071f7a8cb065e18417ae1b40",
-  "verdict": "rework",
+  "hash": "sha256:b7d1cd481f8e49ec94f197e985994f155fd268b96b1f52f0f54312e72853c7ed",
+  "verdict": "approve",
   "reviewer": {
     "provider": "copilot",
     "model": "gpt-5.6-sol"
   },
   "findings": "reviews/spec.md",
-  "severities": {
-    "blocking": 3,
-    "major": 4,
-    "minor": 1
-  },
-  "ts": "2026-08-29T02:17:15.262184397Z",
+  "ts": "2026-08-29T02:22:31.110222428Z",
   "skipped": null
 }
