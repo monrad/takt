@@ -1,52 +1,31 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition covers nearly all spec requirements and the file scopes are generally plausible, but Tasks 5 and 7 contradict each other about the rewrite call path, and several verification plans do not prove important behavioral requirements.",
+  "summary": "The decomposition covers the specification, but several declared verification paths can pass while load-bearing requirements are violated. Strengthen Tasks 5, 7, and 8 before execution.",
   "findings": [
     {
       "severity": "major",
-      "file": "",
+      "file": "plan.md",
       "line": 0,
-      "title": "Tasks 5 and 7 specify incompatible rewrite call sequences",
-      "detail": "Task 5 says the op-building helper calls writeRetroArtifacts and that cmdRetro will call that helper. Task 7 instead directs cmdRetro to call writeRetroArtifacts and then the op-building helper, which would derive and write both artifacts twice. Define one unambiguous ownership model: either retroRunOp performs derivation and is called once, or it only builds the op and both callers explicitly perform derivation once."
+      "title": "Task 5 does not verify its sole-caller and exactly-once ownership rule",
+      "detail": "Task 5 makes retroRunOp the sole caller of writeRetroArtifacts and explicitly forbids either command path from deriving the pair twice, but its checks only remove writeRetroInputs and establish byte-identical replay. Because derivation is deterministic, calling writeRetroArtifacts twice would still pass every listed test. Add a static call-site assertion or an instrumented test proving one derivation per command; Task 7 should also assert cmdRetro has no direct call."
     },
     {
       "severity": "major",
-      "file": "",
+      "file": "plan.md",
       "line": 0,
-      "title": "Task 7 does not verify the no-state/no-commit contract",
-      "detail": "The spec requires retro --rewrite to write no state and take no commit. Its proposed tests verify the emitted op, artifact files, phase handling, and lock refusal, but never compare state.json or HEAD before and after a successful rewrite. A command that mutates state or commits could pass every listed verification. Add assertions that state bytes and HEAD remain unchanged across a successful rewrite, accounting only for the separate lock metadata that acquisition legitimately updates."
-    },
-    {
-      "severity": "major",
-      "file": "",
-      "line": 0,
-      "title": "Task 4's template test omits most load-bearing instructions",
-      "detail": "Task 4's dedicated test checks the seven headings, skeleton path, prose marker, and removal of dispatch→commit. It would still pass if the template omitted the prohibition on rewriting rendered sections, the numbers-only scope of grounded claims, the driving-session observations guidance, the fresh-session no-invention rule, or the required closing command. Because these instructions are the only enforcement of the writing workflow, use an exact template assertion or targeted assertions for every required instruction."
-    },
-    {
-      "severity": "major",
-      "file": "",
-      "line": 0,
-      "title": "Task 9 does not prove the prescribed host wording is identical",
-      "detail": "The planned cross-host invariant contains only the initial fragment through filling prose slots. The two prompts could disagree about leaving rendered sections unchanged or locating numbers at inputs.inputs_path while all listed checks still pass. Pin the entire prescribed retro clause as the shared invariant, or extract and compare the complete clause from both prompts."
+      "title": "Task 8's verification does not prove the required design-document rewrite",
+      "detail": "Task 8 claims its checks scope the edit to §7.5 step 3, but the sed range covers all of §7.5. The checks only require retro-skeleton.md, not yet chosen, and archived somewhere in that section; they do not prove that step 3 names the seven sections, shipped-event semantics, decision sources, Not-proven seed, follow-up bucketing, Numbers, copying/filling prose slots, or the done guard. Scope checks to step 3 and assert the load-bearing content so an incomplete documentation edit cannot pass."
     },
     {
       "severity": "minor",
-      "file": "",
+      "file": "plan.md",
       "line": 0,
-      "title": "Task 8's documentation verification is too weak for its scope",
-      "detail": "The three grep commands only prove that retro-skeleton.md, takt retro --rewrite, and not yet chosen occur somewhere in the design document. They do not prove the bundle-layout entry, placement in the §5.1 command table, seven-section §7.5 rewrite, archived/done behavior, lock semantics, or no-state rule described by Task 8. Add section-scoped checks or a focused documentation test."
-    },
-    {
-      "severity": "minor",
-      "file": "",
-      "line": 0,
-      "title": "Task 1 does not test recognition of the separator row",
-      "detail": "The spec requires a header row followed by a Markdown separator row, but the tolerant test matrix has no malformed or missing separator case. An implementation that blindly discards any second row would satisfy the listed tests. Add a case asserting that an invalid separator yields an empty slice."
+      "title": "Task 7 leaves the required --dir path untested",
+      "detail": "Task 7 requires the standard --slug/--dir pair, but every described command test uses --slug and the verification commands add no coverage for --dir. Add a successful rewrite test targeting a run through --dir so omission or incorrect wiring of that required flag is detected."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:10b82121b550791eb035e7588d5b3107386647d6b36e0bf31e208edab7bdcb5e",
-  "round": 1
+  "hash": "sha256:94daac40badd86d7b33ec667f74e03962f96a3b87d5a56e979477086a1263b67",
+  "round": 2
 }
