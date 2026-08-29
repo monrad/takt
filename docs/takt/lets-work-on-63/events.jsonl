@@ -1,2 +1,3 @@
 {"ts":"2026-08-29T02:03:22.444418537Z","type":"init","data":{"base":"main","base_sha":"7d72a259a473984f0f838b107ad3e8312b218944","branch":"monrad/better-retroes","branch_adopted":true,"slug":"lets-work-on-63"}}
 {"ts":"2026-08-29T02:13:41.502894496Z","type":"spec_written","data":{"hash":"sha256:f5aa8c55af3b82f1eca536aff7f32b4b9323a83f024663c4a69e75492374c107"}}
+{"ts":"2026-08-29T02:14:40.616515632Z","type":"goals_frozen","data":{"count":13,"hash":"sha256:1f81d40851585a8540365349149adde28d739b154b9b42587dc452e7d5c4afd9"}}
