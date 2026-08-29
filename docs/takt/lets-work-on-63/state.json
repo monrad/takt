@@ -188,44 +188,7 @@
     ],
     "baseline": []
   },
-  "pending_gate": {
-    "id": "wave_failures",
-    "opened_at": "2026-08-29T11:57:32.566671654Z",
-    "payload": {
-      "op": "ask",
-      "narration": "wave 0 has failed or blocked tasks",
-      "gate": "wave_failures",
-      "question": "Wave 0: failed [], blocked [], rework exhausted [1], rework pending []. How do you want to proceed?",
-      "options": [
-        {
-          "choice": "retry",
-          "label": "Retry the failed tasks (Recommended)",
-          "description": "Re-dispatch them with the failure context appended (model escalates one tier)."
-        },
-        {
-          "choice": "waive",
-          "label": "Waive selected tasks",
-          "description": "`takt waive --task N --reason …` per task, then `takt next`."
-        },
-        {
-          "choice": "stop",
-          "label": "Stop",
-          "description": "End the turn with the wave open."
-        }
-      ],
-      "context": {
-        "blocked": [],
-        "exhausted": [
-          1
-        ],
-        "failed": [],
-        "rework": [],
-        "slug": "lets-work-on-63",
-        "wave": 0
-      },
-      "answer": "takt answer --gate wave_failures --choice \u003cchoice\u003e --slug lets-work-on-63"
-    }
-  },
+  "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
   "disposition": null
