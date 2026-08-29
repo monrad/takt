@@ -6,3 +6,4 @@
 {"ts":"2026-08-29T02:19:31.121886066Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-29T02:22:08.592750977Z","type":"goals_amended","data":{"count":9,"new":"sha256:161e3d6b5421013b18fc0225d1b60609bbea703a16aab2960716b7fbd5335b80","old":"sha256:2195534fddc4bdb2e187b0498d9cb7807a47c8cb125ffbe4cda6d72fafc48016"}}
 {"ts":"2026-08-29T02:22:31.110187115Z","type":"gate_reviewed","data":{"findings":0,"gate":"spec","hash":"sha256:b7d1cd481f8e49ec94f197e985994f155fd268b96b1f52f0f54312e72853c7ed","provider":"copilot","verdict":"approve"}}
+{"ts":"2026-08-29T02:22:36.920637197Z","type":"phase","data":{"from":"brainstorm","to":"plan"}}

@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "lets-work-on-60-and-62",
   "topic": "lets work on #60 and #62",
-  "phase": "brainstorm",
+  "phase": "plan",
   "created_at": "2026-08-29T02:07:54.750660636Z",
   "branch": "monrad/6062",
   "branch_adopted": true,
@@ -32,7 +32,7 @@
   "goals_hash": "sha256:161e3d6b5421013b18fc0225d1b60609bbea703a16aab2960716b7fbd5335b80",
   "gates": {
     "plan": "pending",
-    "spec": "pending"
+    "spec": "ok"
   },
   "tasks": [],
   "active_wave": null,
