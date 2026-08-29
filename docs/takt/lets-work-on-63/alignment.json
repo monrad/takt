@@ -7,5 +7,12 @@
       "span": "lets work on #63"
     }
   ],
-  "confirmed": true
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "plan.md and plan.index.json implement issue #63 in full: the plan header states 'Retro as the project's record' and the 9 tasks (internal/spec.ParseAssumptions, gate_answered reason, skeleton renderer, template rewrite, shared derivation helper, done --step retro in archived, takt retro --rewrite, design doc, host prompts) map directly to spec.md's §§1-10 scope for #63."
+    }
+  ]
 }
