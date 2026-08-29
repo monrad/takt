@@ -1,8 +1,8 @@
 # Review: sweep-the-open-issue-backlog-fix-the task 13 — rework
 
-The fake-review call recording and the other requested coverage are implemented, but the blind-review test weakens an explicit assertion: the captured prompt still contains "correctness" and the helper deliberately permits it.
+The recording hook and most requested assertions are implemented, but the new blind-review test does not prove that only one reviewer call occurred.
 
-- **major** internal/cli/close_internal_test.go:350 — Blind prompt test permits the forbidden lens name: The task requires the exact recorded task prompt to contain neither the claim marker, verifier evidence marker, nor "correctness". assertNeverNamesTheLens instead renders a baseline and allows the prompt to contain "correctness" as many times as the template does, so this test passes while the requested strings.Contains(p, "correctness") == false condition is violated. The added comments explicitly acknowledge that the prompt contains the forbidden string rather than enforcing the specified contract.
+- **major** internal/cli/close_internal_test.go:323 — Test ignores unexpected scoped reviewer calls: The test filters the calls file down to rubric `task` before asserting its length. If the non-blocking finding incorrectly triggered an additional `task-followup` scoped review, the file would contain two lines but this assertion would still pass; both fake responses approve, so `committed == true` would not catch it either. The task explicitly requires asserting that the calls file has exactly one line and that line uses rubric `task`. Parse all non-empty lines, require exactly one, then extract and validate that line's rubric and LogID.
 
 _copilot / gpt-5.6-sol_
 

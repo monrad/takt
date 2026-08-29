@@ -1,9 +1,8 @@
-# Review: sweep-the-open-issue-backlog-fix-the task 12 — error
+# Review: sweep-the-open-issue-backlog-fix-the task 12 — approve
 
-review failed
+The implementation satisfies the requested PR generation, strict artifact reads, stable brief rendering, reviewer diff hoisting, template updates, and test coverage. One minor recovery-message edge case remains.
 
-Reason: timeout after 5m0s
-
+- **minor** internal/cli/cmd_next.go:300 — Malformed external bundles receive impossible Git recovery advice: External bundles are explicitly supported and are not committed to Git, but factsHint always tells users with an unreadable finish/goals.json to “restore it from git.” The failure correctly blocks and names the file, but the recovery guidance is invalid when ws.Dir.InRepo is false. Use repository-aware guidance, such as restoring from Git only for in-repository bundles and repairing/restoring the named file otherwise.
 
 _copilot / gpt-5.6-sol_
 

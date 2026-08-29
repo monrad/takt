@@ -281,7 +281,7 @@
     {
       "id": 12,
       "wave": 1,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/finish/pr.go",
         "internal/finish/pr_test.go",
@@ -352,18 +352,7 @@
       }
     }
   ],
-  "active_wave": {
-    "n": 1,
-    "slice": 1,
-    "attempt": 3,
-    "started_at": "2026-08-28T22:34:30.320319322Z",
-    "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
-    "tasks": [
-      12,
-      13
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

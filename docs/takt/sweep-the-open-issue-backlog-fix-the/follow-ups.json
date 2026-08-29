@@ -211,6 +211,39 @@
       "detail": "evGateReviewed = \"gate_reviewed\" duplicates the exported gate.EvReviewed (internal/gate/gate.go:47, also \"gate_reviewed\") even though retro.go already imports internal/gate (used elsewhere in the file, e.g. gate.FollowUp, gate.SourceApprove). Task 10's cmd_review.go uses gate.EvReviewed directly for the same event type; task 11 instead re-declares the same string under a new unexported name rather than reusing the existing constant it could import.",
       "source": "internal",
       "ts": "2026-08-28T21:21:28.786728842Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 275,
+      "wave": 1,
+      "task": 12,
+      "title": "singleQuoted duplicates the existing shellQuote escaping algorithm",
+      "detail": "internal/cli/archive.go:353-355 already defines `shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` for exactly this POSIX single-quote close-escape-reopen technique, with a comment explaining the same rationale repeated almost verbatim in the new singleQuoted's doc comment (internal/brief/brief.go:265-274). The new PRTitleQuoted (internal/brief/brief.go:275-281) reimplements the same one-line escaping rule in a different package instead of sharing it, so a future fix or hardening of the shell-escaping rule (e.g. for control characters) has two independent copies to update.",
+      "source": "internal",
+      "ts": "2026-08-29T00:15:05.179366046Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "wave": 1,
+      "task": 12,
+      "title": "Body path interpolated unquoted in the same shell command whose title is carefully quoted",
+      "detail": "`gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` quotes the title (via singleQuoted/PRTitleQuoted, added specifically because a shell would otherwise split the command on spaces) but leaves `--body-file {{.PRBodyPath}}` bare. PRBodyPath is finish.PRPath(bdir), an absolute path under the workspace/repo root, which can contain spaces just as much as any other filesystem path — the exact risk internal/cli/archive.go's shellQuote (used for discardSweep's `git clean -fd -- '\u003crel\u003e'`) exists to guard against ('a worktree path is whatever the user's filesystem says — a space in it would otherwise split the command into arguments'). brief.go:279-280 asserts PRBodyPath is safe to interpolate bare 'since it is takt's own \u003cbundle\u003e/finish/pr.md', but that reasoning is exactly what shellQuote's own doc comment rejects for repo/bundle-relative paths. The same command should quote both arguments.",
+      "source": "internal",
+      "ts": "2026-08-29T00:15:05.179366247Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 300,
+      "wave": 1,
+      "task": 12,
+      "title": "Malformed external bundles receive impossible Git recovery advice",
+      "detail": "External bundles are explicitly supported and are not committed to Git, but factsHint always tells users with an unreadable finish/goals.json to “restore it from git.” The failure correctly blocks and names the file, but the recovery guidance is invalid when ws.Dir.InRepo is false. Use repository-aware guidance, such as restoring from Git only for in-repository bundles and repairing/restoring the named file otherwise.",
+      "source": "approve",
+      "ts": "2026-08-29T00:15:05.192824398Z"
     }
   ]
 }

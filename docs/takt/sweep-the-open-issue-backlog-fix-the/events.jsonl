@@ -129,3 +129,6 @@
 {"ts":"2026-08-28T23:14:23.051714237Z","type":"wave_closed","data":{"attempt":3,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[12],"rework":[13],"sha":"","wave":1}}
 {"ts":"2026-08-28T23:14:35.673776281Z","type":"gate_opened","data":{"gate":"review_error"}}
 {"ts":"2026-08-29T00:12:38.918432695Z","type":"gate_answered","data":{"choice":"retry","gate":"review_error"}}
+{"ts":"2026-08-29T00:15:05.195225189Z","type":"wave_closed","data":{"attempt":3,"blocked":[],"committed":false,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[13],"sha":"","wave":1}}
+{"ts":"2026-08-29T00:15:14.643380092Z","type":"gate_opened","data":{"gate":"wave_failures"}}
+{"ts":"2026-08-29T00:56:22.372946768Z","type":"gate_answered","data":{"choice":"retry","gate":"wave_failures"}}
