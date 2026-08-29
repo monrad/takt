@@ -1,0 +1,12 @@
+# Review: sweep-the-open-issue-backlog-fix-the task 2 — approve
+
+The implementation matches the task requirements, preserves non-error behavior, and adds appropriate end-to-end coverage.
+
+
+_copilot / gpt-5.6-sol_
+
+## Internal findings (confirmed)
+
+- [lens:tests] minor internal/cli/facts.go:143 — PlanGate.Reason wiring only exercised indirectly, not through gatherGateFacts: Both SpecGate and PlanGate literals in gatherGateFacts gain `Reason: s.Reason` (lines 135-137 and 143-145). The spec-gate branch is covered end-to-end by TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt (internal/cli/cmd_answer_retry_test.go), which plants a real error receipt and drives it through gate.Compute → gatherGateFacts → decide → question. The plan-gate branch's Reason threading is only checked via decide_test.go's TestTheGateReviewAskCarriesTheReceiptsReason/plan subtest, which constructs `decide.GateStatus{Verdict: "error", Reason: "x"}` directly and never calls gatherGateFacts or gate.Compute — so a bug specifically in facts.go's plan-gate literal (e.g. a typo omitting `Reason: s.Reason`) would not be caught by any test.
+- [lens:consistency] minor internal/decide/questions.go:166 — Two near-identical 'review errored, retry it' options use different verbs: The new questionGateReviewErrored's retry option is labelled "Re-run the review (Recommended)" (questions.go:166), while the pre-existing questionReviewError (task-review-errored-during-close-wave gate, questions.go:325) uses "Retry the review (Recommended)" for the same underlying concept (a review that errored, offering to run it again). Both use choiceRetry and both are the sole recommended option for an errored review; the label text should match or the divergence should be explained, since a user comparing the two gates has no way to tell the wording difference means anything.
+- [lens:tests] minor internal/decide/questions.go:408 — Adopted-branch "pr" recommendation label has no test: questionBranchFinish's adopted-branch early return now does `pr.Label += suffixRecommended` (line 409), a new behaviour — before this diff the adopted branch never marked any option "(Recommended)". TestQuestionBranchFinishRecommendsAChoosableOption (internal/decide/finish_test.go) only covers the non-adopted merge-blocked/merge-allowed cases; the existing adopted-branch assertion in TestBranchFinishOptions (finish_test.go:227-232) checks only option order/choice, never the label text. No test would catch a regression that dropped the suffix or duplicated it in the adopted path.

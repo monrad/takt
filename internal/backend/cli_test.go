@@ -14,7 +14,7 @@ func TestCopilotArgs(t *testing.T) {
 		backend.ReviewRequest{Prompt: "P", RepoRoot: "/r", Model: "gpt-5.6-sol", Effort: "high"},
 	)
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"-p P", "--silent", "--output-format text", "--model gpt-5.6-sol", "--effort high", "-C /r", "--add-dir /r"} {
+	for _, want := range []string{"-p P", "--silent", "--output-format text", "--model gpt-5.6-sol", "--effort high", "-C /r", "--add-dir /r", "--no-custom-instructions"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q in %q", want, joined)
 		}

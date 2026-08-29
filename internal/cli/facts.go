@@ -130,7 +130,9 @@ func gatherGateFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 		if err != nil {
 			return err
 		}
-		f.SpecGate = decide.GateStatus{Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking}
+		f.SpecGate = decide.GateStatus{
+			Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking, Reason: s.Reason,
+		}
 		f.SpecRounds = gate.Rounds(events, gate.Spec)
 	}
 	if st.Config.Review.Plan && f.HasIndex && f.IndexValid && fileNonEmpty(filepath.Join(bdir, "plan.md")) {
@@ -138,7 +140,9 @@ func gatherGateFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 		if err != nil {
 			return err
 		}
-		f.PlanGate = decide.GateStatus{Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking}
+		f.PlanGate = decide.GateStatus{
+			Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking, Reason: s.Reason,
+		}
 	}
 	return nil
 }

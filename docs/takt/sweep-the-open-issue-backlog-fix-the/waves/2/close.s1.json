@@ -1,0 +1,151 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "tasks": [
+    {
+      "task": 9,
+      "status": "done",
+      "files_changed": [
+        "commands/takt.md",
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "hosts/copilot/skills/takt/SKILL.md",
+        "internal/prompt/prompt_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'never `cd` into the bundle' commands/takt.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'never `cd` into the bundle' hosts/copilot/skills/takt/SKILL.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'pr_body_path' commands/takt.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'pr_body_path' hosts/copilot/skills/takt/SKILL.md",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c -e '--fill' commands/takt.md | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c -e '--fill' hosts/copilot/skills/takt/SKILL.md | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c -e '--fill' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'never `cd` into the bundle' internal/prompt/prompt_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/prompt/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/prompt\t1.016s",
+          "elapsed_ms": 1224
+        },
+        {
+          "command": "go test ./... -race -count=1",
+          "exit": 0,
+          "passed": true,
+          "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t1.311s\nok  \tgithub.com/monrad/takt/internal/brief\t1.010s\nok  \tgithub.com/monrad/takt/internal/bundle\t1.039s\nok  \tgithub.com/monrad/takt/internal/cli\t6.650s\nok  \tgithub.com/monrad/takt/internal/config\t1.012s\nok  \tgithub.com/monrad/takt/internal/decide\t1.014s\nok  \tgithub.com/monrad/takt/internal/doctor\t1.034s\nok  \tgithub.com/monrad/takt/internal/finish\t1.017s\nok  \tgithub.com/monrad/takt/internal/gate\t1.027s\nok  \tgithub.com/monrad/takt/internal/gitx\t6.555s\nok  \tgithub.com/monrad/takt/internal/goals\t1.011s\nok  \tgithub.com/monrad/takt/internal/hosts\t1.009s\nok  \tgithub.com/monrad/takt/internal/op\t1.011s\nok  \tgithub.com/monrad/takt/internal/plan\t1.028s\nok  \tgithub.com/monrad/takt/internal/prompt\t1.019s\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t1.019s\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t1.020s\nok  \tgithub.com/monrad/takt/internal/version\t1.010s\nok  \tgithub.com/monrad/takt/internal/wave\t1.526s",
+          "elapsed_ms": 6909
+        },
+        {
+          "command": "golangci-lint run ./...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 404
+        },
+        {
+          "command": "task hosts:check",
+          "exit": 0,
+          "passed": true,
+          "tail": "task: [hosts:check] go run ./internal/tools/hostgen --check",
+          "elapsed_ms": 61
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The change matches the task: both host prompts contain identical push_pr guidance and the absolute-path invariant, design §7.5 documents the new title/body inputs with no --fill, and the cross-host test pins both required clauses.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+          "line": 855,
+          "title": "Design doc §7.5 change has zero automated test coverage",
+          "detail": "No test in the repository loads or asserts against docs/superpowers/specs/2026-08-24-takt-design.md (confirmed by search — only internal/prompt/prompt_test.go covers commands/takt.md and hosts/copilot/skills/takt/SKILL.md). Task 9 item (3) requires this file's `gh pr create --base \u003cbase\u003e --fill` to become the title/body-file form, but that edit is verified only by manual/reviewer inspection, not by any test — so a stale re-edit of this file later would go undetected.",
+          "lenses": [
+            "tests"
+          ]
+        },
+        {
+          "severity": "major",
+          "file": "internal/prompt/prompt_test.go",
+          "line": 91,
+          "title": "No regression test asserts `--fill` is gone",
+          "detail": "Task 9 requires 'no `--fill` remains in either' (commands/takt.md, hosts/copilot/skills/takt/SKILL.md) and 'no `--fill` remains in the file' (docs/superpowers/specs/2026-08-24-takt-design.md). The new crossHostInvariants entries (lines 91-94) only assert the new text is present via `mustContain`; nothing asserts `--fill` is absent from the op-table `run` bullet in either prompt file or from design doc §7.5. A future edit (e.g. a bad merge that restores `gh pr create --base \u003cbase\u003e --fill` alongside the new text) would pass every existing test. Compare internal/brief/brief_test.go:180 and internal/cli/finish_test.go:583,634-635, which do assert `--fill` absence for the Go-generated op instructions — the prose files got no equivalent negative check.",
+          "lenses": [
+            "tests"
+          ]
+        },
+        {
+          "severity": "minor",
+          "file": "internal/prompt/prompt_test.go",
+          "line": 94,
+          "title": "Invariant-bullet placement (\"immediately after\") is unverified",
+          "detail": "Task 9 item (2) specifies the new bundle-inspection bullet must be inserted 'immediately after' the `state.json`/`events.jsonl` bullet in both files' Invariants sections. `mustContain` (line 161) only checks substring presence anywhere in the section text, so the ordering requirement isn't pinned by TestPromptInvariantsReadTheSameOnEveryHost — a later reorder that leaves the bullet elsewhere in the section would still pass.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    }
+  ],
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "commit_sha": "6a4ea6e152ec3668b097841a56c0cbe26724516b",
+  "closed_at": "2026-08-29T01:27:02.900759173Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

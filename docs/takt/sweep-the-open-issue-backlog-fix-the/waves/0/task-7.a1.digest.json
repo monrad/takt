@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added `--no-custom-instructions` to `copilotArgs` with an explanatory doc comment, and pinned it in `TestCopilotArgs`; tests and lint pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:29:57.216764699Z"
+}

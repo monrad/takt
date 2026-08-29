@@ -1,0 +1,282 @@
+{
+  "items": [
+    {
+      "gate": "plan",
+      "severity": "blocking",
+      "file": "plan.md",
+      "title": "T10 pins commit-failure behavior opposite to spec section A",
+      "detail": "The spec says any runReview failure leaves the receipt unwritten and the next review re-runs. T10 instead requires a receipt to survive commit failure and the next review to return cached. Revise T10 to remove/rollback the receipt on commit failure, or obtain a spec amendment before execution.",
+      "source": "override",
+      "ts": "2026-08-28T18:00:07.576288815Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "major",
+      "file": "plan.md",
+      "title": "T1 does not verify all seven identity fields",
+      "detail": "TestFollowUpKeyIsInjective only exercises delimiter/quote collisions in file and title. An implementation omitting gate, wave, task, severity, or line could pass all declared tests and collapse unrelated findings. Add table tests mutating each tuple element independently, distinguishing nil wave from wave 0, and proving string trimming normalization.",
+      "source": "override",
+      "ts": "2026-08-28T18:00:07.57628887Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "Two-layers design still documents FollowUp.Wave as a plain int and the file as un-de-duplicated",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and \"Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.\" The diff (task 1, closing #44) changes `Wave` to `*int` (so wave 0 round-trips distinctly from no wave) and makes `AppendFollowUps` idempotent with an upgrade rule. The doc's own phrasing anticipated a later change would supersede this, but as written it now describes a shape and behaviour that no longer exist and isn't flagged as superseded.",
+      "source": "internal",
+      "ts": "2026-08-28T18:57:11.8015554Z"
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/takt/sweep-the-open-issue-backlog-fix-the/logs/wave-0.s1.a1.diff",
+      "line": 1,
+      "title": "Task 5 (goal-assessor citation validation, #24) is entirely absent from the reviewed diff",
+      "detail": "None of task 5's required changes appear anywhere in wave-0.s1.a1.diff: no internal/finish/goals.go CheckCitations addition, no internal/cli/cmd_record.go readVerdicts root-param wiring, no internal/brief/templates/goal-assessor.md grammar update, and neither new test file (internal/finish/goals_test.go additions, internal/cli/citations_test.go) is present. Requirement coverage for task 5 is 0% in this diff. (For context: docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json records the task-5 attempt as status \"blocked\" — the implementer reports the core work complete but blocked on a pre-existing fixture in the undeclared file internal/cli/cmd_record_test.go citing a.go:1 in a repo with no a.go — which is presumably why it did not land in this wave's diff. The corresponding code does already exist in the working tree at internal/finish/goals.go:142 (CheckCitations) and internal/cli/cmd_record.go:222, but that is not part of the diff being reviewed here and the task is not marked done.)",
+      "source": "internal",
+      "ts": "2026-08-28T18:57:11.801555597Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 143,
+      "task": 2,
+      "title": "PlanGate.Reason wiring only exercised indirectly, not through gatherGateFacts",
+      "detail": "Both SpecGate and PlanGate literals in gatherGateFacts gain `Reason: s.Reason` (lines 135-137 and 143-145). The spec-gate branch is covered end-to-end by TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt (internal/cli/cmd_answer_retry_test.go), which plants a real error receipt and drives it through gate.Compute → gatherGateFacts → decide → question. The plan-gate branch's Reason threading is only checked via decide_test.go's TestTheGateReviewAskCarriesTheReceiptsReason/plan subtest, which constructs `decide.GateStatus{Verdict: \"error\", Reason: \"x\"}` directly and never calls gatherGateFacts or gate.Compute — so a bug specifically in facts.go's plan-gate literal (e.g. a typo omitting `Reason: s.Reason`) would not be caught by any test.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094471Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 166,
+      "task": 2,
+      "title": "Two near-identical 'review errored, retry it' options use different verbs",
+      "detail": "The new questionGateReviewErrored's retry option is labelled \"Re-run the review (Recommended)\" (questions.go:166), while the pre-existing questionReviewError (task-review-errored-during-close-wave gate, questions.go:325) uses \"Retry the review (Recommended)\" for the same underlying concept (a review that errored, offering to run it again). Both use choiceRetry and both are the sole recommended option for an errored review; the label text should match or the divergence should be explained, since a user comparing the two gates has no way to tell the wording difference means anything.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094772Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 408,
+      "task": 2,
+      "title": "Adopted-branch \"pr\" recommendation label has no test",
+      "detail": "questionBranchFinish's adopted-branch early return now does `pr.Label += suffixRecommended` (line 409), a new behaviour — before this diff the adopted branch never marked any option \"(Recommended)\". TestQuestionBranchFinishRecommendsAChoosableOption (internal/decide/finish_test.go) only covers the non-adopted merge-blocked/merge-allowed cases; the existing adopted-branch assertion in TestBranchFinishOptions (finish_test.go:227-232) checks only option order/choice, never the label text. No test would catch a regression that dropped the suffix or duplicated it in the adopted path.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094815Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/doctor/doctor_test.go",
+      "line": 438,
+      "task": 3,
+      "title": "Tests do not assert the complete finding-level sequence",
+      "detail": "reviewRecordLevel returns one matching level, so duplicate or additional review-record findings could pass. Assert levels(fs, \"review-record\") equals exactly [WARN] or [PASS] as specified.",
+      "source": "approve",
+      "ts": "2026-08-28T19:00:09.364711005Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "§5.4 still documents FollowUp.Wave as a plain int and the carry as un-de-duplicated, both now false",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and (line 361-362) `Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.` This wave's task 1 changes exactly that: `internal/gate/followup.go` now declares `Wave *int` (nil for a gate follow-up, \u0026n for wave n, so wave 0 serialises as \"wave\": 0) and `AppendFollowUps` is now idempotent with a Key()-based upgrade rule (approve→override) — i.e. #44 is resolved, not left untouched. The new code comment on the Wave/Task fields even cites this same '§5.4' as its rationale, so the doc it points to now contradicts the shape it documents. No task in this wave updates the two-layers design doc, and it is still an actively cross-referenced document (2026-08-24-takt-design.md links '(two-layers design §5.4)' and similar in several places), so a future reader following that citation is told the wrong field type and the wrong de-duplication story.",
+      "source": "internal",
+      "ts": "2026-08-28T20:07:19.406247666Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 202,
+      "task": 6,
+      "title": "Newline-flattening fix applied to PriorFindingLines but not to its twin CandidateLines",
+      "detail": "This diff adds `lineSafe` to collapse newlines in PriorFindingLines' free-text `f.Detail` before rendering one-finding-per-line (brief.go:244), with a doc comment explaining that an unflattened multi-line Detail would 'arrive as several [findings]' to the reviewing agent. CandidateLines (brief.go:202-208), a few lines above in the same file, renders VerifyCandidate.Detail — the same kind of free-form, agent-authored prose (from lens-review findings, wired through cmd_next.go:884) — in the exact same one-per-line format, with the exact same unflattened `c.Detail`. The identical hazard this diff explicitly fixes in one place is left live in the structurally identical sibling function it did not touch.",
+      "source": "internal",
+      "ts": "2026-08-28T20:10:20.203231781Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_status.go",
+      "line": 178,
+      "task": 4,
+      "title": "plannedTasks' materialised-tasks branch is never verified",
+      "detail": "plannedTasks(bdir, st) short-circuits to 0 when len(st.Tasks) \u003e 0 (cmd_status.go:178-180), which is exactly the state a normal run is in once it leaves the plan phase (plan.index.json is never deleted after materialiseTasks, so it still sits on disk in execute/finish phase). No test in this diff or pre-existing exercises this branch with an assertion on the tasks/planned output: the new TestStatusPlanPhaseSaysPlannedAndConfirmedClauses only covers the plan-phase case (st.Tasks empty, index present, planned=4); the pre-existing reviewerRun fixture (record_reviewer_test.go:23-49) does set st.Tasks non-empty alongside a real plan.index.json and is used by status tests such as TestStatusInternalReviewSkipped/TestStatusInternalReviewZeroCandidatesNotVerifyPending, but those tests never assert on the 'tasks' or 'planned' fields — so they exercise the line without verifying it. If the early return were dropped (e.g. plannedTasks always parsed the index and returned len(idx.Tasks) whenever it succeeded), every execute/finish-phase status call for a run whose plan.index.json is still on disk would wrongly report 'N planned (not yet materialised)' instead of real task counts, and no test would fail.",
+      "source": "internal",
+      "ts": "2026-08-28T20:33:46.056161034Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/select.go",
+      "line": 122,
+      "task": 4,
+      "title": "bundleHint assumes the created-branch convention, ignoring the adopted-branch rule documented next to it",
+      "detail": "bundleHint's only positive branch guess is `\"takt/\"+slug` (select.go:122-123), and its doc comment states flatly that `takt init` commits the bundle on takt/\u003cslug\u003e. But cmd_init.go's chooseBranch (internal/cli/cmd_init.go:204-206, spec D9) documents two branch outcomes: on the default branch init creates takt/\u003cslug\u003e, but on any other branch init adopts the current branch (bi.adopted=true) and commits the bundle there instead — under whatever name that branch has, not takt/\u003cslug\u003e. For a run initialised via the adopted path, switching away from that branch and running `status`/`unlock` will fail loadBundle with fs.ErrNotExist, bundleHint's BranchExists(ctx, \"takt/\"+slug) check will correctly return false (no such branch was ever created), and the code falls through to \"no run named \u003cslug\u003e under \u003cbase\u003e; check the slug or pass --dir\" — telling the user no such run exists when it does, just on a differently-named adopted branch. No existing helper maps a slug back to its actual (possibly adopted) branch, so this is a real gap between the new hint logic and the branch rule the surrounding code already knows about, not just an untested edge case.",
+      "source": "internal",
+      "ts": "2026-08-28T20:33:46.056161214Z"
+    },
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "wave": 1,
+      "title": "Claude Code command doc still tells the host to `gh pr create --fill`",
+      "detail": "Same staleness as the Copilot skill: the `run` row's push_pr example still reads \"then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", unchanged by this diff even though the actual op instructions (and the branch_finish option description in internal/decide/questions.go) now use `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the op's `pr_title`/`pr_body_path` inputs.",
+      "source": "internal",
+      "ts": "2026-08-28T21:15:35.60451429Z"
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "wave": 1,
+      "title": "Copilot skill still tells the host to `gh pr create --fill`",
+      "detail": "This diff replaces `gh pr create --base \u003cbase\u003e --fill` with a run-generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` everywhere it is produced (run-push_pr.md template, the branch_finish `pr` option's Description in internal/decide/questions.go, cmd_next.go's preparePushPR). The Copilot skill's op-table row for `run`/`push_pr` still spells out the literal old command: \"push_pr (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`)\". A host following this contract literally would run the old `--fill` command, discarding the run-derived title/body the rest of the diff exists to produce.",
+      "source": "internal",
+      "ts": "2026-08-28T21:15:35.604514509Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_review.go",
+      "line": 389,
+      "wave": 1,
+      "task": 10,
+      "title": "priorFindingsForScopedPass's doc comment now contradicts the struct it sits above",
+      "detail": "The comment says \"the findings file carries no hash and no pass identity, so pairing it with the receipt was convention, not a checkable invariant\" (lines 388-390), but this same diff adds exactly that — Hash and Round — to reviews/\u003cgate\u003e.json via the new reviewRecord type documented two paragraphs above (lines 359-365: \"tagged with the gate hash it reviewed and the round it was\"). The stated justification for reading both the verdict and the blocking flag from one artifact is now factually wrong about the artifact's own shape, even though the conclusion (read from reviews/\u003cgate\u003e.json, not the receipt) may still be correct for other reasons.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534633Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 211,
+      "wave": 1,
+      "task": 10,
+      "title": "RemoveReceipt's not-exist branch has no direct or indirect test coverage",
+      "detail": "RemoveReceipt (gate.go:211) is new and has two branches: delete an existing receipt, or treat fs.ErrNotExist as success. Every test that calls `takt review --force` (TestForcedReviewFailureLeavesNoStaleReceipt and TestFindingsFileCarriesTheGateHashAndRound in internal/cli/cmd_review_failure_test.go) does so only after a prior successful review already wrote a receipt, so the deletion always removes an existing file. No test — neither a direct unit test in internal/gate/gate_test.go nor a CLI test doing `review \u003cgate\u003e --force` as the very first review of a gate — exercises the fs.ErrNotExist-is-ok branch, even though that is a realistic first-use case for --force.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534881Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 212,
+      "wave": 1,
+      "task": 10,
+      "title": "RemoveReceipt uses fs.ErrNotExist where the rest of gate.go uses os.ErrNotExist",
+      "detail": "ReadReceipt (line 179) and artifactHash (line 125) both check errors.Is(err, os.ErrNotExist) for the identical sentinel. The new RemoveReceipt checks errors.Is(err, fs.ErrNotExist) instead, which required adding a new \"io/fs\" import solely for a spelling that os.ErrNotExist (== fs.ErrNotExist) already covers via the package's existing \"os\" import. Minor departure from the file's own established convention.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534971Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_review_test.go",
+      "line": 67,
+      "wave": 1,
+      "task": 10,
+      "title": "Legacy coverage was added as a new top-level test",
+      "detail": "The task says every new test belongs in cmd_review_failure_test.go and asks for the legacy-file scenario as an added case in the existing round-trip test. Keep this package-private coverage in cmd_review_test.go, but fold it into TestWriteResultJSONRoundTripsFindings rather than introducing a separate test function.",
+      "source": "approve",
+      "ts": "2026-08-28T21:21:28.785628158Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 1,
+      "wave": 1,
+      "task": 11,
+      "title": "Retro instructions still say \"dispatch→commit timings\" after WaveTiming became dispatch→close",
+      "detail": "Task 11 changes WaveTiming from one entry per committed attempt to one entry per dispatched attempt that *closed*, with `closed_at` always present and `committed`/`committed_at` only when the attempt actually committed (internal/finish/retro.go's WaveTiming doc comment now reads \"one per dispatched attempt that closed\"). The retro-writing op's own instructions, run-retro.md line 1, still describe the inputs as \"per-wave dispatch→commit timings\" — unchanged except for the review-findings clause the task explicitly edited. A reworked attempt's timing entry has no `committed_at` at all, which the stale phrasing does not prepare the retro-writing agent for.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728647Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 163,
+      "wave": 1,
+      "task": 11,
+      "title": "reviewFindingsOf's summation is only ever exercised with one reviewed task",
+      "detail": "reviewFindingsOf sums len(tr.Review.Findings) across every task in the close. The only test that reaches it, TestWaveClosedEventCarriesSliceAndReviewFindings (internal/cli/close_events_test.go), bumps a single task (task 3) with one finding, so the accumulation (n += ...) across two-or-more reviewed tasks in the same close is never proved. TestRetroInputsCountEveryReviewOnce (internal/finish/retro_test.go) tests the downstream retro math but constructs its wave_closed events with a hard-coded review_findings value rather than calling reviewFindingsOf, so it doesn't cover this function either. A silent regression here (e.g. assignment instead of accumulation) would produce quietly wrong review_findings counts in the retro with no failing test.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728768Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro.go",
+      "line": 118,
+      "wave": 1,
+      "task": 11,
+      "title": "retro.go re-declares gate.EvReviewed under a different local name",
+      "detail": "evGateReviewed = \"gate_reviewed\" duplicates the exported gate.EvReviewed (internal/gate/gate.go:47, also \"gate_reviewed\") even though retro.go already imports internal/gate (used elsewhere in the file, e.g. gate.FollowUp, gate.SourceApprove). Task 10's cmd_review.go uses gate.EvReviewed directly for the same event type; task 11 instead re-declares the same string under a new unexported name rather than reusing the existing constant it could import.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728842Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 275,
+      "wave": 1,
+      "task": 12,
+      "title": "singleQuoted duplicates the existing shellQuote escaping algorithm",
+      "detail": "internal/cli/archive.go:353-355 already defines `shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` for exactly this POSIX single-quote close-escape-reopen technique, with a comment explaining the same rationale repeated almost verbatim in the new singleQuoted's doc comment (internal/brief/brief.go:265-274). The new PRTitleQuoted (internal/brief/brief.go:275-281) reimplements the same one-line escaping rule in a different package instead of sharing it, so a future fix or hardening of the shell-escaping rule (e.g. for control characters) has two independent copies to update.",
+      "source": "internal",
+      "ts": "2026-08-29T00:15:05.179366046Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "wave": 1,
+      "task": 12,
+      "title": "Body path interpolated unquoted in the same shell command whose title is carefully quoted",
+      "detail": "`gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` quotes the title (via singleQuoted/PRTitleQuoted, added specifically because a shell would otherwise split the command on spaces) but leaves `--body-file {{.PRBodyPath}}` bare. PRBodyPath is finish.PRPath(bdir), an absolute path under the workspace/repo root, which can contain spaces just as much as any other filesystem path — the exact risk internal/cli/archive.go's shellQuote (used for discardSweep's `git clean -fd -- '\u003crel\u003e'`) exists to guard against ('a worktree path is whatever the user's filesystem says — a space in it would otherwise split the command into arguments'). brief.go:279-280 asserts PRBodyPath is safe to interpolate bare 'since it is takt's own \u003cbundle\u003e/finish/pr.md', but that reasoning is exactly what shellQuote's own doc comment rejects for repo/bundle-relative paths. The same command should quote both arguments.",
+      "source": "internal",
+      "ts": "2026-08-29T00:15:05.179366247Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 300,
+      "wave": 1,
+      "task": 12,
+      "title": "Malformed external bundles receive impossible Git recovery advice",
+      "detail": "External bundles are explicitly supported and are not committed to Git, but factsHint always tells users with an unreadable finish/goals.json to “restore it from git.” The failure correctly blocks and names the file, but the recovery guidance is invalid when ws.Dir.InRepo is false. Use repository-aware guidance, such as restoring from Git only for in-repository bundles and repairing/restoring the named file otherwise.",
+      "source": "approve",
+      "ts": "2026-08-29T00:15:05.192824398Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 855,
+      "wave": 2,
+      "task": 9,
+      "title": "Design doc §7.5 change has zero automated test coverage",
+      "detail": "No test in the repository loads or asserts against docs/superpowers/specs/2026-08-24-takt-design.md (confirmed by search — only internal/prompt/prompt_test.go covers commands/takt.md and hosts/copilot/skills/takt/SKILL.md). Task 9 item (3) requires this file's `gh pr create --base \u003cbase\u003e --fill` to become the title/body-file form, but that edit is verified only by manual/reviewer inspection, not by any test — so a stale re-edit of this file later would go undetected.",
+      "source": "internal",
+      "ts": "2026-08-29T01:27:33.273711824Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 91,
+      "wave": 2,
+      "task": 9,
+      "title": "No regression test asserts `--fill` is gone",
+      "detail": "Task 9 requires 'no `--fill` remains in either' (commands/takt.md, hosts/copilot/skills/takt/SKILL.md) and 'no `--fill` remains in the file' (docs/superpowers/specs/2026-08-24-takt-design.md). The new crossHostInvariants entries (lines 91-94) only assert the new text is present via `mustContain`; nothing asserts `--fill` is absent from the op-table `run` bullet in either prompt file or from design doc §7.5. A future edit (e.g. a bad merge that restores `gh pr create --base \u003cbase\u003e --fill` alongside the new text) would pass every existing test. Compare internal/brief/brief_test.go:180 and internal/cli/finish_test.go:583,634-635, which do assert `--fill` absence for the Go-generated op instructions — the prose files got no equivalent negative check.",
+      "source": "internal",
+      "ts": "2026-08-29T01:27:33.273712786Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 94,
+      "wave": 2,
+      "task": 9,
+      "title": "Invariant-bullet placement (\"immediately after\") is unverified",
+      "detail": "Task 9 item (2) specifies the new bundle-inspection bullet must be inserted 'immediately after' the `state.json`/`events.jsonl` bullet in both files' Invariants sections. `mustContain` (line 161) only checks substring presence anywhere in the section text, so the ordering requirement isn't pinned by TestPromptInvariantsReadTheSameOnEveryHost — a later reorder that leaves the bullet elsewhere in the section would still pass.",
+      "source": "internal",
+      "ts": "2026-08-29T01:27:33.273712816Z"
+    }
+  ]
+}

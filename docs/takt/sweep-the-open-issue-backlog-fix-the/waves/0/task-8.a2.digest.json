@@ -1,0 +1,9 @@
+{
+  "task": 8,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Named `.goreleaser.yaml` as the quarantine hook's source in the README and addressed the four carried doc findings — §7.4's stale spec-excerpt illustration, a new §5.2 `gate_review` entry covering the error-path `retry`, §9's `Receipt.Reason`, §11's seven-check count plus `review-record` row, and the fixed-point design's `error` verdict row and edge case — while also fixing a line-initial ```json fence attempt 1 left in §8.2.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T19:44:57.182515859Z"
+}

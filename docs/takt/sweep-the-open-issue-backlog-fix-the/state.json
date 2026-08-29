@@ -1,0 +1,373 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "sweep-the-open-issue-backlog-fix-the",
+  "topic": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run — #53 (follow-ups.json omitempty drops wave 0), #44 (follow-ups identity/de-dup), #43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json), #23 (retro-inputs review_findings spans gate reviews and every attempt), #25 (wave_timings per dispatched attempt), #33 (status during the plan phase says planned/not materialised and confirmed clauses), #8 (unlock/status --slug hint when the bundle lives on another branch), #24 (goal-assessor citations validated as path:line inside a real file), #36 (PR title and body from the spec and goals rather than --fill), #26 (branch_finish does not recommend a merge it has disabled), #45 and #51 (the two polish checklists, minus the user-directory lens override), #54 (design §4.6 lock_taken wording by holder), #37 (skill invariant: absolute paths, never cd into the bundle), #35 (retro path in the plan doc), #18 (README macOS quarantine note), #49 item 1 (copilot --no-custom-instructions, if the CLI supports it). #34, #27 and #7 are already fixed in commit 4c5026d on this branch.",
+  "phase": "finish",
+  "created_at": "2026-08-28T14:57:42.802120617Z",
+  "branch": "monrad/more-fixes",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "55e44319c248184b6004cff86f7e380c1f359c13",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:1f58344cb7fa49aea53663b4c72a2a667efc81d27ae3e6f19439a3f676468f53",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/gate/followup.go",
+        "internal/gate/followup_test.go",
+        "internal/cli/record_reviewer.go",
+        "internal/cli/cmd_close_wave.go",
+        "internal/cli/cmd_review.go",
+        "internal/cli/close_internal_test.go",
+        "internal/cli/record_reviewer_test.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 1,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Removed the unreachable json.Marshal fallback in FollowUp.Key() per the review finding; the rest of the wave-pointer, idempotent-append and single-write-findings work was already in place, and all verify commands (tests, lint, greps) now pass — the earlier failure came from another task's citation change that has since been fixed.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T19:35:30.369176487Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/gate/gate.go",
+        "internal/decide/decide.go",
+        "internal/decide/questions.go",
+        "internal/decide/decide_test.go",
+        "internal/decide/finish_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/cmd_answer.go",
+        "internal/cli/cmd_answer_retry_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "The errored gate review now carries the backend's reason from receipt to question and offers retry/accept/stop instead of revise, `takt answer --choice retry` clears the gate without writing anything, branch_finish recommends the first enabled option (pr when merge is blocked), and questions.go says \"twelve ids\".",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T18:29:57.205627998Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/doctor/review_record.go",
+        "internal/doctor/doctor.go",
+        "internal/doctor/doctor_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added the review-record doctor check (WARN on a gate/findings-file hash mismatch, PASS otherwise), wired it into Default, and added its two tests; all specified verify commands pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T18:29:57.209311164Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/cli/cmd_status.go",
+        "internal/cli/select.go",
+        "internal/cli/cmd_status_test.go",
+        "internal/cli/cmd_unlock_test.go"
+      ],
+      "class": "implement",
+      "attempt": 3,
+      "last_digest": {
+        "task": 4,
+        "attempt": 3,
+        "status": "done",
+        "summary": "Made the alignment summary total over unknown verdict words (so `alignment:` is provably never bare) with a test that drives the recorder, and removed the unreachable `ws.Repo` nil guard in `bundleHint`.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T20:22:07.892662888Z"
+      }
+    },
+    {
+      "id": 5,
+      "wave": 0,
+      "status": "waived",
+      "files": [
+        "internal/finish/goals.go",
+        "internal/finish/goals_test.go",
+        "internal/cli/cmd_record.go",
+        "internal/cli/citations_test.go",
+        "internal/brief/templates/goal-assessor.md"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 5,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Goal-assessor citations are now parsed as `path:line`/`path:start-end` and validated for repo-relative containment (symlink-resolved), regular-file-ness and line range, with `readVerdicts` rejecting such a reply the way any unusable reply is rejected; tests and lint are green.",
+        "blockers": "none — the one deviation from the brief is that the requested `//nolint:gosec // G304` directive was omitted because gosec does not fire there and nolintlint fails the build on the unused directive; the reasoning is kept as a prose comment.",
+        "model": "opus",
+        "recorded_at": "2026-08-28T19:42:29.693864802Z"
+      }
+    },
+    {
+      "id": 6,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/brief/brief.go",
+        "internal/brief/brief_test.go",
+        "internal/brief/templates/implementer.md",
+        "internal/brief/templates/review-spec-followup.md",
+        "internal/cli/launch.go",
+        "internal/cli/task_brief_test.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 6,
+        "attempt": 2,
+        "status": "done",
+        "summary": "The task's changes were already complete in the tree from attempt 1; attempt 1 failed on another task's fixture, since fixed on the branch, and all verify commands — six greps, race tests, and lint — now pass.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T19:42:29.697850621Z"
+      }
+    },
+    {
+      "id": 7,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/backend/copilot.go",
+        "internal/backend/cli_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 7,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Added `--no-custom-instructions` to `copilotArgs` with an explanatory doc comment, and pinned it in `TestCopilotArgs`; tests and lint pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T18:29:57.216764699Z"
+      }
+    },
+    {
+      "id": 8,
+      "wave": 0,
+      "status": "waived",
+      "files": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "docs/superpowers/plans/2026-08-26-takt-hardening.md",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+        "README.md"
+      ],
+      "class": "docs",
+      "attempt": 2,
+      "last_digest": {
+        "task": 8,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Named `.goreleaser.yaml` as the quarantine hook's source in the README and addressed the four carried doc findings — §7.4's stale spec-excerpt illustration, a new §5.2 `gate_review` entry covering the error-path `retry`, §9's `Receipt.Reason`, §11's seven-check count plus `review-record` row, and the fixed-point design's `error` verdict row and edge case — while also fixing a line-initial ```json fence attempt 1 left in §8.2.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T19:44:57.182515859Z"
+      }
+    },
+    {
+      "id": 9,
+      "wave": 2,
+      "status": "done",
+      "files": [
+        "commands/takt.md",
+        "hosts/copilot/skills/takt/SKILL.md",
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "internal/prompt/prompt_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 9,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Updated the push_pr command wording (title/body-file instead of --fill) and added the never-cd-into-the-bundle invariant in commands/takt.md, SKILL.md, the design doc §7.5, and pinned both shared sentences in prompt_test.go's crossHostInvariants.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T01:20:52.89104227Z"
+      }
+    },
+    {
+      "id": 10,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/gate/gate.go",
+        "internal/cli/cmd_review.go",
+        "internal/cli/cmd_answer.go",
+        "internal/cli/cmd_review_test.go",
+        "internal/cli/cmd_review_failure_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 10,
+        "attempt": 1,
+        "status": "done",
+        "summary": "runReview now reads events for the round, retires the prior receipt on `--force` before the backend call, and writes findings → carry → checked `gate_reviewed` event (with reason) → receipt → commit; `reviews/\u003cgate\u003e.json` carries `hash` and `round` via a new `reviewRecord`, with five new failure-path tests and the two comment rewrites.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T20:45:41.167052722Z"
+      }
+    },
+    {
+      "id": 11,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/wave/close.go",
+        "internal/cli/cmd_close_wave.go",
+        "internal/finish/retro.go",
+        "internal/finish/retro_test.go",
+        "internal/brief/templates/run-retro.md",
+        "internal/cli/close_events_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 11,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Retro inputs now count gate and task review findings once each from the event log (split as gate_review_findings/task_review_findings) and emit one wave timing per dispatched attempt that closed, with closed_at, committed and an omitzero committed_at; wave_closed carries slice and review_findings, which the close record also stores.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T20:45:55.6878276Z"
+      }
+    },
+    {
+      "id": 12,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/finish/pr.go",
+        "internal/finish/pr_test.go",
+        "internal/brief/brief.go",
+        "internal/brief/brief_test.go",
+        "internal/brief/templates/run-push_pr.md",
+        "internal/decide/questions.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go",
+        "internal/cli/brief_stable_test.go"
+      ],
+      "class": "implement",
+      "attempt": 3,
+      "last_digest": {
+        "task": 12,
+        "attempt": 3,
+        "status": "done",
+        "summary": "Corrected the push_pr template to the mandated `--body-file {{.PRBodyPath}}` form, fixed the malformed-record hint to stop advising a delete that leaves goals_checked_sha intact, made waivers key on map presence, unwrapped the doubled goals.md error, and added coverage for preparePushPR's own ReadGoals branch and the pr option's description.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-28T22:47:36.044443239Z"
+      }
+    },
+    {
+      "id": 13,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/backend/fake.go",
+        "internal/gate/gate_test.go",
+        "internal/cli/oploop_test.go",
+        "internal/cli/close_internal_test.go",
+        "internal/cli/record_reviewer_test.go",
+        "internal/cli/cmd_answer_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 4,
+      "last_digest": {
+        "task": 13,
+        "attempt": 4,
+        "status": "done",
+        "summary": "Reworked the calls-log tests so the blind-review case asserts a single total reviewer call, added a cli test that drives the recording hook's failure branch, and de-duplicated the call-log parsing into shared helpers.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T01:06:23.441138245Z"
+      }
+    },
+    {
+      "id": 14,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "agents/goal-assessor.md",
+        "agents/implementer.md",
+        "hosts/copilot/agents/takt-goal-assessor.agent.md",
+        "hosts/copilot/agents/takt-implementer.agent.md"
+      ],
+      "class": "bounded",
+      "attempt": 2,
+      "last_digest": {
+        "task": 14,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Updated agents/goal-assessor.md and agents/implementer.md per spec §E/G, regenerated the two matching hosts/copilot agent files via `task hosts:gen`, and confirmed hosts:check and internal/prompt tests pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-28T19:43:36.96086063Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "770ba26f4b9f2c629bc4a82a235d45de0d566778",
+  "goals_checked_sha": "770ba26f4b9f2c629bc4a82a235d45de0d566778",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-29T01:43:38.990868736Z",
+    "applied": false
+  }
+}

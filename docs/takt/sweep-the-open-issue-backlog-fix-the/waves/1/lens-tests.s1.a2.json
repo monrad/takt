@@ -1,0 +1,42 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:58:14.175461278Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1037,
+      "title": "preparePushPR's own finish.ReadGoals error branch is never exercised by any test",
+      "detail": "The task requires that ANY error from `finish.ReadGoals(r.bdir)` inside preparePushPR (line 1037-1039) be returned. But `goalFacts` (internal/cli/finish_facts.go:186) already reads finish/goals.json unconditionally during fact-gathering, earlier in the same `next` call, and its failure is what actually surfaces (via factsHint) before decide ever produces the push_pr op. The test that appears to target this branch, TestPushPRBodyListsGoalVerdicts's third failure case (internal/cli/finish_test.go:668-680, corrupting finish/goals.json), explicitly acknowledges in its own comment that the failure comes from fact-gathering, not from this line ('It is the finish facts that decode the record on the way to this op, so they are what fails'). No test drives execution to a state where fact-gathering succeeds but this line's own ReadGoals call fails, so the defensive branch the task explicitly required has zero coverage.",
+      "task": 12
+    },
+    {
+      "severity": "major",
+      "file": "internal/gate/gate_test.go",
+      "line": 162,
+      "title": "TestRevisionEventMalformedDataDoesNotPanic does not actually test a malformed hash field",
+      "detail": "The test's doc comment claims 'a non-string gate and a non-string hash must fail the match, not panic', but revised() (internal/gate/gate.go, the EvRevisionAccepted path) filters on the 'gate' field first and `continue`s the loop when it doesn't match a string ('gate': []any{\"spec\"} fails the type assertion), before ever calling eventString(e, \"hash\") for that event. So the malformed hash value in the fixture (Data: map[string]any{\"gate\": []any{\"spec\"}, \"hash\": map[string]any{}}) is never actually parsed. This differs from its twin, TestOverrideEventMalformedDataDoesNotPanic (gate_test.go:134), whose target code (gate.go:238-239, `Compute`) reads both `gate` and `hash` unconditionally on every iteration before the combined boolean check short-circuits — so that twin does exercise the malformed-hash type assertion, but this new test does not.",
+      "task": 13
+    },
+    {
+      "severity": "major",
+      "file": "internal/gate/gate_test.go",
+      "line": 187,
+      "title": "TestNilSeveritiesIsNotBlocking is a fake test — it cannot fail",
+      "detail": "The test asserts that gate.Compute reports Blocking == false for a Receipt with Severities: nil. The production line under test, `st.Blocking = r.Severities[\"blocking\"] \u003e 0` (internal/gate/gate.go:249), is a plain map key read; in Go, reading a key from a nil map is always safe and returns the zero value, never panics, regardless of any refactor that keeps this shape. The test therefore passes for any correct or incorrect implementation that keeps the same map-lookup pattern, and could only fail if the code were rewritten to something unrelated (e.g. an explicit nil check that panics) — it adds no real regression protection despite the doc comment's 'pins that ... computes Blocking == false rather than panicking on a nil map read' framing.",
+      "task": 13
+    },
+    {
+      "severity": "major",
+      "file": "internal/decide/questions.go",
+      "line": 399,
+      "title": "The rewritten pr option Description (title/body-file wording) has no test coverage",
+      "detail": "The pr option's Description was rewritten from the old `--fill` wording to the new `gh pr create --base \u003cbase\u003e --title '\u003ctitle\u003e' --body-file \u003cpath\u003e` text naming the op's pr_title/pr_body_path inputs (questions.go:399-403) — this is exactly the user-facing text a session reads to know how to open the PR, and the task explicitly required '--fill' be gone from the file. No test in the diff asserts on this Description's content. internal/decide/finish_test.go's branch_finish table test (around line 104-114) only checks the action type and step, never option text, so a regression here (stale flag name, wrong input key, reintroduced --fill) would not be caught by any test.",
+      "task": 12
+    }
+  ]
+}

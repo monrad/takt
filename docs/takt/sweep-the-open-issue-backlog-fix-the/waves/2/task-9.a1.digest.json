@@ -1,0 +1,9 @@
+{
+  "task": 9,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Updated the push_pr command wording (title/body-file instead of --fill) and added the never-cd-into-the-bundle invariant in commands/takt.md, SKILL.md, the design doc §7.5, and pinned both shared sentences in prompt_test.go's crossHostInvariants.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T01:20:52.89104227Z"
+}

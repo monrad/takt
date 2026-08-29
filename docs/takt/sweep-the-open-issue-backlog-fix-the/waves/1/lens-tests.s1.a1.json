@@ -1,0 +1,50 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:07:53.642031989Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1017,
+      "title": "preparePushPR's own ReadGoals error-wrap is never actually exercised by any test",
+      "detail": "preparePushPR (cmd_next.go:1008-1020) calls finish.ReadGoals(r.bdir) a second time and wraps any error as fmt.Errorf(\"%s: %w\", finish.GoalsPath(r.bdir), err) — the behaviour task 12 calls out explicitly (\"an unreadable record is a failure, not not assessed\"). But finish.ReadGoals(bdir) for the same finish/goals.json is already called earlier in the same `next` invocation by goalFacts (internal/cli/finish_facts.go:185-189), from gatherFinishFacts, from gatherFacts, from loop() (cmd_next.go:237-240) — and loop() returns fail() and never reaches decide.Decide/run() if that first call errors. So the malformed-JSON case in TestPushPRBodyListsGoalVerdicts (internal/cli/finish_test.go:661-665, asserting only exit 1 and stderr containing \"JSON\") is satisfied by goalFacts's earlier, unrelated failure — preparePushPR's own error branch at cmd_next.go:1017-1020 is never reached by this test. Deleting that whole `if err != nil { return fmt.Errorf(...) }` check (e.g. replacing with `rec, _ := finish.ReadGoals(r.bdir)`) would not fail any existing test, since for every scenario the tests exercise ReadGoals either succeeds or the run already stopped earlier. The test comment even acknowledges the ambiguity (\"Either way the run stops\") but the assertion doesn't distinguish which code path produced the failure, so it doesn't actually pin the new code.",
+      "task": 12
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 163,
+      "title": "reviewFindingsOf's summation is only ever exercised with one reviewed task",
+      "detail": "reviewFindingsOf sums len(tr.Review.Findings) across every task in the close. The only test that reaches it, TestWaveClosedEventCarriesSliceAndReviewFindings (internal/cli/close_events_test.go), bumps a single task (task 3) with one finding, so the accumulation (n += ...) across two-or-more reviewed tasks in the same close is never proved. TestRetroInputsCountEveryReviewOnce (internal/finish/retro_test.go) tests the downstream retro math but constructs its wave_closed events with a hard-coded review_findings value rather than calling reviewFindingsOf, so it doesn't cover this function either. A silent regression here (e.g. assignment instead of accumulation) would produce quietly wrong review_findings counts in the retro with no failing test.",
+      "task": 11
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 211,
+      "title": "RemoveReceipt's not-exist branch has no direct or indirect test coverage",
+      "detail": "RemoveReceipt (gate.go:211) is new and has two branches: delete an existing receipt, or treat fs.ErrNotExist as success. Every test that calls `takt review --force` (TestForcedReviewFailureLeavesNoStaleReceipt and TestFindingsFileCarriesTheGateHashAndRound in internal/cli/cmd_review_failure_test.go) does so only after a prior successful review already wrote a receipt, so the deletion always removes an existing file. No test — neither a direct unit test in internal/gate/gate_test.go nor a CLI test doing `review \u003cgate\u003e --force` as the very first review of a gate — exercises the fs.ErrNotExist-is-ok branch, even though that is a realistic first-use case for --force.",
+      "task": 10
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 577,
+      "title": "dispatchAgent's hoisted ensureSliceDiff call has no test proving it runs once",
+      "detail": "Task 12(F) hoists r.ensureSliceDiff(ctx) out of the reviewer's render closure in dispatchAgent so the slice diff isn't recomputed on every render (the same #51 problem TestWriteStableBriefRendersOnce pins for writeStableBrief). No comparable test counts ensureSliceDiff invocations or diff-file writes for a reviewer dispatch, so a regression that put the call back inside the closure (or dropped the hoist) would not be caught by any test — it would only cost extra idempotent writes, but the fix itself is otherwise unverified.",
+      "task": 12
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1042,
+      "title": "prGoals's goals.Parse error path is untested",
+      "detail": "prGoals (cmd_next.go:1042) reads goals.md and requires goals.Parse to succeed, returning a wrapped error naming the file on failure. TestPushPRBodyListsGoalVerdicts (internal/cli/finish_test.go) only exercises the missing-file branch (os.ReadFile error, by renaming goals.md away); it never writes a syntactically-invalid goals.md to exercise the goals.Parse failure branch and its error-wrapping.",
+      "task": 12
+    }
+  ]
+}

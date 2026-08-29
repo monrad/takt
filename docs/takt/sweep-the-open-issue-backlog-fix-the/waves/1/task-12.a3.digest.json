@@ -1,0 +1,9 @@
+{
+  "task": 12,
+  "attempt": 3,
+  "status": "done",
+  "summary": "Corrected the push_pr template to the mandated `--body-file {{.PRBodyPath}}` form, fixed the malformed-record hint to stop advising a delete that leaves goals_checked_sha intact, made waivers key on map presence, unwrapped the doubled goals.md error, and added coverage for preparePushPR's own ReadGoals branch and the pr option's description.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T22:47:36.044443239Z"
+}

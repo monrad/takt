@@ -1,0 +1,8 @@
+# Review: plan — rework
+
+T10 contradicts the specified failure semantics, and T1's verification does not protect the full follow-up identity.
+
+- **blocking** plan.md:0 — T10 pins commit-failure behavior opposite to spec section A: The spec says any runReview failure leaves the receipt unwritten and the next review re-runs. T10 instead requires a receipt to survive commit failure and the next review to return cached. Revise T10 to remove/rollback the receipt on commit failure, or obtain a spec amendment before execution.
+- **major** plan.md:0 — T1 does not verify all seven identity fields: TestFollowUpKeyIsInjective only exercises delimiter/quote collisions in file and title. An implementation omitting gate, wave, task, severity, or line could pass all declared tests and collapse unrelated findings. Add table tests mutating each tuple element independently, distinguishing nil wave from wave 0, and proving string trimming normalization.
+
+_copilot / gpt-5.6-sol_

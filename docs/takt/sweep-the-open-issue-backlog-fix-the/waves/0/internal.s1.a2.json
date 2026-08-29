@@ -1,0 +1,178 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T20:07:19.405487831Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 431,
+      "title": "Undocumented, out-of-scope additions to the design spec beyond task 8's brief",
+      "detail": "Task 8's description authorizes exactly 5 edits to this file's declared scope (§4.6 lock_taken-by-holder wording, §8.2 --no-custom-instructions), and plan.index.json's own verify commands for task 8 check only those items plus the plan-doc/fixed-point-doc/README changes. The diff additionally inserts substantial new, unrequested content: a new `gate_review` paragraph describing the `retry` choice on `error` verdicts (line 431-438), a new `reason` field paragraph under §9 (line 992-995), and a new doctor `review-record` check row plus the six→seven check-count change under §11 (lines ~1073, 1090). None of this is mentioned in task 8's brief or covered by its verify greps — it documents behavior/checks not implemented anywhere in this wave's diff (no cmd_answer.go, doctor, or backend changes appear in the diff), so it is unreviewed, unauthorized scope creep injected into a file task 8 is only licensed to touch for its 5 stated edits.",
+      "id": "c1",
+      "task": 8,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "line": 82,
+      "title": "Undocumented, out-of-scope additions to the fixed-point spec beyond task 8's brief",
+      "detail": "Task 8 authorizes only one addition to this file: one sentence after the table in §6 (present and correct). The diff additionally rewrites the §3 verdict table's `error` row (line 82, changing 'unchanged: ask `gate_review`.' to a multi-clause description of the `retry`/`accept`/`stop` choices) and adds a new Edge-cases table row for '`revise` on an `error` spec receipt' (line 142). Neither is requested by task 8's description or its plan.index.json verify commands, and it duplicates/extends the same unauthorized `gate_review`-retry documentation added to the other spec file — content describing a feature not implemented by any code in this wave's diff.",
+      "id": "c2",
+      "task": 8,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "§5.4 still documents FollowUp.Wave as a plain int and the carry as un-de-duplicated, both now false",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and (line 361-362) `Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.` This wave's task 1 changes exactly that: `internal/gate/followup.go` now declares `Wave *int` (nil for a gate follow-up, \u0026n for wave n, so wave 0 serialises as \"wave\": 0) and `AppendFollowUps` is now idempotent with a Key()-based upgrade rule (approve→override) — i.e. #44 is resolved, not left untouched. The new code comment on the Wave/Task fields even cites this same '§5.4' as its rationale, so the doc it points to now contradicts the shape it documents. No task in this wave updates the two-layers design doc, and it is still an actively cross-referenced document (2026-08-24-takt-design.md links '(two-layers design §5.4)' and similar in several places), so a future reader following that citation is told the wrong field type and the wrong de-duplication story.",
+      "id": "c3",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 202,
+      "title": "Newline-flattening fix applied to PriorFindingLines but not to its twin CandidateLines",
+      "detail": "This diff adds `lineSafe` to collapse newlines in PriorFindingLines' free-text `f.Detail` before rendering one-finding-per-line (brief.go:244), with a doc comment explaining that an unflattened multi-line Detail would 'arrive as several [findings]' to the reviewing agent. CandidateLines (brief.go:202-208), a few lines above in the same file, renders VerifyCandidate.Detail — the same kind of free-form, agent-authored prose (from lens-review findings, wired through cmd_next.go:884) — in the exact same one-per-line format, with the exact same unflattened `c.Detail`. The identical hazard this diff explicitly fixes in one place is left live in the structurally identical sibling function it did not touch.",
+      "id": "c4",
+      "task": 6,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/select.go",
+      "line": 119,
+      "title": "Dead defensive nil-check on ws.Repo",
+      "detail": "bundleHint's `if ws.Repo != nil { ... }` guard is unreachable: its only caller, openTarget (select.go:100-102), only reaches bundleHint after openWorkspace (select.go:92) has already succeeded, and openWorkspace (workspace.go:29-44) only returns a non-nil *workspace when gitx.Open succeeded — gitx.Open (internal/gitx/git.go:31-37) returns either (nil, error) or (\u0026Repo{...}, nil), never (nil, nil), and openWorkspace propagates any Open error before constructing the workspace. So ws.Repo is provably non-nil on every path that reaches bundleHint; the branch can never take the false side. This is a dead fallback (rubric item 4) introduced by this diff's new bundleHint helper — it silently guards against a condition that cannot occur instead of trusting (or asserting) the invariant, adding a branch with no real effect and no test can ever exercise the false side.",
+      "id": "c5",
+      "task": 4,
+      "lenses": [
+        "simplicity"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/goals.go",
+      "line": 277,
+      "title": "Dynamic file read lacks the repo's established nolint:gosec pattern",
+      "detail": "checkRange's os.ReadFile(resolved) reads a path built from the agent's citation string (external input), validated only by runtime logic (EvalSymlinks/Rel checks), yet the comment argues 'gosec's G304 does not fire here' and omits a //nolint directive — diverging from the two other patterns this codebase uses for exactly this situation: archive.go:386 (`//nolint:gosec // G304: p is produced by WalkDir...`) and cmd_review.go:228 (`//nolint:gosec // G703: dest is inside the run's bundle dir...`). The one precedent for omitting the directive, internal/doctor/review_record.go:49-50, is a materially different case — its path component comes from a closed two-value enum (spec|plan), not from agent-supplied JSON as here. The task brief itself explicitly asked for `//nolint:gosec // G304: the path is constrained to the resolved repository root above`, which this diff does not add. If gosec still flags this (its G304 rule generally does not trace runtime validation logic back to safety), the wave's own lint/verify step fails.",
+      "id": "c6",
+      "task": 5,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/goals.go",
+      "line": 284,
+      "title": "Required //nolint:gosec directive omitted from os.ReadFile call",
+      "detail": "Task 5 explicitly specifies annotating the citation file read with `//nolint:gosec // G304: the path is constrained to the resolved repository root above` (nolintlint requires linter name + explanation). Instead, checkRange's os.ReadFile(resolved) call (goals.go:280-284) carries only a prose comment arguing gosec won't fire — no nolint directive at all. This contradicts the codebase's own established convention: other provably-safe resolved paths in this repo (e.g. internal/cli/archive.go:386 `//nolint:gosec // G304: p is produced by WalkDir over the run's own bundle directory`, internal/cli/cmd_review.go:228) do carry the directive precisely because gosec's G304 rule is syntactic (flags any non-literal path argument) and does not perform the dataflow reasoning the added comment assumes. .golangci.yml enables gosec repo-wide with no exclusion for internal/finish, so this line is very likely to fail the project's lint gate.",
+      "id": "c7",
+      "task": 5,
+      "lenses": [
+        "intent"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "Task 8's attempt-2 brief (this wave's actual instructions to the implementer) quotes four attempt-1 review findings and tells the implementer to 'fix what they describe': one explicitly says design.md:973 ('§9's receipt schema and gate_review option list omit the new Reason field/choice ... the new error-path retry choice ... has no home in the primary design spec') and another says design.md:1062 ('\"takt doctor runs six checks\" and its check table are stale after adding review-record ... has no row for review-record'). Both design.md and the fixed-point doc are in task 8's declared file list. The §5.2/§9/§11 additions the candidate calls 'unreviewed, unauthorized scope creep' are exactly what these quoted findings instructed the retry to add.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-8.a2.md:385",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-8.a2.md:386"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "false_positive",
+      "evidence": "The same task-8.a2.md review-findings block includes: 'Fixed-point design's verdict table still says the error row is \"unchanged\" ... The §3 table row ... and the §4 edge-case row at line 141 ... both describe the error verdict as still offering revise ... Task 8's only edit to this file adds one sentence after this table ... so the table itself and the edge-case row were left describing behaviour the diff just removed.' This is a direct instruction to rewrite the §3 error row and add the edge-case row that c2 calls unauthorized scope creep.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-8.a2.md:387"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md:351 still reads '`gate.FollowUp` gains `Wave int` and `Task int`, both `omitempty`' and lines 361-362 read 'Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.' The diff changes internal/gate/followup.go's field to `Wave *int` and makes AppendFollowUps idempotent via a Key()-based upgrade rule, resolving #44 rather than leaving it untouched — and the new field comment even cites 'two-layers design §5.4' as its own rationale (internal/gate/followup.go:32). No task in plan.index.json declares docs/superpowers/specs/2026-08-27-two-review-layers-design.md as an editable file (grep for the filename in plan.index.json returns nothing), so the doc is left stale/self-contradicting by this wave.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-27-two-review-layers-design.md:351",
+        "docs/superpowers/specs/2026-08-27-two-review-layers-design.md:361-362",
+        "internal/gate/followup.go:32"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "internal/brief/brief.go:202-208 CandidateLines renders `c.Detail` unflattened one-per-line ('%s %s %s:%d — %s: %s\\n', ..., c.Detail), while PriorFindingLines (brief.go:241-247) was changed in this same diff to use `lineSafe.Replace(f.Detail)` for the identical one-line-per-finding rendering, with a doc comment (brief.go:249-253) explaining an unflattened multi-line Detail 'would otherwise arrive as several' findings. cmd_next.go:880-891 feeds VerifyCandidate.Detail from wave.MergeCandidates(lenses, records) — free-form lens-authored prose, the same hazard class PriorFindingLines was fixed for.",
+      "citations": [
+        "internal/brief/brief.go:202-208",
+        "internal/brief/brief.go:241-247",
+        "internal/cli/cmd_next.go:880-891"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "select.go:115-125 bundleHint's only caller is openTarget (select.go:91-105), reached only after `ws, err := openWorkspace(ctx, env, dirFlag)` succeeded. openWorkspace (workspace.go:29-44) returns `nil, err` on any failure and only ever constructs `\u0026workspace{Repo: repo, ...}` where `repo` is gitx.Open's return value. gitx.Open (internal/gitx/git.go:31-37) returns either `(nil, error)` or `(\u0026Repo{Root: out}, nil)` — never `(nil, nil)`. So on every path that reaches `if ws.Repo != nil` (select.go:119), ws.Repo is provably non-nil; the false branch is unreachable.",
+      "citations": [
+        "internal/cli/select.go:119",
+        "internal/cli/select.go:91-105",
+        "internal/cli/workspace.go:29-44",
+        "internal/gitx/git.go:31-37"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "Task 5's brief (both attempts) explicitly says: 'annotate it `//nolint:gosec // G304: the path is constrained to the resolved repository root above` (nolintlint requires the explanation and the linter name).' The actual code at goals.go:280-284 instead reads: '// The path comes from an agent's reply, but it is the one resolveInRepo / // resolved and proved inside the repository root ... gosec's G304 does not / // fire here, and a //nolint:gosec directive would be reported unused.' followed by `data, err := os.ReadFile(resolved)` with no nolint directive — diverging from the explicit instruction and from the codebase's own precedent at archive.go:386 and cmd_review.go:228, which do carry the directive for similarly-resolved paths.",
+      "citations": [
+        "internal/finish/goals.go:280-284",
+        "internal/cli/archive.go:386",
+        "internal/cli/cmd_review.go:228"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "Same defect as c6, cited precisely at the os.ReadFile call itself: goals.go:284 `data, err := os.ReadFile(resolved)` is preceded only by a prose justification (goals.go:280-283), with no `//nolint:gosec` directive, despite task 5's brief explicitly specifying the exact directive text to add. .golangci.yml:81 enables gosec with `exclusions.rules` (lines 449-473) carrying no rule scoped to internal/finish or to this pattern, so nothing in the repo's lint config exempts this line.",
+      "citations": [
+        "internal/finish/goals.go:284",
+        "internal/finish/goals.go:280-283",
+        ".golangci.yml:81"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7"
+  ]
+}

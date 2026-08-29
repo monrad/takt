@@ -9,9 +9,14 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/backend"
+	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gate"
 )
 
+// TestWriteResultJSONRoundTripsFindings: reviews/<gate>.json is the one
+// place a finding survives as data, and it now also says which pass wrote
+// it — the gate hash and the round — so the review-record doctor check can
+// see a findings file that has drifted from the receipt beside it.
 func TestWriteResultJSONRoundTripsFindings(t *testing.T) {
 	t.Parallel()
 	bdir := t.TempDir()
@@ -23,15 +28,11 @@ func TestWriteResultJSONRoundTripsFindings(t *testing.T) {
 		Provider: "fake", Model: "fake",
 	}
 	path := filepath.Join(bdir, "reviews", "spec.json")
-	if err := writeResultJSON(path, res); err != nil {
+	if err := writeResultJSON(path, res, "sha256:h1", 2); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(path)
+	got, err := readReviewResult(bdir, "spec")
 	if err != nil {
-		t.Fatal(err)
-	}
-	var got backend.ReviewResult
-	if err = json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Findings) != 1 {
@@ -42,6 +43,55 @@ func TestWriteResultJSONRoundTripsFindings(t *testing.T) {
 	}
 	if got.Verdict != "rework" {
 		t.Fatalf("verdict = %q", got.Verdict)
+	}
+	if got.Hash != "sha256:h1" || got.Round != 2 {
+		t.Fatalf("the pass identity must survive: hash %q round %d", got.Hash, got.Round)
+	}
+	// The result's own fields are embedded, so the file is still the flat
+	// object a plain backend.ReviewResult wrote, with two keys added.
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var flat map[string]any
+	if err = json.Unmarshal(b, &flat); err != nil {
+		t.Fatal(err)
+	}
+	if flat["verdict"] != "rework" || flat["hash"] != "sha256:h1" || flat["round"] != float64(2) {
+		t.Fatalf("hash and round must be flattened beside the result: %v", flat)
+	}
+}
+
+// TestReadReviewResultReadsALegacyFindingsFile: a reviews/<gate>.json
+// written before hash and round existed is a plain backend.ReviewResult.
+// It must still decode, with the findings intact and the two new fields at
+// their zero values — the doctor check reads a hashless file as "nothing to
+// compare" rather than as drift.
+func TestReadReviewResultReadsALegacyFindingsFile(t *testing.T) {
+	t.Parallel()
+	bdir := t.TempDir()
+	legacy := backend.ReviewResult{
+		Verdict: "rework", Summary: "s",
+		Findings: []backend.Finding{
+			{Severity: "blocking", File: "spec.md", Line: 4, Title: "t", Detail: "d"},
+		},
+	}
+	b, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = bundle.WriteFileAtomic(filepath.Join(bdir, "reviews", "spec.json"), b); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readReviewResult(bdir, "spec")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Hash != "" || got.Round != 0 {
+		t.Fatalf("a legacy file names no pass: hash %q round %d", got.Hash, got.Round)
+	}
+	if len(got.Findings) != 1 || got.Findings[0].Title != "t" || got.Verdict != "rework" {
+		t.Fatalf("a legacy file's findings must still read: %+v", got)
 	}
 }
 
@@ -107,7 +157,7 @@ func TestPriorFindingsForScopedPassNeedsABlockingRework(t *testing.T) {
 			t.Parallel()
 			bdir := t.TempDir()
 			res := backend.ReviewResult{Verdict: c.verdict, Findings: c.findings}
-			if err := writeResultJSON(filepath.Join(bdir, "reviews", "spec.json"), res); err != nil {
+			if err := writeResultJSON(filepath.Join(bdir, "reviews", "spec.json"), res, "sha256:h", 1); err != nil {
 				t.Fatal(err)
 			}
 			// A receipt that says the opposite must not change the answer.
@@ -177,7 +227,7 @@ func TestAnErroredPassDoesNotWidenTheScopedPass(t *testing.T) {
 // what the command actually stores.
 func record(t *testing.T, bdir, hash string, res backend.ReviewResult) {
 	t.Helper()
-	if err := storeFindings(bdir, gate.Spec, res); err != nil {
+	if err := storeFindings(bdir, gate.Spec, res, hash, 1); err != nil {
 		t.Fatal(err)
 	}
 	rc := gate.Receipt{

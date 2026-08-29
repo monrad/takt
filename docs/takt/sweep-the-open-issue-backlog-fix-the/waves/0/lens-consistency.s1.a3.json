@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 3,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T20:28:30.949428409Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/select.go",
+      "line": 122,
+      "title": "bundleHint assumes the created-branch convention, ignoring the adopted-branch rule documented next to it",
+      "detail": "bundleHint's only positive branch guess is `\"takt/\"+slug` (select.go:122-123), and its doc comment states flatly that `takt init` commits the bundle on takt/\u003cslug\u003e. But cmd_init.go's chooseBranch (internal/cli/cmd_init.go:204-206, spec D9) documents two branch outcomes: on the default branch init creates takt/\u003cslug\u003e, but on any other branch init adopts the current branch (bi.adopted=true) and commits the bundle there instead — under whatever name that branch has, not takt/\u003cslug\u003e. For a run initialised via the adopted path, switching away from that branch and running `status`/`unlock` will fail loadBundle with fs.ErrNotExist, bundleHint's BranchExists(ctx, \"takt/\"+slug) check will correctly return false (no such branch was ever created), and the code falls through to \"no run named \u003cslug\u003e under \u003cbase\u003e; check the slug or pass --dir\" — telling the user no such run exists when it does, just on a differently-named adopted branch. No existing helper maps a slug back to its actual (possibly adopted) branch, so this is a real gap between the new hint logic and the branch rule the surrounding code already knows about, not just an untested edge case.",
+      "task": 4
+    }
+  ]
+}

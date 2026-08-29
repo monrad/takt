@@ -1,0 +1,42 @@
+{
+  "lens": "docs",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:59:16.446927048Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 860,
+      "title": "Design spec still documents push_pr as `gh pr create --fill`",
+      "detail": "§7.5 step 4 says: \"`pr`: `run push_pr` — the session runs `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`, then `done --step push_pr --url \u003cpr-url\u003e`\". The diff replaces `--fill` with a generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` (internal/finish/pr.go, internal/brief/templates/run-push_pr.md, internal/decide/questions.go's `pr` option text) precisely to stop describing inputs that don't exist, but this master spec — the doc the rubric names as authoritative — was not updated and now self-contradicts the template it is supposed to describe.",
+      "task": 0
+    },
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "title": "Claude Code op-table prompt still spells out `gh pr create --fill` for push_pr",
+      "detail": "The `run` row's push_pr parenthetical reads \"...then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", which no longer matches the op's rendered instructions (title/body-file from the run's own artifacts, no `--fill`). This is the live prompt text loaded for the `/takt` command (design spec §6), so it should reflect the new command.",
+      "task": 0
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "title": "Copilot host prompt still spells out `gh pr create --fill` for push_pr",
+      "detail": "Same stale parenthetical as commands/takt.md line 31 (\"`gh pr create --base \u003cbase\u003e --fill`\"). Design spec §6.1 states this file is meant to carry \"the same op table as `commands/takt.md`\" — both copies are now stale together and neither documents the new `--title`/`--body-file` command this diff introduces.",
+      "task": 0
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 194,
+      "title": "§4.2's exhaustive bundle-file listing omits the new finish/pr.md artifact",
+      "detail": "The `### 4.2 Files` tree lists every file a bundle can contain, including `finish/verify.json`, `finish/goals.json` and `finish/retro-inputs.json` (lines 194-197), but the diff adds a new artifact written under the same directory — `finish/pr.md` (internal/finish/pr.go's `PRPath`/`WritePR`, populated by `preparePushPR`) — and the tree was not updated to list it.",
+      "task": 0
+    }
+  ]
+}

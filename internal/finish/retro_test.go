@@ -1,6 +1,7 @@
 package finish_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -30,17 +31,31 @@ func TestBuildRetroInputs(t *testing.T) {
 			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
 		}
 	}
+	// closed is the wave_closed each attempt writes, carrying the findings
+	// its own task reviews raised — what BuildRetroInputs counts.
+	closed := func(after time.Duration, w, sl, a, reviewFindings int) bundle.Event {
+		e := ev(after, "wave_closed", w, sl, a)
+		e.Data["review_findings"] = float64(reviewFindings)
+		return e
+	}
 	// Wave 0 was retried (slice 1 lands at attempt 2), then went out a second
 	// slice — which runs at attempt 1 again, so wave+attempt alone would
-	// collapse it into slice 1's timing.
+	// collapse it into slice 1's timing. Attempt 1 of slice 1 never closed
+	// here, so it contributes no timing.
 	events := []bundle.Event{
 		ev(0, "wave_dispatched", 0, 1, 1),
+		{TS: t0.Add(3 * time.Minute), Type: "gate_reviewed", Data: map[string]any{
+			"gate": "spec", "verdict": "approve", "findings": float64(1),
+		}},
 		ev(5*time.Minute, "wave_dispatched", 0, 1, 2),
 		ev(9*time.Minute, "wave_committed", 0, 1, 2),
+		closed(9*time.Minute, 0, 1, 2, 2),
 		ev(10*time.Minute, "wave_dispatched", 0, 2, 1),
 		ev(13*time.Minute, "wave_committed", 0, 2, 1),
+		closed(13*time.Minute, 0, 2, 1, 0),
 		ev(14*time.Minute, "wave_dispatched", 1, 1, 1),
 		ev(16*time.Minute, "wave_committed", 1, 1, 1),
+		closed(16*time.Minute, 1, 1, 1, 0),
 	}
 	findings := []backend.Finding{
 		{Severity: "major", File: "a.go", Line: 12, Title: "unchecked error", Detail: "err is dropped"},
@@ -54,8 +69,13 @@ func TestBuildRetroInputs(t *testing.T) {
 		{Wave: 1, Attempt: 1, Tasks: []wave.TaskResult{{Task: 3, Status: "done"}}},
 	}
 	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, nil, nil)
-	if in.Tasks != 3 || in.Waves != 2 || in.ReviewFindings != len(findings) {
+	if in.Tasks != 3 || in.Waves != 2 {
 		t.Fatalf("%+v", in)
+	}
+	// The counts come from the events, not from the two findings the close
+	// record on disk still holds: 1 gate finding + 2 on the wave_closed.
+	if in.GateReviewFindings != 1 || in.TaskReviewFindings != 2 || in.ReviewFindings != 3 {
+		t.Fatalf("findings counts = %+v", in)
 	}
 	if len(in.Retries) != 1 || in.Retries[0].Task != 1 || in.Retries[0].Attempts != 2 {
 		t.Fatalf("retries: %+v", in.Retries)
@@ -95,61 +115,30 @@ func TestBuildRetroInputs(t *testing.T) {
 
 // TestBuildRetroInputsCarriesFollowUps checks that follow-ups.json's items
 // pass straight through to RetroInputs — BuildRetroInputs stays pure, so it
-// takes them as data the same way it already takes events and closes.
+// takes them as data the same way it already takes events and closes. The
+// fixture is deliberately minimal: everything else is nil, so nothing but
+// the pass-through can make this test pass or fail (#45).
 func TestBuildRetroInputsCarriesFollowUps(t *testing.T) {
 	t.Parallel()
-	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
-	st := &bundle.State{Slug: "demo", Topic: "Add a greeting", Tasks: []bundle.Task{
-		{ID: 1, Wave: 0, Status: "done", Attempt: 2},
-		{ID: 2, Wave: 0, Status: "waived", Attempt: 1},
-		{ID: 3, Wave: 1, Status: "done", Attempt: 1},
-	}}
-	idx := plan.Index{Tasks: []plan.Task{{ID: 1}, {ID: 2}, {ID: 3}}}
-	ev := func(after time.Duration, typ string, w, sl, a int) bundle.Event {
-		return bundle.Event{
-			TS: t0.Add(after), Type: typ,
-			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
-		}
-	}
-	events := []bundle.Event{
-		ev(0, "wave_dispatched", 0, 1, 1),
-		ev(5*time.Minute, "wave_dispatched", 0, 1, 2),
-		ev(9*time.Minute, "wave_committed", 0, 1, 2),
-		ev(10*time.Minute, "wave_dispatched", 0, 2, 1),
-		ev(13*time.Minute, "wave_committed", 0, 2, 1),
-		ev(14*time.Minute, "wave_dispatched", 1, 1, 1),
-		ev(16*time.Minute, "wave_committed", 1, 1, 1),
-	}
-	findings := []backend.Finding{
-		{Severity: "major", File: "a.go", Line: 12, Title: "unchecked error", Detail: "err is dropped"},
-		{Severity: "nit", File: "b.go", Line: 3, Title: "stale comment", Detail: "says wave 0"},
-	}
-	closes := []wave.CloseResult{
-		{Wave: 0, Attempt: 2, Tasks: []wave.TaskResult{
-			{Task: 1, Status: "done", Review: &backend.ReviewResult{Verdict: "approve", Findings: findings}},
-			{Task: 2, Status: "blocked", Reason: "needs schema"},
-		}},
-		{Wave: 1, Attempt: 1, Tasks: []wave.TaskResult{{Task: 3, Status: "done"}}},
-	}
 	fu := []gate.FollowUp{
 		{Gate: "spec", Severity: "minor", Title: "wording", Source: gate.SourceApprove},
 	}
-	in := finish.BuildRetroInputs(st, idx, events, closes, &finish.VerifyRecord{Passed: true}, nil, fu, nil)
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, nil, nil, nil, nil, fu, nil)
 	if len(in.FollowUps) != 1 {
 		t.Fatalf("want 1 follow-up, got %d", len(in.FollowUps))
 	}
-	if in.FollowUps[0].Severity != "minor" || in.FollowUps[0].Title != "wording" {
-		t.Fatalf("follow-up lost detail: %+v", in.FollowUps[0])
+	if got := in.FollowUps[0]; got.Gate != "spec" || got.Severity != "minor" ||
+		got.Title != "wording" || got.Source != gate.SourceApprove {
+		t.Fatalf("follow-up lost detail: %+v", got)
 	}
 }
 
 // TestWaveTimingsPairAcrossTheSliceUpgrade covers a bundle that straddles
 // the upgrade to per-slice records. Its wave_dispatched events were written
-// by a build that had no slice to record; the wave_committed that answers
-// one of them was written by this build, which heals a slice-less wave to
-// slice 1 and says so. Keyed on the raw numbers those two never pair, and
-// the retro of the run that upgraded mid-flight loses the spans it is
-// mostly there to report.
+// by a build that had no slice to record; the events that answer one of them
+// were written by this build, which heals a slice-less wave to slice 1 and
+// says so. Keyed on the raw numbers those never pair, and the retro of the
+// run that upgraded mid-flight loses the spans it is mostly there to report.
 func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
 	t.Parallel()
 	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
@@ -168,8 +157,10 @@ func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
 	events := []bundle.Event{
 		legacy(0, "wave_dispatched", 0, 1),
 		healed(4*time.Minute, "wave_committed", 0, 1, 1),
+		healed(4*time.Minute, "wave_closed", 0, 1, 1),
 		legacy(5*time.Minute, "wave_dispatched", 1, 1),
 		legacy(9*time.Minute, "wave_committed", 1, 1),
+		legacy(9*time.Minute, "wave_closed", 1, 1),
 	}
 	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil, nil, nil)
 	if len(in.WaveTimings) != 2 {
@@ -183,6 +174,102 @@ func TestWaveTimingsPairAcrossTheSliceUpgrade(t *testing.T) {
 		if d := got.CommittedAt.Sub(got.DispatchedAt); d != 4*time.Minute {
 			t.Fatalf("timing %d spans %s", i, d)
 		}
+	}
+}
+
+// TestRetroInputsCountEveryReviewOnce pins the source of the findings
+// counts to the event log (#23). The run reviewed the spec gate twice — an
+// errored pass that raised nothing, then an approving pass with two
+// findings — and closed wave 0 slice 1 twice: attempt 1 was reworked, so its
+// close record has since been deleted, and only attempt 2's record is on
+// disk. Summing the records would lose the reworked attempt's review and
+// count nothing at all for the gate.
+func TestRetroInputsCountEveryReviewOnce(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	gateEv := func(after time.Duration, verdict string, findings int) bundle.Event {
+		return bundle.Event{TS: t0.Add(after), Type: "gate_reviewed", Data: map[string]any{
+			"gate": "spec", "verdict": verdict, "findings": float64(findings),
+		}}
+	}
+	closedEv := func(after time.Duration, attempt int, committed bool, reviewFindings int) bundle.Event {
+		return bundle.Event{TS: t0.Add(after), Type: "wave_closed", Data: map[string]any{
+			"wave": float64(0), "slice": float64(1), "attempt": float64(attempt),
+			"committed": committed, "review_findings": float64(reviewFindings),
+		}}
+	}
+	events := []bundle.Event{
+		gateEv(0, "error", 0),
+		gateEv(time.Minute, "approve", 2),
+		closedEv(5*time.Minute, 1, false, 1),
+		closedEv(9*time.Minute, 2, true, 3),
+	}
+	// Only the attempt that landed still has a record: persistClose deletes
+	// the retired one.
+	closes := []wave.CloseResult{{Wave: 0, Slice: 1, Attempt: 2, ReviewFindings: 3,
+		Tasks: []wave.TaskResult{{Task: 1, Status: "done", Review: &backend.ReviewResult{
+			Verdict: "approve", Findings: []backend.Finding{
+				{Severity: "minor", File: "a.go", Line: 1, Title: "one"},
+				{Severity: "minor", File: "a.go", Line: 2, Title: "two"},
+				{Severity: "nit", File: "b.go", Line: 3, Title: "three"},
+			}}}}}}
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, closes, nil, nil, nil, nil)
+	if in.GateReviewFindings != 2 {
+		t.Fatalf("gate_review_findings = %d, want 2 (the errored pass raised none)", in.GateReviewFindings)
+	}
+	if in.TaskReviewFindings != 4 {
+		t.Fatalf("task_review_findings = %d, want 4 (1 from the reworked attempt + 3 from the one that landed)",
+			in.TaskReviewFindings)
+	}
+	if in.ReviewFindings != 6 {
+		t.Fatalf("review_findings = %d, want 6 — the sum of the two", in.ReviewFindings)
+	}
+}
+
+// TestWaveTimingsIncludeAnAttemptThatClosedWithoutCommitting covers #25: a
+// reworked attempt closed, so it has a span, and it did not commit, so it
+// says so and its committed_at key is absent from the JSON rather than
+// written as a year-1 timestamp.
+func TestWaveTimingsIncludeAnAttemptThatClosedWithoutCommitting(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	ev := func(after time.Duration, typ string, w, sl, a int) bundle.Event {
+		return bundle.Event{
+			TS: t0.Add(after), Type: typ,
+			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
+		}
+	}
+	events := []bundle.Event{
+		ev(0, "wave_dispatched", 0, 1, 1),
+		ev(5*time.Minute, "wave_closed", 0, 1, 1),
+		ev(6*time.Minute, "wave_dispatched", 0, 1, 2),
+		ev(9*time.Minute, "wave_closed", 0, 1, 2),
+		ev(9*time.Minute, "wave_committed", 0, 1, 2),
+	}
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil, nil, nil)
+	if len(in.WaveTimings) != 2 {
+		t.Fatalf("both attempts must report a span: %+v", in.WaveTimings)
+	}
+	first, second := in.WaveTimings[0], in.WaveTimings[1]
+	if first.Attempt != 1 || second.Attempt != 2 {
+		t.Fatalf("spans out of order: %+v", in.WaveTimings)
+	}
+	if !first.ClosedAt.Equal(t0.Add(5*time.Minute)) || first.Committed || !first.CommittedAt.IsZero() {
+		t.Fatalf("attempt 1 = %+v, want closed at t0+5m and uncommitted", first)
+	}
+	b, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err = json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["committed_at"]; ok {
+		t.Fatalf("an attempt that did not commit must have no committed_at: %s", b)
+	}
+	if !second.Committed || !second.CommittedAt.Equal(t0.Add(9*time.Minute)) {
+		t.Fatalf("attempt 2 = %+v, want committed at t0+9m", second)
 	}
 }
 

@@ -1,0 +1,188 @@
+{
+  "anchor_hash": "sha256:2cd45893b761f07fa123543b81c95003ea1817f05a84ad5c9b6adb123e500dec",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run",
+      "span": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run"
+    },
+    {
+      "id": "A2",
+      "text": "#53 (follow-ups.json omitempty drops wave 0)",
+      "span": "#53 (follow-ups.json omitempty drops wave 0)"
+    },
+    {
+      "id": "A3",
+      "text": "#44 (follow-ups identity/de-dup)",
+      "span": "#44 (follow-ups identity/de-dup)"
+    },
+    {
+      "id": "A4",
+      "text": "#43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json)",
+      "span": "#43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json)"
+    },
+    {
+      "id": "A5",
+      "text": "#23 (retro-inputs review_findings spans gate reviews and every attempt)",
+      "span": "#23 (retro-inputs review_findings spans gate reviews and every attempt)"
+    },
+    {
+      "id": "A6",
+      "text": "#25 (wave_timings per dispatched attempt)",
+      "span": "#25 (wave_timings per dispatched attempt)"
+    },
+    {
+      "id": "A7",
+      "text": "#33 (status during the plan phase says planned/not materialised and confirmed clauses)",
+      "span": "#33 (status during the plan phase says planned/not materialised and confirmed clauses)"
+    },
+    {
+      "id": "A8",
+      "text": "#8 (unlock/status --slug hint when the bundle lives on another branch)",
+      "span": "#8 (unlock/status --slug hint when the bundle lives on another branch)"
+    },
+    {
+      "id": "A9",
+      "text": "#24 (goal-assessor citations validated as path:line inside a real file)",
+      "span": "#24 (goal-assessor citations validated as path:line inside a real file)"
+    },
+    {
+      "id": "A10",
+      "text": "#36 (PR title and body from the spec and goals rather than --fill)",
+      "span": "#36 (PR title and body from the spec and goals rather than --fill)"
+    },
+    {
+      "id": "A11",
+      "text": "#26 (branch_finish does not recommend a merge it has disabled)",
+      "span": "#26 (branch_finish does not recommend a merge it has disabled)"
+    },
+    {
+      "id": "A12",
+      "text": "#45 and #51 (the two polish checklists, minus the user-directory lens override)",
+      "span": "#45 and #51 (the two polish checklists, minus the user-directory lens override)"
+    },
+    {
+      "id": "A13",
+      "text": "#54 (design §4.6 lock_taken wording by holder)",
+      "span": "#54 (design §4.6 lock_taken wording by holder)"
+    },
+    {
+      "id": "A14",
+      "text": "#37 (skill invariant: absolute paths, never cd into the bundle)",
+      "span": "#37 (skill invariant: absolute paths, never cd into the bundle)"
+    },
+    {
+      "id": "A15",
+      "text": "#35 (retro path in the plan doc)",
+      "span": "#35 (retro path in the plan doc)"
+    },
+    {
+      "id": "A16",
+      "text": "#18 (README macOS quarantine note)",
+      "span": "#18 (README macOS quarantine note)"
+    },
+    {
+      "id": "A17",
+      "text": "#49 item 1 (copilot --no-custom-instructions, if the CLI supports it)",
+      "span": "#49 item 1 (copilot --no-custom-instructions, if the CLI supports it)"
+    },
+    {
+      "id": "A18",
+      "text": "#34, #27 and #7 are already fixed in commit 4c5026d on this branch",
+      "span": "#34, #27 and #7 are already fixed in commit 4c5026d on this branch"
+    }
+  ],
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "spec.md's Scope lists the eighteen issues as 'the run's authoritative scope' and plan.md organizes fourteen tasks across three waves to land them all in one run ('Fourteen tasks, grouped by the files they must edit... The graph gives three waves')."
+    },
+    {
+      "id": "A2",
+      "verdict": "covered",
+      "evidence": "spec.md Design A makes FollowUp.Wave a *int keeping json:\"wave,omitempty\" so wave 0 serialises as \"wave\": 0, and plan.index.json Task 1 implements exactly this plus a TestFollowUpWaveZeroRoundTrips test."
+    },
+    {
+      "id": "A3",
+      "verdict": "covered",
+      "evidence": "spec.md Design A defines FollowUp.Key() identity and idempotent AppendFollowUps with the approve→override upgrade; plan.index.json Task 1 implements Key() and idempotent append, and Task 10 reorders runReview's writes per #44 item 3."
+    },
+    {
+      "id": "A4",
+      "verdict": "covered",
+      "evidence": "spec.md Design B covers the checked gate_reviewed write, Receipt.Reason, and hash/round on reviews/\u003cgate\u003e.json; plan.index.json Task 2 (reason plumbing/retry question), Task 10 (checked event append, receipt reason, hash/round) and Task 3 (review-record doctor WARN) implement all three parts."
+    },
+    {
+      "id": "A5",
+      "verdict": "covered",
+      "evidence": "spec.md Design C (#23) sums gate_reviewed.findings plus wave_closed.review_findings over the event log; plan.index.json Task 11 adds CloseResult.ReviewFindings computed before carryForward and BuildRetroInputs summing the two event types."
+    },
+    {
+      "id": "A6",
+      "verdict": "covered",
+      "evidence": "spec.md Design C (#25) pairs wave_dispatched with wave_closed by (wave, slice, attempt) so a reworked attempt gets a timing; plan.index.json Task 11 implements WaveTiming.ClosedAt/Committed/CommittedAt and the doc comment 'one per dispatched attempt that closed'."
+    },
+    {
+      "id": "A7",
+      "verdict": "covered",
+      "evidence": "spec.md Design D (#33) adds TasksPlanned and the alignmentDigest Clauses/Skipped/VerdictsPresent fields so 'alignment:' is never bare; plan.index.json Task 4 implements the 'tasks: N planned (not yet materialised)' text and the four-state alignmentLine rendering plus TestStatusPlanPhaseSaysPlannedAndConfirmedClauses."
+    },
+    {
+      "id": "A8",
+      "verdict": "covered",
+      "evidence": "spec.md Design D (#8) specifies the three-way hint from openTarget/loadBundle failures; plan.index.json Task 4 implements bundleHint using gitx.Repo.BranchExists and routes loadStatus/cmdUnlock through openTarget, with TestStatusHintsAtTheBranchHoldingTheBundle and TestUnlockHintsAtTheBranchHoldingTheBundle."
+    },
+    {
+      "id": "A9",
+      "verdict": "covered",
+      "evidence": "spec.md Design E specifies the path:line/path:start-end grammar, symlink-resolved containment, and rejection like any unusable reply; plan.index.json Task 5 implements finish.CheckCitations with the containment/segment logic and Task 14 updates the goal-assessor agent text."
+    },
+    {
+      "id": "A10",
+      "verdict": "covered",
+      "evidence": "spec.md Design F (#36) derives finish/pr.md's title/body from spec.md and goals.md instead of --fill; plan.index.json Task 12 implements finish.BuildPR and the push_pr op writing pr.md, and Task 9 removes --fill from commands/takt.md, SKILL.md and the design doc."
+    },
+    {
+      "id": "A11",
+      "verdict": "covered",
+      "evidence": "spec.md Design F (#26) reorders questionBranchFinish so pr is recommended when merge is blocked, with exactly one enabled recommended option; plan.index.json Task 2 implements the pr/keep/merge(disabled)/discard order and Task 8 updates the plan doc's Task 8 step 2 to choose pr."
+    },
+    {
+      "id": "A12",
+      "verdict": "covered",
+      "evidence": "spec.md's Out list explicitly excludes '#51's lens-directory override', matching the clause's carve-out, and Design I plus plan.index.json Tasks 1, 2, 6, 10, 11, 12 and 13 implement every remaining #45/#51 item (eleven→twelve, MkdirAll drop, gate.Verdict* comparisons, malformed-event tests, retro fixture, review-spec-followup wording, PriorFindingLines, writeStableBrief/verifyBrief/lensTasks, writeTaskFindings) with no mention of the lens-directory override anywhere in the plan."
+    },
+    {
+      "id": "A13",
+      "verdict": "covered",
+      "evidence": "spec.md Design J (#54) restates §4.6's lock_taken rule by the holder with the stolen/forced exemption wording; plan.index.json Task 8 item (1) requires the literal phrase 'outcome `stolen` or `forced`' in the design doc."
+    },
+    {
+      "id": "A14",
+      "verdict": "covered",
+      "evidence": "spec.md Design J (#37) adds one invariant bullet about inspecting bundle files by absolute path, never cd into the bundle; plan.index.json Task 9 adds the identical bullet to both commands/takt.md and SKILL.md and pins it in prompt_test.go's crossHostInvariants."
+    },
+    {
+      "id": "A15",
+      "verdict": "covered",
+      "evidence": "spec.md Design J (#35) fixes the plan doc's retro path to docs/takt/\u003cslug\u003e/retro.md; plan.index.json Task 8 item (3) makes exactly this edit and explicitly declines to touch issue #20's body."
+    },
+    {
+      "id": "A16",
+      "verdict": "covered",
+      "evidence": "spec.md Design J (#18) adds a macOS quarantine paragraph to the README's 'The binary' section; plan.index.json Task 8 item (5) implements the same paragraph with the xattr command and issues/17 link."
+    },
+    {
+      "id": "A17",
+      "verdict": "covered",
+      "evidence": "spec.md Design H adds --no-custom-instructions to copilotArgs, pinned by a test; plan.index.json Task 7 implements exactly this plus the design §8.2 sentence in Task 8, matching the clause's 'if the CLI supports it' framing (spec.md notes copilot --help lists the flag)."
+    },
+    {
+      "id": "A18",
+      "verdict": "covered",
+      "evidence": "spec.md states '#34, #27, #7 — commit 4c5026d... Nothing in this run touches them again,' and no task in plan.md or plan.index.json references or edits work for #34, #27 or #7."
+    }
+  ]
+}

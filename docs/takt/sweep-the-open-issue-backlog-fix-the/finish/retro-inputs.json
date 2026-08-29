@@ -1,0 +1,1467 @@
+{
+  "slug": "sweep-the-open-issue-backlog-fix-the",
+  "topic": "Sweep the open-issue backlog: fix the well-specified small and medium issues in one run — #53 (follow-ups.json omitempty drops wave 0), #44 (follow-ups identity/de-dup), #43 (spec gate failure paths: checked gate_reviewed event write, an error reason on the receipt, a hash on reviews/\u003cgate\u003e.json), #23 (retro-inputs review_findings spans gate reviews and every attempt), #25 (wave_timings per dispatched attempt), #33 (status during the plan phase says planned/not materialised and confirmed clauses), #8 (unlock/status --slug hint when the bundle lives on another branch), #24 (goal-assessor citations validated as path:line inside a real file), #36 (PR title and body from the spec and goals rather than --fill), #26 (branch_finish does not recommend a merge it has disabled), #45 and #51 (the two polish checklists, minus the user-directory lens override), #54 (design §4.6 lock_taken wording by holder), #37 (skill invariant: absolute paths, never cd into the bundle), #35 (retro path in the plan doc), #18 (README macOS quarantine note), #49 item 1 (copilot --no-custom-instructions, if the CLI supports it). #34, #27 and #7 are already fixed in commit 4c5026d on this branch.",
+  "tasks": 14,
+  "waves": 3,
+  "retries": [
+    {
+      "task": 1,
+      "attempts": 2
+    },
+    {
+      "task": 4,
+      "attempts": 3
+    },
+    {
+      "task": 5,
+      "attempts": 2
+    },
+    {
+      "task": 6,
+      "attempts": 2
+    },
+    {
+      "task": 8,
+      "attempts": 2
+    },
+    {
+      "task": 12,
+      "attempts": 3
+    },
+    {
+      "task": 13,
+      "attempts": 4
+    },
+    {
+      "task": 14,
+      "attempts": 2
+    }
+  ],
+  "failures": [
+    {
+      "task": 5,
+      "status": "waived",
+      "reason": "Citation validation and integration behavior match the task, but the mandated G304 annotation is missing and replaced by a misleading comment that itself contains a nolint token."
+    },
+    {
+      "task": 8,
+      "status": "waived",
+      "reason": "The five requested documentation updates are present and match the task, but the diff also contains substantial unrelated documentation changes. Those out-of-scope edits must be removed."
+    }
+  ],
+  "review_findings": 5,
+  "wave_timings": [
+    {
+      "wave": 0,
+      "slice": 1,
+      "attempt": 3,
+      "dispatched_at": "2026-08-28T20:14:52.872789739Z",
+      "committed_at": "2026-08-28T20:33:46.105482831Z"
+    },
+    {
+      "wave": 1,
+      "slice": 1,
+      "attempt": 4,
+      "dispatched_at": "2026-08-29T00:56:22.402803337Z",
+      "committed_at": "2026-08-29T01:15:37.575398267Z"
+    },
+    {
+      "wave": 2,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-29T01:15:47.805721571Z",
+      "committed_at": "2026-08-29T01:27:33.310687603Z"
+    }
+  ],
+  "verify": {
+    "sha": "770ba26f4b9f2c629bc4a82a235d45de0d566778",
+    "passed": true,
+    "no_commands": false,
+    "commands": [
+      "grep -q 'Wave \\*int' internal/gate/followup.go",
+      "grep -q 'func (f FollowUp) Key() string' internal/gate/followup.go",
+      "grep -q 'TestAppendFollowUpsUpgradesApproveToOverride' internal/gate/followup_test.go",
+      "grep -q 'TestFollowUpKeyIsInjective' internal/gate/followup_test.go",
+      "grep -q 'func renderFindings' internal/cli/cmd_review.go",
+      "grep -c 'O_APPEND' internal/cli/cmd_close_wave.go | grep -qx 0",
+      "go test -race -count=1 ./internal/gate/... ./internal/cli/...",
+      "golangci-lint run ./internal/gate/... ./internal/cli/...",
+      "grep -q 'json:\"reason,omitempty\"' internal/gate/gate.go",
+      "grep -q 'Reason: s.Reason' internal/cli/facts.go",
+      "grep -q 'twelve ids' internal/decide/questions.go",
+      "grep -c 'eleven' internal/decide/questions.go | grep -qx 0",
+      "grep -q 'TestQuestionGateReviewOnAnErrorOffersRetryNotRevise' internal/decide/decide_test.go",
+      "grep -q 'TestQuestionBranchFinishRecommendsAChoosableOption' internal/decide/finish_test.go",
+      "grep -q 'TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt' internal/cli/cmd_answer_retry_test.go",
+      "go test -race -count=1 ./internal/decide/... ./internal/gate/...",
+      "go test -race -count=1 -run 'TestAnswer|TestQuestion' ./internal/cli/",
+      "golangci-lint run ./internal/decide/... ./internal/gate/... ./internal/cli/...",
+      "grep -q 'review-record' internal/doctor/review_record.go",
+      "grep -q 'ReviewRecord' internal/doctor/doctor.go",
+      "grep -q 'TestReviewRecordWarnsOnAHashMismatch' internal/doctor/doctor_test.go",
+      "go test -race -count=1 ./internal/doctor/...",
+      "go test -race -count=1 -run TestDoctor ./internal/cli/",
+      "golangci-lint run ./internal/doctor/...",
+      "grep -q 'TasksPlanned' internal/cli/cmd_status.go",
+      "grep -q 'not yet materialised' internal/cli/cmd_status.go",
+      "grep -q 'verdicts_present' internal/cli/cmd_status.go",
+      "grep -q 'BranchExists' internal/cli/select.go",
+      "grep -c 'loadBundle(' internal/cli/cmd_status.go | grep -qx 0",
+      "grep -q 'TestUnlockHintsAtTheBranchHoldingTheBundle' internal/cli/cmd_unlock_test.go",
+      "go test -race -count=1 -run 'TestStatus|TestUnlock' ./internal/cli/",
+      "golangci-lint run ./internal/cli/...",
+      "grep -q 'func CheckCitations' internal/finish/goals.go",
+      "grep -q 'FieldsFunc' internal/finish/goals.go",
+      "grep -q 'CheckCitations' internal/cli/cmd_record.go",
+      "grep -q 'path:start-end' internal/brief/templates/goal-assessor.md",
+      "grep -q 'TestCitationGrammarAndContainment' internal/finish/goals_test.go",
+      "grep -q 'TestRecordGoalsRejectsBadCitations' internal/cli/citations_test.go",
+      "grep -q 'bad verdict and bad citation' internal/cli/citations_test.go",
+      "go test -race -count=1 -run 'TestCitation|TestRecordGoals|TestGoal' ./internal/finish/... ./internal/cli/...",
+      "golangci-lint run ./internal/finish/... ./internal/cli/...",
+      "grep -Eq 'SpecPath +string' internal/brief/brief.go",
+      "grep -q 'SpecPath' internal/brief/templates/implementer.md",
+      "grep -c 'SpecExcerpt' internal/brief/brief.go | grep -qx 0",
+      "grep -c 'spec-excerpt' internal/brief/templates/implementer.md | grep -qx 0",
+      "grep -q 'introduced a new blocking problem' internal/brief/templates/review-spec-followup.md",
+      "grep -q 'TestTaskBriefNamesTheSpecByPath' internal/cli/task_brief_test.go",
+      "go test -race -count=1 ./internal/brief/... ./internal/cli/...",
+      "golangci-lint run ./internal/brief/... ./internal/cli/...",
+      "grep -q 'no-custom-instructions' internal/backend/copilot.go",
+      "grep -q 'no-custom-instructions' internal/backend/cli_test.go",
+      "go test -race -count=1 ./internal/backend/...",
+      "golangci-lint run ./internal/backend/...",
+      "grep -q 'outcome `stolen` or `forced`' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "grep -q 'no-custom-instructions' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "grep -q 'Choose `pr`' docs/superpowers/plans/2026-08-26-takt-hardening.md",
+      "grep -q 'docs/takt/\u003cslug\u003e/retro.md' docs/superpowers/plans/2026-08-26-takt-hardening.md",
+      "grep -q 'never carried, because the session was asked to act on them' docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "grep -q 'com.apple.quarantine' README.md",
+      "grep -q 'issues/17' README.md",
+      "grep -q 'never `cd` into the bundle' commands/takt.md",
+      "grep -q 'never `cd` into the bundle' hosts/copilot/skills/takt/SKILL.md",
+      "grep -q 'pr_body_path' commands/takt.md",
+      "grep -q 'pr_body_path' hosts/copilot/skills/takt/SKILL.md",
+      "grep -c -e '--fill' commands/takt.md | grep -qx 0",
+      "grep -c -e '--fill' hosts/copilot/skills/takt/SKILL.md | grep -qx 0",
+      "grep -c -e '--fill' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "grep -q 'never `cd` into the bundle' internal/prompt/prompt_test.go",
+      "go test -race -count=1 ./internal/prompt/...",
+      "go test ./... -race -count=1",
+      "golangci-lint run ./...",
+      "task hosts:check",
+      "grep -q 'func RemoveReceipt' internal/gate/gate.go",
+      "grep -q 'RemoveReceipt' internal/cli/cmd_review.go",
+      "grep -q 'type reviewRecord struct' internal/cli/cmd_review.go",
+      "grep -c 'MkdirAll' internal/cli/cmd_review.go | grep -qx 1",
+      "grep -c 'backend.VerdictRework' internal/cli/cmd_review.go | grep -qx 0",
+      "grep -c '_ = bundle.AppendEvent(tgt.bdir, \"gate_reviewed\"' internal/cli/cmd_review.go | grep -qx 0",
+      "grep -q 'json:\"round,omitempty\"' internal/cli/cmd_review.go",
+      "grep -q 'TestReviewFailureBeforeTheReceiptLeavesNoReceipt' internal/cli/cmd_review_failure_test.go",
+      "grep -q 'TestForcedReviewFailureLeavesNoStaleReceipt' internal/cli/cmd_review_failure_test.go",
+      "grep -q 'TestReceiptSurvivesACommitFailure' internal/cli/cmd_review_failure_test.go",
+      "grep -q 'TestErroredPassCarriesItsReasonAndOffersRetry' internal/cli/cmd_review_failure_test.go",
+      "go test -race -count=1 ./internal/gate/... ./internal/decide/... ./internal/cli/...",
+      "grep -q 'json:\"review_findings\"' internal/wave/close.go",
+      "grep -q 'gate_review_findings' internal/finish/retro.go",
+      "grep -q 'committed_at,omitzero' internal/finish/retro.go",
+      "grep -q 'task_review_findings' internal/brief/templates/run-retro.md",
+      "grep -q 'TestWaveClosedEventCarriesSliceAndReviewFindings' internal/cli/close_events_test.go",
+      "go test -race -count=1 ./internal/wave/... ./internal/finish/... ./internal/cli/...",
+      "golangci-lint run ./internal/wave/... ./internal/finish/... ./internal/cli/...",
+      "grep -q 'func BuildPR' internal/finish/pr.go",
+      "grep -q 'pr_body_path' internal/cli/cmd_next.go",
+      "grep -q 'preparePushPR' internal/cli/cmd_next.go",
+      "grep -q 'body-file' internal/brief/templates/run-push_pr.md",
+      "grep -c -e '--fill' internal/brief/templates/run-push_pr.md | grep -qx 0",
+      "grep -c -e '--fill' internal/decide/questions.go | grep -qx 0",
+      "grep -q 'pr_body_path' internal/decide/questions.go",
+      "grep -c 'lensTasks(_' internal/cli/cmd_next.go | grep -qx 0",
+      "grep -q 'TestWriteStableBriefRendersOnce' internal/cli/brief_stable_test.go",
+      "grep -q 'TestPushPRBodyListsGoalVerdicts' internal/cli/finish_test.go",
+      "go test -race -count=1 ./internal/finish/... ./internal/brief/... ./internal/decide/... ./internal/cli/...",
+      "grep -q 'TAKT_FAKE_REVIEW_CALLS' internal/backend/fake.go",
+      "grep -q 'TAKT_FAKE_REVIEW_CALLS' internal/cli/oploop_test.go",
+      "grep -c 'os.ReadDir(filepath.Join(bdir, \"logs\"))' internal/cli/oploop_test.go | grep -qx 0",
+      "grep -q 'TestRevisionEventMalformedDataDoesNotPanic' internal/gate/gate_test.go",
+      "grep -q 'TestNilSeveritiesIsNotBlocking' internal/gate/gate_test.go",
+      "grep -q 'TestBlindTaskReviewPromptNeverSeesTheLensClaims' internal/cli/close_internal_test.go",
+      "grep -q 'Data\\[\"reason\"\\]' internal/cli/cmd_answer_test.go",
+      "go test -race -count=1 ./internal/backend/... ./internal/gate/... ./internal/cli/...",
+      "golangci-lint run ./internal/backend/... ./internal/gate/... ./internal/cli/...",
+      "grep -q 'path:start-end' agents/goal-assessor.md",
+      "grep -q 'path:start-end' hosts/copilot/agents/takt-goal-assessor.agent.md",
+      "grep -c 'spec excerpt' agents/implementer.md | grep -qx 0",
+      "grep -c 'spec excerpt' hosts/copilot/agents/takt-implementer.agent.md | grep -qx 0",
+      "grep -q 'absolute path' hosts/copilot/agents/takt-implementer.agent.md"
+    ],
+    "results": [
+      {
+        "command": "grep -q 'Wave \\*int' internal/gate/followup.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'func (f FollowUp) Key() string' internal/gate/followup.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestAppendFollowUpsUpgradesApproveToOverride' internal/gate/followup_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestFollowUpKeyIsInjective' internal/gate/followup_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'func renderFindings' internal/cli/cmd_review.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'O_APPEND' internal/cli/cmd_close_wave.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/gate/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/gate\t1.028s\nok  \tgithub.com/monrad/takt/internal/cli\t7.391s",
+        "elapsed_ms": 7621
+      },
+      {
+        "command": "golangci-lint run ./internal/gate/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+        "elapsed_ms": 366
+      },
+      {
+        "command": "grep -q 'json:\"reason,omitempty\"' internal/gate/gate.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q 'Reason: s.Reason' internal/cli/facts.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'twelve ids' internal/decide/questions.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'eleven' internal/decide/questions.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestQuestionGateReviewOnAnErrorOffersRetryNotRevise' internal/decide/decide_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestQuestionBranchFinishRecommendsAChoosableOption' internal/decide/finish_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt' internal/cli/cmd_answer_retry_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/decide/... ./internal/gate/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/decide\t1.012s\nok  \tgithub.com/monrad/takt/internal/gate\t1.028s",
+        "elapsed_ms": 1204
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestAnswer|TestQuestion' ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.102s",
+        "elapsed_ms": 1322
+      },
+      {
+        "command": "golangci-lint run ./internal/decide/... ./internal/gate/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 379
+      },
+      {
+        "command": "grep -q 'review-record' internal/doctor/review_record.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'ReviewRecord' internal/doctor/doctor.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestReviewRecordWarnsOnAHashMismatch' internal/doctor/doctor_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/doctor/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/doctor\t1.035s",
+        "elapsed_ms": 1209
+      },
+      {
+        "command": "go test -race -count=1 -run TestDoctor ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.071s",
+        "elapsed_ms": 1297
+      },
+      {
+        "command": "golangci-lint run ./internal/doctor/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+        "elapsed_ms": 347
+      },
+      {
+        "command": "grep -q 'TasksPlanned' internal/cli/cmd_status.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'not yet materialised' internal/cli/cmd_status.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'verdicts_present' internal/cli/cmd_status.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'BranchExists' internal/cli/select.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'loadBundle(' internal/cli/cmd_status.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestUnlockHintsAtTheBranchHoldingTheBundle' internal/cli/cmd_unlock_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestStatus|TestUnlock' ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.484s",
+        "elapsed_ms": 1710
+      },
+      {
+        "command": "golangci-lint run ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 364
+      },
+      {
+        "command": "grep -q 'func CheckCitations' internal/finish/goals.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'FieldsFunc' internal/finish/goals.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'CheckCitations' internal/cli/cmd_record.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'path:start-end' internal/brief/templates/goal-assessor.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestCitationGrammarAndContainment' internal/finish/goals_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestRecordGoalsRejectsBadCitations' internal/cli/citations_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'bad verdict and bad citation' internal/cli/citations_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestCitation|TestRecordGoals|TestGoal' ./internal/finish/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/finish\t1.024s\nok  \tgithub.com/monrad/takt/internal/cli\t1.597s",
+        "elapsed_ms": 1812
+      },
+      {
+        "command": "golangci-lint run ./internal/finish/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 380
+      },
+      {
+        "command": "grep -Eq 'SpecPath +string' internal/brief/brief.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'SpecPath' internal/brief/templates/implementer.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'SpecExcerpt' internal/brief/brief.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'spec-excerpt' internal/brief/templates/implementer.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'introduced a new blocking problem' internal/brief/templates/review-spec-followup.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestTaskBriefNamesTheSpecByPath' internal/cli/task_brief_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/brief/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/brief\t1.010s\nok  \tgithub.com/monrad/takt/internal/cli\t7.507s",
+        "elapsed_ms": 7726
+      },
+      {
+        "command": "golangci-lint run ./internal/brief/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+        "elapsed_ms": 368
+      },
+      {
+        "command": "grep -q 'no-custom-instructions' internal/backend/copilot.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q 'no-custom-instructions' internal/backend/cli_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/backend/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/backend\t1.312s",
+        "elapsed_ms": 1486
+      },
+      {
+        "command": "golangci-lint run ./internal/backend/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 359
+      },
+      {
+        "command": "grep -q 'outcome `stolen` or `forced`' docs/superpowers/specs/2026-08-24-takt-design.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'no-custom-instructions' docs/superpowers/specs/2026-08-24-takt-design.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q 'Choose `pr`' docs/superpowers/plans/2026-08-26-takt-hardening.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'docs/takt/\u003cslug\u003e/retro.md' docs/superpowers/plans/2026-08-26-takt-hardening.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'never carried, because the session was asked to act on them' docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'com.apple.quarantine' README.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'issues/17' README.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'never `cd` into the bundle' commands/takt.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'never `cd` into the bundle' hosts/copilot/skills/takt/SKILL.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'pr_body_path' commands/takt.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'pr_body_path' hosts/copilot/skills/takt/SKILL.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c -e '--fill' commands/takt.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c -e '--fill' hosts/copilot/skills/takt/SKILL.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c -e '--fill' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'never `cd` into the bundle' internal/prompt/prompt_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/prompt/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/prompt\t1.013s",
+        "elapsed_ms": 1216
+      },
+      {
+        "command": "go test ./... -race -count=1",
+        "exit": 0,
+        "passed": true,
+        "tail": "?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t1.310s\nok  \tgithub.com/monrad/takt/internal/brief\t1.011s\nok  \tgithub.com/monrad/takt/internal/bundle\t1.027s\nok  \tgithub.com/monrad/takt/internal/cli\t6.142s\nok  \tgithub.com/monrad/takt/internal/config\t1.011s\nok  \tgithub.com/monrad/takt/internal/decide\t1.023s\nok  \tgithub.com/monrad/takt/internal/doctor\t1.030s\nok  \tgithub.com/monrad/takt/internal/finish\t1.028s\nok  \tgithub.com/monrad/takt/internal/gate\t1.030s\nok  \tgithub.com/monrad/takt/internal/gitx\t6.570s\nok  \tgithub.com/monrad/takt/internal/goals\t1.011s\nok  \tgithub.com/monrad/takt/internal/hosts\t1.012s\nok  \tgithub.com/monrad/takt/internal/op\t1.013s\nok  \tgithub.com/monrad/takt/internal/plan\t1.030s\nok  \tgithub.com/monrad/takt/internal/prompt\t1.024s\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t1.023s\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t1.028s\nok  \tgithub.com/monrad/takt/internal/version\t1.011s\nok  \tgithub.com/monrad/takt/internal/wave\t1.530s",
+        "elapsed_ms": 6857
+      },
+      {
+        "command": "golangci-lint run ./...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 400
+      },
+      {
+        "command": "task hosts:check",
+        "exit": 0,
+        "passed": true,
+        "tail": "task: [hosts:check] go run ./internal/tools/hostgen --check",
+        "elapsed_ms": 66
+      },
+      {
+        "command": "grep -q 'func RemoveReceipt' internal/gate/gate.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'RemoveReceipt' internal/cli/cmd_review.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'type reviewRecord struct' internal/cli/cmd_review.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'MkdirAll' internal/cli/cmd_review.go | grep -qx 1",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'backend.VerdictRework' internal/cli/cmd_review.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c '_ = bundle.AppendEvent(tgt.bdir, \"gate_reviewed\"' internal/cli/cmd_review.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'json:\"round,omitempty\"' internal/cli/cmd_review.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestReviewFailureBeforeTheReceiptLeavesNoReceipt' internal/cli/cmd_review_failure_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestForcedReviewFailureLeavesNoStaleReceipt' internal/cli/cmd_review_failure_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestReceiptSurvivesACommitFailure' internal/cli/cmd_review_failure_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestErroredPassCarriesItsReasonAndOffersRetry' internal/cli/cmd_review_failure_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/gate/... ./internal/decide/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/gate\t1.016s\nok  \tgithub.com/monrad/takt/internal/decide\t1.010s\nok  \tgithub.com/monrad/takt/internal/cli\t6.814s",
+        "elapsed_ms": 7036
+      },
+      {
+        "command": "grep -q 'json:\"review_findings\"' internal/wave/close.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'gate_review_findings' internal/finish/retro.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'committed_at,omitzero' internal/finish/retro.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'task_review_findings' internal/brief/templates/run-retro.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestWaveClosedEventCarriesSliceAndReviewFindings' internal/cli/close_events_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/wave/... ./internal/finish/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/wave\t1.520s\nok  \tgithub.com/monrad/takt/internal/finish\t1.012s\nok  \tgithub.com/monrad/takt/internal/cli\t7.172s",
+        "elapsed_ms": 7397
+      },
+      {
+        "command": "golangci-lint run ./internal/wave/... ./internal/finish/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+        "elapsed_ms": 380
+      },
+      {
+        "command": "grep -q 'func BuildPR' internal/finish/pr.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'pr_body_path' internal/cli/cmd_next.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'preparePushPR' internal/cli/cmd_next.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'body-file' internal/brief/templates/run-push_pr.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c -e '--fill' internal/brief/templates/run-push_pr.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c -e '--fill' internal/decide/questions.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'pr_body_path' internal/decide/questions.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'lensTasks(_' internal/cli/cmd_next.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestWriteStableBriefRendersOnce' internal/cli/brief_stable_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestPushPRBodyListsGoalVerdicts' internal/cli/finish_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/finish/... ./internal/brief/... ./internal/decide/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/finish\t1.022s\nok  \tgithub.com/monrad/takt/internal/brief\t1.012s\nok  \tgithub.com/monrad/takt/internal/decide\t1.012s\nok  \tgithub.com/monrad/takt/internal/cli\t6.436s",
+        "elapsed_ms": 6657
+      },
+      {
+        "command": "grep -q 'TAKT_FAKE_REVIEW_CALLS' internal/backend/fake.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TAKT_FAKE_REVIEW_CALLS' internal/cli/oploop_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'os.ReadDir(filepath.Join(bdir, \"logs\"))' internal/cli/oploop_test.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q 'TestRevisionEventMalformedDataDoesNotPanic' internal/gate/gate_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestNilSeveritiesIsNotBlocking' internal/gate/gate_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestBlindTaskReviewPromptNeverSeesTheLensClaims' internal/cli/close_internal_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'Data\\[\"reason\"\\]' internal/cli/cmd_answer_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/backend/... ./internal/gate/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/backend\t1.309s\nok  \tgithub.com/monrad/takt/internal/gate\t1.027s\nok  \tgithub.com/monrad/takt/internal/cli\t6.230s",
+        "elapsed_ms": 6437
+      },
+      {
+        "command": "golangci-lint run ./internal/backend/... ./internal/gate/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 394
+      },
+      {
+        "command": "grep -q 'path:start-end' agents/goal-assessor.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'path:start-end' hosts/copilot/agents/takt-goal-assessor.agent.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'spec excerpt' agents/implementer.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'spec excerpt' hosts/copilot/agents/takt-implementer.agent.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'absolute path' hosts/copilot/agents/takt-implementer.agent.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      }
+    ],
+    "at": "2026-08-29T01:27:45.506672816Z"
+  },
+  "goals": {
+    "sha": "770ba26f4b9f2c629bc4a82a235d45de0d566778",
+    "verdicts": [
+      {
+        "id": "G1",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/gate -run 'TestFollowUpWaveZeroRoundTrips|TestAppendFollowUpsIsIdempotent|TestAppendFollowUpsUpgradesApproveToOverride|TestFollowUpKeyIsInjective' -v passes; FollowUp.Wave is *int with json:\"wave,omitempty\"; Key() marshals the 7-element array [gate,wave,task,severity,file,line,title] via json.Marshal; TestFollowUpWaveZeroRoundTrips asserts wave 0 serialises as 0 and round-trips as *int==0 while a gate item has no wave key; TestAppendFollowUpsUpgradesApproveToOverride asserts an override over a stored approve upgrades in place keeping the original ts.",
+        "citations": [
+          "internal/gate/followup.go:33",
+          "internal/gate/followup.go:89-104",
+          "internal/gate/followup_test.go:101-145",
+          "internal/gate/followup_test.go:213-246"
+        ]
+      },
+      {
+        "id": "G2",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/cli ./internal/gate ./internal/decide ./internal/doctor -run the named tests all pass. runReview calls storeFindings, then carryFindings on approve, then recordReviewed (event then WriteReceipt, event error returned before receipt write); recordReviewed embeds res.Reason into both the event and the receipt; questionGateReviewErrored (decide/questions.go) offers retry/accept/stop, never revise, with retry recommended and reason quoted; reviewRecord in cmd_review.go carries hash/round with json:\"round,omitempty\"; doctor/review_record.go implements the WARN-on-mismatch check, confirmed by TestReviewRecordWarnsOnAHashMismatch and TestReviewRecordSkipsHashlessAndErrorRecords.",
+        "citations": [
+          "internal/cli/cmd_review.go:186-238",
+          "internal/decide/questions.go:154-172",
+          "internal/doctor/doctor_test.go:444-466"
+        ]
+      },
+      {
+        "id": "G3",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/finish ./internal/cli -run 'TestRetroInputsCountEveryReviewOnce|TestWaveTimingsIncludeAnAttemptThatClosedWithoutCommitting|TestWaveClosedEventCarriesSliceAndReviewFindings' -v passes. TestRetroInputsCountEveryReviewOnce uses exactly the fixture described (errored gate pass, answered gate pass, a reworked attempt plus one that landed) and asserts GateReviewFindings=2, TaskReviewFindings=4, ReviewFindings=6. WaveTiming has Slice, ClosedAt, Committed, CommittedAt with json:\"committed_at,omitzero\"; the second test shows a dispatched-then-closed-without-commit attempt appears with CommittedAt zero/absent from JSON.",
+        "citations": [
+          "internal/finish/retro_test.go:187-227",
+          "internal/finish/retro_test.go:229-267",
+          "internal/finish/retro.go:100-109"
+        ]
+      },
+      {
+        "id": "G4",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/cli -run TestStatus -v passes, including TestStatusPlanPhaseSaysPlannedAndConfirmedClauses which asserts 'tasks: 4 planned (not yet materialised)', 'alignment: 5 clauses confirmed, verdicts pending' and (in a variant) 'alignment: 5 clauses awaiting confirmation', plus the JSON fields tasks.planned=4, clauses=5, skipped=false, verdicts_present=false/true across cases. cmd_status.go source confirms TasksPlanned, the 'not yet materialised' line, and that every alignment print goes through alignmentStatusLine (comment: 'never prints a bare \"alignment:\" label').",
+        "citations": [
+          "internal/cli/cmd_status_test.go:396-469",
+          "internal/cli/cmd_status.go:476-477",
+          "internal/cli/cmd_status.go:595",
+          "internal/cli/cmd_status.go:614-616"
+        ]
+      },
+      {
+        "id": "G5",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/cli -run 'TestStatus|TestUnlock' -v passes, including TestStatusHintsAtTheBranchHoldingTheBundle and TestUnlockHintsAtTheBranchHoldingTheBundle. select.go's openTarget returns bundleHint(...) on every loadBundle failure; bundleHint names 'takt/\u003cslug\u003e' and says 'check it out, or pass --dir' when the branch exists via ws.Repo.BranchExists. cmd_status.go's loadStatus calls openTarget (no direct loadBundle call in cmd_status.go).",
+        "citations": [
+          "internal/cli/select.go:91-126",
+          "internal/cli/cmd_status.go:134-137"
+        ]
+      },
+      {
+        "id": "G6",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/finish ./internal/cli -run 'TestCitation|TestRecordGoals|TestGoal' -v passes, covering absolute, traversal (and backslash traversal), a directory, past-the-end, no-line, symlink-out-of-repository, bad-verdict-and-bad-citation, plus accepted a_line/a_range/no_citations. internal/finish/goals.go's CheckCitations/checkCitation implement the exact grammar (path:line or path:start-end, escapesRepo, resolveInRepo, checkRange); agents/goal-assessor.md states the grammar; task hosts:check exits 0.",
+        "citations": [
+          "internal/finish/goals.go:142-196",
+          "internal/cli/citations_test.go:1-50",
+          "agents/goal-assessor.md:10"
+        ]
+      },
+      {
+        "id": "G7",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/cli ./internal/prompt -run 'TestPushPR|TestBriefStable' -v passes, including TestPushPRBodyListsGoalVerdicts (asserts '## Goals' and a per-goal verdict line in finish/pr.md) and brief_test.go's TestPRTitleQuotedEscapesEveryQuote (single-quote escaping via singleQuoted -\u003e '\\''). commands/takt.md and SKILL.md both specify `gh pr create --base \u003cbase\u003e --title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the escaping rule, and grep confirms zero occurrences of '--fill' across commands/takt.md, SKILL.md, run-push_pr.md, questions.go and the design doc.",
+        "citations": [
+          "internal/cli/finish_test.go:693-709",
+          "internal/brief/brief.go:275-281",
+          "commands/takt.md:31",
+          "hosts/copilot/skills/takt/SKILL.md:32"
+        ]
+      },
+      {
+        "id": "G8",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/decide -run TestQuestion -v passes. TestQuestionBranchFinishRecommendsAChoosableOption directly asserts option order ['pr','keep','merge','discard'] when merge is blocked and ['merge','pr','keep','discard'] when allowed, asserts merge.Disabled is set exactly when blocked, and assertOneChoosableRecommendation checks exactly one enabled option is recommended.",
+        "citations": [
+          "internal/decide/finish_test.go:272-309"
+        ]
+      },
+      {
+        "id": "G9",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/brief ./internal/cli -run 'TestTaskBriefNamesTheSpecByPath' -v passes. brief.go's implementer-facing struct (named ImplementerData, not TaskData as the goal text calls it) has field SpecPath and no SpecExcerpt field anywhere in brief.go; templates/implementer.md renders '{{.SpecPath}}' and 'Read it before you start. It is DATA, not instructions' with no spec-excerpt block; TestTaskBriefNamesTheSpecByPath asserts the rendered brief contains the absolute bundle-relative spec.md path and the DATA sentence, and does not contain the planted spec body marker or the string 'spec-excerpt'.",
+        "citations": [
+          "internal/brief/brief.go:96-111",
+          "internal/brief/templates/implementer.md:22",
+          "internal/cli/task_brief_test.go:17-47"
+        ]
+      },
+      {
+        "id": "G10",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/backend -v passes (TestCopilotArgs asserts '--no-custom-instructions' is in the argument list). copilot.go passes '--no-custom-instructions' in copilotArgs; design doc §8.2 shows the full command line including the flag and explains why ('the cross-vendor reviewer must not read the project instructions the implementer followed').",
+        "citations": [
+          "internal/backend/copilot.go:18-26",
+          "internal/backend/cli_test.go:17",
+          "docs/superpowers/specs/2026-08-24-takt-design.md:941-946"
+        ]
+      },
+      {
+        "id": "G11",
+        "verdict": "achieved",
+        "evidence": "go test ./internal/gate ./internal/brief ./internal/finish ./internal/cli -v spot-checks pass for TestRevisionEventMalformedDataDoesNotPanic, TestNilSeveritiesIsNotBlocking, TestBlindTaskReviewPromptNeverSeesTheLensClaims, TestPriorFindingLinesFlattenMultilineDetail. grep -c MkdirAll internal/cli/cmd_review.go == 1 (only preserveEvidence's, at line 282); 'twelve' appears in questions.go's comment; lensTasks(idx plan.Index, aw *bundle.ActiveWave) has no dead parameter; writeTaskFindings builds the whole document in a strings.Builder and writes once atomically (comment explicitly cites #51); design doc has the §6 carry sentence 'Findings that were the instruction for a revise are never carried...'.",
+        "citations": [
+          "internal/cli/cmd_review.go:282",
+          "internal/decide/questions.go:26",
+          "internal/cli/cmd_next.go:822",
+          "internal/cli/cmd_close_wave.go:766-776",
+          "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:185"
+        ]
+      },
+      {
+        "id": "G12",
+        "verdict": "achieved",
+        "evidence": "Design §4.6 states the lock_taken rule keyed on the holder taken from, with the single generated-over-generated exemption. commands/takt.md and SKILL.md both carry 'Inspect bundle files by absolute path — never `cd` into the bundle'. The plan doc's finish note names 'docs/takt/\u003cslug\u003e/retro.md' and 'Choose `pr` at branch_finish'. README's install section describes the quarantine hook, 'Open Anyway' and the xattr command, linking issues/17. go test ./internal/prompt -v passes including TestCopilotSkillHandshakeMatchesTheManifest and TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents.",
+        "citations": [
+          "docs/superpowers/specs/2026-08-24-takt-design.md:306",
+          "docs/superpowers/specs/2026-08-24-takt-design.md:316-319",
+          "commands/takt.md:44",
+          "hosts/copilot/skills/takt/SKILL.md:45",
+          "docs/superpowers/plans/2026-08-26-takt-hardening.md:1923-1927",
+          "README.md:33-38"
+        ]
+      },
+      {
+        "id": "G13",
+        "verdict": "achieved",
+        "evidence": "go test -race ./... exits 0 for all 19 test packages; golangci-lint run ./... reports '0 issues.'; task hosts:check runs 'go run ./internal/tools/hostgen --check' and exits 0.",
+        "citations": []
+      }
+    ],
+    "at": "2026-08-29T01:36:30.022080399Z"
+  },
+  "follow_ups": [
+    {
+      "gate": "plan",
+      "severity": "blocking",
+      "file": "plan.md",
+      "title": "T10 pins commit-failure behavior opposite to spec section A",
+      "detail": "The spec says any runReview failure leaves the receipt unwritten and the next review re-runs. T10 instead requires a receipt to survive commit failure and the next review to return cached. Revise T10 to remove/rollback the receipt on commit failure, or obtain a spec amendment before execution.",
+      "source": "override",
+      "ts": "2026-08-28T18:00:07.576288815Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "major",
+      "file": "plan.md",
+      "title": "T1 does not verify all seven identity fields",
+      "detail": "TestFollowUpKeyIsInjective only exercises delimiter/quote collisions in file and title. An implementation omitting gate, wave, task, severity, or line could pass all declared tests and collapse unrelated findings. Add table tests mutating each tuple element independently, distinguishing nil wave from wave 0, and proving string trimming normalization.",
+      "source": "override",
+      "ts": "2026-08-28T18:00:07.57628887Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "Two-layers design still documents FollowUp.Wave as a plain int and the file as un-de-duplicated",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and \"Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.\" The diff (task 1, closing #44) changes `Wave` to `*int` (so wave 0 round-trips distinctly from no wave) and makes `AppendFollowUps` idempotent with an upgrade rule. The doc's own phrasing anticipated a later change would supersede this, but as written it now describes a shape and behaviour that no longer exist and isn't flagged as superseded.",
+      "source": "internal",
+      "ts": "2026-08-28T18:57:11.8015554Z"
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/takt/sweep-the-open-issue-backlog-fix-the/logs/wave-0.s1.a1.diff",
+      "line": 1,
+      "title": "Task 5 (goal-assessor citation validation, #24) is entirely absent from the reviewed diff",
+      "detail": "None of task 5's required changes appear anywhere in wave-0.s1.a1.diff: no internal/finish/goals.go CheckCitations addition, no internal/cli/cmd_record.go readVerdicts root-param wiring, no internal/brief/templates/goal-assessor.md grammar update, and neither new test file (internal/finish/goals_test.go additions, internal/cli/citations_test.go) is present. Requirement coverage for task 5 is 0% in this diff. (For context: docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json records the task-5 attempt as status \"blocked\" — the implementer reports the core work complete but blocked on a pre-existing fixture in the undeclared file internal/cli/cmd_record_test.go citing a.go:1 in a repo with no a.go — which is presumably why it did not land in this wave's diff. The corresponding code does already exist in the working tree at internal/finish/goals.go:142 (CheckCitations) and internal/cli/cmd_record.go:222, but that is not part of the diff being reviewed here and the task is not marked done.)",
+      "source": "internal",
+      "ts": "2026-08-28T18:57:11.801555597Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 143,
+      "task": 2,
+      "title": "PlanGate.Reason wiring only exercised indirectly, not through gatherGateFacts",
+      "detail": "Both SpecGate and PlanGate literals in gatherGateFacts gain `Reason: s.Reason` (lines 135-137 and 143-145). The spec-gate branch is covered end-to-end by TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt (internal/cli/cmd_answer_retry_test.go), which plants a real error receipt and drives it through gate.Compute → gatherGateFacts → decide → question. The plan-gate branch's Reason threading is only checked via decide_test.go's TestTheGateReviewAskCarriesTheReceiptsReason/plan subtest, which constructs `decide.GateStatus{Verdict: \"error\", Reason: \"x\"}` directly and never calls gatherGateFacts or gate.Compute — so a bug specifically in facts.go's plan-gate literal (e.g. a typo omitting `Reason: s.Reason`) would not be caught by any test.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094471Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 166,
+      "task": 2,
+      "title": "Two near-identical 'review errored, retry it' options use different verbs",
+      "detail": "The new questionGateReviewErrored's retry option is labelled \"Re-run the review (Recommended)\" (questions.go:166), while the pre-existing questionReviewError (task-review-errored-during-close-wave gate, questions.go:325) uses \"Retry the review (Recommended)\" for the same underlying concept (a review that errored, offering to run it again). Both use choiceRetry and both are the sole recommended option for an errored review; the label text should match or the divergence should be explained, since a user comparing the two gates has no way to tell the wording difference means anything.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094772Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 408,
+      "task": 2,
+      "title": "Adopted-branch \"pr\" recommendation label has no test",
+      "detail": "questionBranchFinish's adopted-branch early return now does `pr.Label += suffixRecommended` (line 409), a new behaviour — before this diff the adopted branch never marked any option \"(Recommended)\". TestQuestionBranchFinishRecommendsAChoosableOption (internal/decide/finish_test.go) only covers the non-adopted merge-blocked/merge-allowed cases; the existing adopted-branch assertion in TestBranchFinishOptions (finish_test.go:227-232) checks only option order/choice, never the label text. No test would catch a regression that dropped the suffix or duplicated it in the adopted path.",
+      "source": "internal",
+      "ts": "2026-08-28T19:00:09.352094815Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/doctor/doctor_test.go",
+      "line": 438,
+      "task": 3,
+      "title": "Tests do not assert the complete finding-level sequence",
+      "detail": "reviewRecordLevel returns one matching level, so duplicate or additional review-record findings could pass. Assert levels(fs, \"review-record\") equals exactly [WARN] or [PASS] as specified.",
+      "source": "approve",
+      "ts": "2026-08-28T19:00:09.364711005Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "§5.4 still documents FollowUp.Wave as a plain int and the carry as un-de-duplicated, both now false",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and (line 361-362) `Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.` This wave's task 1 changes exactly that: `internal/gate/followup.go` now declares `Wave *int` (nil for a gate follow-up, \u0026n for wave n, so wave 0 serialises as \"wave\": 0) and `AppendFollowUps` is now idempotent with a Key()-based upgrade rule (approve→override) — i.e. #44 is resolved, not left untouched. The new code comment on the Wave/Task fields even cites this same '§5.4' as its rationale, so the doc it points to now contradicts the shape it documents. No task in this wave updates the two-layers design doc, and it is still an actively cross-referenced document (2026-08-24-takt-design.md links '(two-layers design §5.4)' and similar in several places), so a future reader following that citation is told the wrong field type and the wrong de-duplication story.",
+      "source": "internal",
+      "ts": "2026-08-28T20:07:19.406247666Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 202,
+      "task": 6,
+      "title": "Newline-flattening fix applied to PriorFindingLines but not to its twin CandidateLines",
+      "detail": "This diff adds `lineSafe` to collapse newlines in PriorFindingLines' free-text `f.Detail` before rendering one-finding-per-line (brief.go:244), with a doc comment explaining that an unflattened multi-line Detail would 'arrive as several [findings]' to the reviewing agent. CandidateLines (brief.go:202-208), a few lines above in the same file, renders VerifyCandidate.Detail — the same kind of free-form, agent-authored prose (from lens-review findings, wired through cmd_next.go:884) — in the exact same one-per-line format, with the exact same unflattened `c.Detail`. The identical hazard this diff explicitly fixes in one place is left live in the structurally identical sibling function it did not touch.",
+      "source": "internal",
+      "ts": "2026-08-28T20:10:20.203231781Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_status.go",
+      "line": 178,
+      "task": 4,
+      "title": "plannedTasks' materialised-tasks branch is never verified",
+      "detail": "plannedTasks(bdir, st) short-circuits to 0 when len(st.Tasks) \u003e 0 (cmd_status.go:178-180), which is exactly the state a normal run is in once it leaves the plan phase (plan.index.json is never deleted after materialiseTasks, so it still sits on disk in execute/finish phase). No test in this diff or pre-existing exercises this branch with an assertion on the tasks/planned output: the new TestStatusPlanPhaseSaysPlannedAndConfirmedClauses only covers the plan-phase case (st.Tasks empty, index present, planned=4); the pre-existing reviewerRun fixture (record_reviewer_test.go:23-49) does set st.Tasks non-empty alongside a real plan.index.json and is used by status tests such as TestStatusInternalReviewSkipped/TestStatusInternalReviewZeroCandidatesNotVerifyPending, but those tests never assert on the 'tasks' or 'planned' fields — so they exercise the line without verifying it. If the early return were dropped (e.g. plannedTasks always parsed the index and returned len(idx.Tasks) whenever it succeeded), every execute/finish-phase status call for a run whose plan.index.json is still on disk would wrongly report 'N planned (not yet materialised)' instead of real task counts, and no test would fail.",
+      "source": "internal",
+      "ts": "2026-08-28T20:33:46.056161034Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/select.go",
+      "line": 122,
+      "task": 4,
+      "title": "bundleHint assumes the created-branch convention, ignoring the adopted-branch rule documented next to it",
+      "detail": "bundleHint's only positive branch guess is `\"takt/\"+slug` (select.go:122-123), and its doc comment states flatly that `takt init` commits the bundle on takt/\u003cslug\u003e. But cmd_init.go's chooseBranch (internal/cli/cmd_init.go:204-206, spec D9) documents two branch outcomes: on the default branch init creates takt/\u003cslug\u003e, but on any other branch init adopts the current branch (bi.adopted=true) and commits the bundle there instead — under whatever name that branch has, not takt/\u003cslug\u003e. For a run initialised via the adopted path, switching away from that branch and running `status`/`unlock` will fail loadBundle with fs.ErrNotExist, bundleHint's BranchExists(ctx, \"takt/\"+slug) check will correctly return false (no such branch was ever created), and the code falls through to \"no run named \u003cslug\u003e under \u003cbase\u003e; check the slug or pass --dir\" — telling the user no such run exists when it does, just on a differently-named adopted branch. No existing helper maps a slug back to its actual (possibly adopted) branch, so this is a real gap between the new hint logic and the branch rule the surrounding code already knows about, not just an untested edge case.",
+      "source": "internal",
+      "ts": "2026-08-28T20:33:46.056161214Z"
+    },
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "wave": 1,
+      "title": "Claude Code command doc still tells the host to `gh pr create --fill`",
+      "detail": "Same staleness as the Copilot skill: the `run` row's push_pr example still reads \"then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", unchanged by this diff even though the actual op instructions (and the branch_finish option description in internal/decide/questions.go) now use `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the op's `pr_title`/`pr_body_path` inputs.",
+      "source": "internal",
+      "ts": "2026-08-28T21:15:35.60451429Z"
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "wave": 1,
+      "title": "Copilot skill still tells the host to `gh pr create --fill`",
+      "detail": "This diff replaces `gh pr create --base \u003cbase\u003e --fill` with a run-generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` everywhere it is produced (run-push_pr.md template, the branch_finish `pr` option's Description in internal/decide/questions.go, cmd_next.go's preparePushPR). The Copilot skill's op-table row for `run`/`push_pr` still spells out the literal old command: \"push_pr (network git — confirm with the user, then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`)\". A host following this contract literally would run the old `--fill` command, discarding the run-derived title/body the rest of the diff exists to produce.",
+      "source": "internal",
+      "ts": "2026-08-28T21:15:35.604514509Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_review.go",
+      "line": 389,
+      "wave": 1,
+      "task": 10,
+      "title": "priorFindingsForScopedPass's doc comment now contradicts the struct it sits above",
+      "detail": "The comment says \"the findings file carries no hash and no pass identity, so pairing it with the receipt was convention, not a checkable invariant\" (lines 388-390), but this same diff adds exactly that — Hash and Round — to reviews/\u003cgate\u003e.json via the new reviewRecord type documented two paragraphs above (lines 359-365: \"tagged with the gate hash it reviewed and the round it was\"). The stated justification for reading both the verdict and the blocking flag from one artifact is now factually wrong about the artifact's own shape, even though the conclusion (read from reviews/\u003cgate\u003e.json, not the receipt) may still be correct for other reasons.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534633Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 211,
+      "wave": 1,
+      "task": 10,
+      "title": "RemoveReceipt's not-exist branch has no direct or indirect test coverage",
+      "detail": "RemoveReceipt (gate.go:211) is new and has two branches: delete an existing receipt, or treat fs.ErrNotExist as success. Every test that calls `takt review --force` (TestForcedReviewFailureLeavesNoStaleReceipt and TestFindingsFileCarriesTheGateHashAndRound in internal/cli/cmd_review_failure_test.go) does so only after a prior successful review already wrote a receipt, so the deletion always removes an existing file. No test — neither a direct unit test in internal/gate/gate_test.go nor a CLI test doing `review \u003cgate\u003e --force` as the very first review of a gate — exercises the fs.ErrNotExist-is-ok branch, even though that is a realistic first-use case for --force.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534881Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/gate/gate.go",
+      "line": 212,
+      "wave": 1,
+      "task": 10,
+      "title": "RemoveReceipt uses fs.ErrNotExist where the rest of gate.go uses os.ErrNotExist",
+      "detail": "ReadReceipt (line 179) and artifactHash (line 125) both check errors.Is(err, os.ErrNotExist) for the identical sentinel. The new RemoveReceipt checks errors.Is(err, fs.ErrNotExist) instead, which required adding a new \"io/fs\" import solely for a spelling that os.ErrNotExist (== fs.ErrNotExist) already covers via the package's existing \"os\" import. Minor departure from the file's own established convention.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.772534971Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_review_test.go",
+      "line": 67,
+      "wave": 1,
+      "task": 10,
+      "title": "Legacy coverage was added as a new top-level test",
+      "detail": "The task says every new test belongs in cmd_review_failure_test.go and asks for the legacy-file scenario as an added case in the existing round-trip test. Keep this package-private coverage in cmd_review_test.go, but fold it into TestWriteResultJSONRoundTripsFindings rather than introducing a separate test function.",
+      "source": "approve",
+      "ts": "2026-08-28T21:21:28.785628158Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 1,
+      "wave": 1,
+      "task": 11,
+      "title": "Retro instructions still say \"dispatch→commit timings\" after WaveTiming became dispatch→close",
+      "detail": "Task 11 changes WaveTiming from one entry per committed attempt to one entry per dispatched attempt that *closed*, with `closed_at` always present and `committed`/`committed_at` only when the attempt actually committed (internal/finish/retro.go's WaveTiming doc comment now reads \"one per dispatched attempt that closed\"). The retro-writing op's own instructions, run-retro.md line 1, still describe the inputs as \"per-wave dispatch→commit timings\" — unchanged except for the review-findings clause the task explicitly edited. A reworked attempt's timing entry has no `committed_at` at all, which the stale phrasing does not prepare the retro-writing agent for.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728647Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 163,
+      "wave": 1,
+      "task": 11,
+      "title": "reviewFindingsOf's summation is only ever exercised with one reviewed task",
+      "detail": "reviewFindingsOf sums len(tr.Review.Findings) across every task in the close. The only test that reaches it, TestWaveClosedEventCarriesSliceAndReviewFindings (internal/cli/close_events_test.go), bumps a single task (task 3) with one finding, so the accumulation (n += ...) across two-or-more reviewed tasks in the same close is never proved. TestRetroInputsCountEveryReviewOnce (internal/finish/retro_test.go) tests the downstream retro math but constructs its wave_closed events with a hard-coded review_findings value rather than calling reviewFindingsOf, so it doesn't cover this function either. A silent regression here (e.g. assignment instead of accumulation) would produce quietly wrong review_findings counts in the retro with no failing test.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728768Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro.go",
+      "line": 118,
+      "wave": 1,
+      "task": 11,
+      "title": "retro.go re-declares gate.EvReviewed under a different local name",
+      "detail": "evGateReviewed = \"gate_reviewed\" duplicates the exported gate.EvReviewed (internal/gate/gate.go:47, also \"gate_reviewed\") even though retro.go already imports internal/gate (used elsewhere in the file, e.g. gate.FollowUp, gate.SourceApprove). Task 10's cmd_review.go uses gate.EvReviewed directly for the same event type; task 11 instead re-declares the same string under a new unexported name rather than reusing the existing constant it could import.",
+      "source": "internal",
+      "ts": "2026-08-28T21:21:28.786728842Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 275,
+      "wave": 1,
+      "task": 12,
+      "title": "singleQuoted duplicates the existing shellQuote escaping algorithm",
+      "detail": "internal/cli/archive.go:353-355 already defines `shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` for exactly this POSIX single-quote close-escape-reopen technique, with a comment explaining the same rationale repeated almost verbatim in the new singleQuoted's doc comment (internal/brief/brief.go:265-274). The new PRTitleQuoted (internal/brief/brief.go:275-281) reimplements the same one-line escaping rule in a different package instead of sharing it, so a future fix or hardening of the shell-escaping rule (e.g. for control characters) has two independent copies to update.",
+      "source": "internal",
+      "ts": "2026-08-29T00:15:05.179366046Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "wave": 1,
+      "task": 12,
+      "title": "Body path interpolated unquoted in the same shell command whose title is carefully quoted",
+      "detail": "`gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` quotes the title (via singleQuoted/PRTitleQuoted, added specifically because a shell would otherwise split the command on spaces) but leaves `--body-file {{.PRBodyPath}}` bare. PRBodyPath is finish.PRPath(bdir), an absolute path under the workspace/repo root, which can contain spaces just as much as any other filesystem path — the exact risk internal/cli/archive.go's shellQuote (used for discardSweep's `git clean -fd -- '\u003crel\u003e'`) exists to guard against ('a worktree path is whatever the user's filesystem says — a space in it would otherwise split the command into arguments'). brief.go:279-280 asserts PRBodyPath is safe to interpolate bare 'since it is takt's own \u003cbundle\u003e/finish/pr.md', but that reasoning is exactly what shellQuote's own doc comment rejects for repo/bundle-relative paths. The same command should quote both arguments.",
+      "source": "internal",
+      "ts": "2026-08-29T00:15:05.179366247Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 300,
+      "wave": 1,
+      "task": 12,
+      "title": "Malformed external bundles receive impossible Git recovery advice",
+      "detail": "External bundles are explicitly supported and are not committed to Git, but factsHint always tells users with an unreadable finish/goals.json to “restore it from git.” The failure correctly blocks and names the file, but the recovery guidance is invalid when ws.Dir.InRepo is false. Use repository-aware guidance, such as restoring from Git only for in-repository bundles and repairing/restoring the named file otherwise.",
+      "source": "approve",
+      "ts": "2026-08-29T00:15:05.192824398Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 855,
+      "wave": 2,
+      "task": 9,
+      "title": "Design doc §7.5 change has zero automated test coverage",
+      "detail": "No test in the repository loads or asserts against docs/superpowers/specs/2026-08-24-takt-design.md (confirmed by search — only internal/prompt/prompt_test.go covers commands/takt.md and hosts/copilot/skills/takt/SKILL.md). Task 9 item (3) requires this file's `gh pr create --base \u003cbase\u003e --fill` to become the title/body-file form, but that edit is verified only by manual/reviewer inspection, not by any test — so a stale re-edit of this file later would go undetected.",
+      "source": "internal",
+      "ts": "2026-08-29T01:27:33.273711824Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 91,
+      "wave": 2,
+      "task": 9,
+      "title": "No regression test asserts `--fill` is gone",
+      "detail": "Task 9 requires 'no `--fill` remains in either' (commands/takt.md, hosts/copilot/skills/takt/SKILL.md) and 'no `--fill` remains in the file' (docs/superpowers/specs/2026-08-24-takt-design.md). The new crossHostInvariants entries (lines 91-94) only assert the new text is present via `mustContain`; nothing asserts `--fill` is absent from the op-table `run` bullet in either prompt file or from design doc §7.5. A future edit (e.g. a bad merge that restores `gh pr create --base \u003cbase\u003e --fill` alongside the new text) would pass every existing test. Compare internal/brief/brief_test.go:180 and internal/cli/finish_test.go:583,634-635, which do assert `--fill` absence for the Go-generated op instructions — the prose files got no equivalent negative check.",
+      "source": "internal",
+      "ts": "2026-08-29T01:27:33.273712786Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 94,
+      "wave": 2,
+      "task": 9,
+      "title": "Invariant-bullet placement (\"immediately after\") is unverified",
+      "detail": "Task 9 item (2) specifies the new bundle-inspection bullet must be inserted 'immediately after' the `state.json`/`events.jsonl` bullet in both files' Invariants sections. `mustContain` (line 161) only checks substring presence anywhere in the section text, so the ordering requirement isn't pinned by TestPromptInvariantsReadTheSameOnEveryHost — a later reorder that leaves the bullet elsewhere in the section would still pass.",
+      "source": "internal",
+      "ts": "2026-08-29T01:27:33.273712816Z"
+    }
+  ],
+  "internal_review": {
+    "candidates": 57,
+    "confirmed": 46,
+    "false_positives": 11,
+    "unattributed": 5,
+    "by_lens": {
+      "consistency": {
+        "reported": 13,
+        "confirmed": 13
+      },
+      "correctness": {
+        "reported": 1,
+        "confirmed": 1
+      },
+      "docs": {
+        "reported": 18,
+        "confirmed": 10
+      },
+      "intent": {
+        "reported": 5,
+        "confirmed": 2
+      },
+      "simplicity": {
+        "reported": 3,
+        "confirmed": 3
+      },
+      "tests": {
+        "reported": 17,
+        "confirmed": 17
+      }
+    },
+    "scoped_passes": 0,
+    "scoped_changed_verdict": 0,
+    "overlap": 1,
+    "skipped": 0
+  }
+}

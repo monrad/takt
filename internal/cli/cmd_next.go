@@ -236,7 +236,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 	for range maxDecideIterations {
 		facts, err := gatherFacts(ctx, r.ws, r.bdir, r.st, r.force, r.recover, r.now, r.waveSession())
 		if err != nil {
-			return fail(r.env.Stderr, exitError, err.Error(), "")
+			return fail(r.env.Stderr, exitError, err.Error(), r.factsHint())
 		}
 		d, err := decide.Decide(r.st, facts)
 		if err != nil {
@@ -276,6 +276,31 @@ func (r *nextRun) loop(ctx context.Context) int {
 		}
 	}
 	return fail(r.env.Stderr, exitError, "decide loop did not converge", "run `takt doctor`")
+}
+
+// factsHint is the recovery advice for a fact-gathering failure that does
+// not say which file it is about — healFinish's and the loop's, the two
+// places one `takt next` gathers facts. A finish-phase call decodes
+// finish/goals.json every time (goalFacts), and encoding/json names no file
+// in its messages, so a truncated record reaches the user as "unexpected end
+// of JSON input" with nothing to open. Re-reading the record once the call
+// has already failed is what turns that into a path — the same
+// after-the-fact diagnosis openTarget makes of a bundle it could not load
+// (#8) — and a call that succeeds pays nothing for it.
+//
+// The advice is to restore the file, and only that. Removing it would clear
+// the error without answering it: goals_checked_sha stays in state.json, so
+// the goals still count as checked, nothing is reassessed, and the run walks
+// on to a pull request whose every goal reads "not assessed".
+func (r *nextRun) factsHint() string {
+	if r.st.Phase != bundle.PhaseFinish {
+		return ""
+	}
+	if _, err := finish.ReadGoals(r.bdir); err != nil {
+		return finish.GoalsPath(r.bdir) + " cannot be read; restore it from git — deleting it " +
+			"reassesses nothing, since state.json still records the goals as checked"
+	}
+	return ""
 }
 
 // waveSession is the session id the wave-liveness check (spec §5.3 row 13)
@@ -441,7 +466,7 @@ func (r *nextRun) healFinish(ctx context.Context) int {
 	}
 	fin, err := gatherFinishFacts(ctx, r.ws, r.bdir, r.st)
 	if err != nil {
-		return fail(r.env.Stderr, exitError, err.Error(), "")
+		return fail(r.env.Stderr, exitError, err.Error(), r.factsHint())
 	}
 	tgt := &runTarget{ws: r.ws, slug: r.slug, bdir: r.bdir, st: r.st}
 	if !fin.Verified && fin.Verify.Present && fin.Verify.Passed {
@@ -577,6 +602,22 @@ func (r *nextRun) materialiseTasks(idx plan.Index, waves map[int]int) int {
 func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	ag := *d.Agent
 	ag.Cwd = r.ws.Repo.Root
+	// The verifier's brief is wave-scoped — it lives under waves/<n>/, not
+	// briefs/, the way the lens briefs do (two-layers design §3.2, §3.3) — so
+	// its destination is spelled out here rather than left to
+	// writeStableBrief's name-from-render convention. Its slice diff is
+	// written here too, once, exactly as dispatchLenses writes it: a render
+	// closure is called again to compare tokens, and rewriting the diff on
+	// every render is work that comparison must not do (#51).
+	dest, diffPath := "", ""
+	if ag.Agent == op.AgentReviewer {
+		aw := r.st.ActiveWave
+		dest = filepath.Join(waveDir(r.bdir, aw.N), fmt.Sprintf("verify.s%d.a%d.md", sliceOf(aw), aw.Attempt))
+		var derr error
+		if diffPath, derr = r.ensureSliceDiff(ctx); derr != nil {
+			return fail(r.env.Stderr, exitError, derr.Error(), "")
+		}
+	}
 	render := func(tok string) (string, string, error) {
 		switch ag.Agent {
 		case op.AgentPlanner:
@@ -586,26 +627,11 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 		case op.AgentGoalAssessor:
 			return r.assessorBrief(ctx, &ag, tok)
 		case op.AgentReviewer:
-			return r.verifyBrief(ctx, &ag, tok)
+			return r.verifyBrief(&ag, tok, diffPath)
 		}
 		return "", "", errors.New("unknown agent " + ag.Agent)
 	}
-	// The verifier's brief is wave-scoped — it lives under waves/<n>/, not
-	// briefs/, the way the lens briefs do (two-layers design §3.2, §3.3) — so
-	// its destination is spelled out here rather than left to
-	// writeStableBrief's name-from-render convention.
-	dest := ""
-	if ag.Agent == op.AgentReviewer {
-		aw := r.st.ActiveWave
-		dest = filepath.Join(waveDir(r.bdir, aw.N), fmt.Sprintf("verify.s%d.a%d.md", sliceOf(aw), aw.Attempt))
-	}
-	var p string
-	var err error
-	if dest != "" {
-		p, err = writeStableBriefAt(dest, render)
-	} else {
-		p, err = writeStableBrief(r.bdir, render)
-	}
+	p, err := r.writeDispatchBrief(dest, render)
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
@@ -630,6 +656,24 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 	return r.emit(o)
 }
 
+// writeDispatchBrief writes the brief dispatchAgent is about to name. dest
+// is "" for the agents whose brief lives under briefs/ under the name their
+// own render reports; for the wave-scoped verifier it is the path, and the
+// fresh render is made here so writeStableBriefAt is handed text rather than
+// a closure to render again (#51).
+func (r *nextRun) writeDispatchBrief(
+	dest string, render func(tok string) (text, name string, err error),
+) (string, error) {
+	if dest == "" {
+		return writeStableBrief(r.bdir, render)
+	}
+	text, _, err := renderFresh(render)
+	if err != nil {
+		return "", err
+	}
+	return writeStableBriefAt(dest, text, render)
+}
+
 // writeStableBrief renders a non-task brief under briefs/, reusing the
 // delimiter token of the file already there when the text is otherwise
 // unchanged, so a replayed `next` leaves the brief byte-identical instead
@@ -638,29 +682,33 @@ func (r *nextRun) dispatchAgent(ctx context.Context, d decide.Decision) int {
 // diff shows the change and nothing else; if the old token now collides
 // with the content (Quote refuses it) the fresh render is written instead.
 func writeStableBrief(bdir string, render func(tok string) (text, name string, err error)) (string, error) {
-	fresh, err := brief.Token()
+	text, name, err := renderFresh(render)
 	if err != nil {
 		return "", err
 	}
-	_, name, err := render(fresh)
-	if err != nil {
-		return "", err
-	}
-	return writeStableBriefAt(briefPath(bdir, name), render)
+	return writeStableBriefAt(briefPath(bdir, name), text, render)
 }
 
-// writeStableBriefAt is writeStableBrief with the destination spelled by
-// the caller — wave-scoped reviewer briefs live under waves/<n>/, not
-// briefs/ (two-layers design §3.2).
-func writeStableBriefAt(p string, render func(tok string) (text, name string, err error)) (string, error) {
+// renderFresh renders a brief with a newly minted delimiter token: the text
+// that is written when there is no brief on disk to take a token from. It is
+// the one fresh render a call makes — the only other one is
+// reuseBriefToken's, which re-renders with the token already on disk and is
+// the byte comparison itself (#51).
+func renderFresh(render func(tok string) (text, name string, err error)) (string, string, error) {
 	fresh, err := brief.Token()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	text, _, err := render(fresh)
-	if err != nil {
-		return "", err
-	}
+	return render(fresh)
+}
+
+// writeStableBriefAt is writeStableBrief with the destination and the
+// fresh-token render spelled by the caller — wave-scoped reviewer briefs
+// live under waves/<n>/, not briefs/ (two-layers design §3.2), and the
+// caller that has already rendered must not pay for a second render.
+func writeStableBriefAt(
+	p, text string, render func(tok string) (text, name string, err error),
+) (string, error) {
 	reused, unchanged := reuseBriefToken(p, render)
 	if unchanged {
 		return p, nil
@@ -737,7 +785,7 @@ func (r *nextRun) dispatchLenses(ctx context.Context, d decide.Decision) int {
 	if err != nil {
 		return fail(r.env.Stderr, exitError, err.Error(), "")
 	}
-	tasks := lensTasks(r.st, idx, aw)
+	tasks := lensTasks(idx, aw)
 	agents := make([]op.Agent, 0, len(d.Lenses))
 	for _, lens := range d.Lenses {
 		rubric, rerr := brief.LensRubric(lens)
@@ -746,14 +794,14 @@ func (r *nextRun) dispatchLenses(ctx context.Context, d decide.Decision) int {
 		}
 		p := filepath.Join(waveDir(r.bdir, aw.N),
 			fmt.Sprintf("lens-%s.s%d.a%d.md", lens, sliceOf(aw), aw.Attempt))
-		p, err = writeStableBriefAt(p, func(tok string) (string, string, error) {
+		lensBrief := func(tok string) (string, string, error) {
 			text, terr := brief.Render("review-lens", brief.LensData{
 				Slug: r.slug, Wave: aw.N, Slice: sliceOf(aw), Attempt: aw.Attempt,
 				Lens: lens, Rubric: rubric, DiffPath: diffPath, Tasks: tasks, Token: tok,
 			})
 			return text, "", terr
-		})
-		if err != nil {
+		}
+		if p, err = r.writeDispatchBrief(p, lensBrief); err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
 		agents = append(agents, op.Agent{
@@ -770,11 +818,8 @@ func (r *nextRun) dispatchLenses(ctx context.Context, d decide.Decision) int {
 	})
 }
 
-// lensTasks is the slice's tasks as the lens brief quotes them. The first
-// parameter is *bundle.State to match the shape of every other brief-data
-// builder in this file, even though only the index and the active wave are
-// read here.
-func lensTasks(_ *bundle.State, idx plan.Index, aw *bundle.ActiveWave) []brief.LensTask {
+// lensTasks is the slice's tasks as the lens brief quotes them.
+func lensTasks(idx plan.Index, aw *bundle.ActiveWave) []brief.LensTask {
 	out := make([]brief.LensTask, 0, len(aw.Tasks))
 	for _, id := range aw.Tasks {
 		if pt := idx.Task(id); pt != nil {
@@ -860,14 +905,11 @@ func (r *nextRun) assessorBrief(ctx context.Context, ag *op.Agent, tok string) (
 }
 
 // verifyBrief renders the verifier's brief over the recomputed candidates
-// (two-layers design §3.3, §7.3).
-func (r *nextRun) verifyBrief(ctx context.Context, ag *op.Agent, tok string) (string, string, error) {
+// (two-layers design §3.3, §7.3). diffPath is the slice diff its caller
+// wrote before building the render closure this runs inside.
+func (r *nextRun) verifyBrief(ag *op.Agent, tok, diffPath string) (string, string, error) {
 	aw := r.st.ActiveWave
 	ag.Model = r.ws.Cfg.Agents.Reviewer.Model
-	diffPath, err := r.ensureSliceDiff(ctx)
-	if err != nil {
-		return "", "", err
-	}
 	lenses := r.st.Config.Review.Lenses
 	records := map[string]*wave.LensRecord{}
 	for _, l := range lenses {
@@ -957,6 +999,12 @@ func (r *nextRun) run(o op.Op) int {
 		inputs["inputs_path"] = data.InputsPath
 		inputs["retro_path"] = data.RetroPath
 	case op.StepPushPR:
+		// The body is re-derived on every call that emits this op, exactly
+		// as the retro inputs are: a replayed `next` writes the same bytes
+		// and hands back the same op (spec §5.4).
+		if err := r.preparePushPR(&data, inputs); err != nil {
+			return fail(r.env.Stderr, exitError, err.Error(), "")
+		}
 		inputs[keyBranch] = data.Branch
 		inputs[keyBase] = data.Base
 		o.Done = "takt done --step " + op.StepPushPR + " --url <pr-url> --slug " + r.slug
@@ -968,6 +1016,69 @@ func (r *nextRun) run(o op.Op) int {
 	o.Instructions = text
 	o.Inputs = inputs
 	return r.emit(o)
+}
+
+// preparePushPR writes finish/pr.md and fills the push_pr op's title and
+// body path from it (#36). Nothing here is best-effort: a run that reaches
+// the pull request has a spec, and a goals-on run has goals.md and — unless
+// it never wrote one — a readable finish/goals.json, so a read that fails is
+// a broken bundle, not a body with a section quietly missing. The one
+// absence that is not an error is a goals record that does not exist:
+// finish.ReadGoals reports it as (nil, nil) and every goal is then rendered
+// "not assessed" — which a record that exists but cannot be decoded is
+// never rendered as. That last one is stopped before this: the finish facts
+// decode the same file on the way to deciding this op, so the call has
+// already failed with the path factsHint names. The check below is what
+// makes the rule hold at this end too, whichever reader gets there first.
+func (r *nextRun) preparePushPR(data *brief.RunData, inputs map[string]any) error {
+	spec, err := os.ReadFile(filepath.Join(r.bdir, "spec.md"))
+	if err != nil {
+		return err
+	}
+	items, err := r.prGoals()
+	if err != nil {
+		return err
+	}
+	rec, err := finish.ReadGoals(r.bdir)
+	if err != nil {
+		return err
+	}
+	// An external bundle is not in the repository, so it has no relative
+	// path to point a reader at; its own directory is the best pointer.
+	rel := bundleRel(r.ws, r.bdir)
+	if rel == "" {
+		rel = r.bdir
+	}
+	pr := finish.BuildPR(string(spec), r.st.Topic, items, rec, rel)
+	if err = finish.WritePR(r.bdir, pr.Body); err != nil {
+		return err
+	}
+	data.PRTitle, data.PRBodyPath = pr.Title, finish.PRPath(r.bdir)
+	inputs["pr_title"] = pr.Title
+	inputs["pr_body_path"] = data.PRBodyPath
+	return nil
+}
+
+// prGoals is the goal list the pull request body renders, or nil when the
+// run has no goals — the one case in which the body omits the section
+// entirely. A goals-on run whose goals.md is unreadable or unparsable is an
+// error: a body silently missing its goals is exactly what this op must not
+// produce. Both errors name the file on their own — the one [os.ReadFile]
+// returns carries the path, every goals.Parse message opens with "goals.md:"
+// — so neither is wrapped, exactly as the other callers of Parse leave them.
+func (r *nextRun) prGoals() ([]goals.Goal, error) {
+	if !r.st.Config.Goals {
+		return nil, nil
+	}
+	b, err := os.ReadFile(filepath.Join(r.bdir, "goals.md"))
+	if err != nil {
+		return nil, err
+	}
+	g, err := goals.Parse(b)
+	if err != nil {
+		return nil, err
+	}
+	return g.Items, nil
 }
 
 // writeRetroInputs re-derives finish/retro-inputs.json from the run's own

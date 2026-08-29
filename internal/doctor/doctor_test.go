@@ -10,6 +10,7 @@ import (
 
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/doctor"
+	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/goals"
 	"github.com/monrad/takt/internal/plan"
 )
@@ -233,6 +234,50 @@ func TestDoctorWarnsOnAnUnreadableSessionSidecar(t *testing.T) {
 	}
 }
 
+// TestStaleWaveOverAnUnreadableSidecarDoesNotHintRecover: an unreadable
+// logs/session.json over a long wave already earns a session WARN telling
+// the user to unlock. The stale-wave check must not add "its session is
+// gone — run `takt next --recover`" on top, because the session is not
+// known to be gone: the wave's agents may still be running, and recovering
+// under them is exactly what the two hints together would push a user
+// into (#7).
+func TestStaleWaveOverAnUnreadableSidecarDoesNotHintRecover(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	st := healthy("w")
+	old := time.Now().Add(-2 * time.Hour)
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: old, SessionID: "S", Tasks: []int{1}}
+	if err := bundle.SaveState(d.Bundle("w"), st); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(d.Bundle("w"), "logs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundle.SessionPath(d.Bundle("w")), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := doctor.Options{
+		Now: time.Now(), WaveStaleAfter: 30 * time.Minute, LockTTL: 10 * time.Minute,
+		ValidateOpts: noOpts, Resolve: func(string) bool { return true },
+	}
+	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.StaleWave})
+	var stale *doctor.Finding
+	for i := range fs {
+		if fs[i].Check == "stale-wave" {
+			stale = &fs[i]
+		}
+	}
+	if stale == nil || stale.Level != "WARN" {
+		t.Fatalf("a long wave over an unreadable sidecar still warns: %+v", fs)
+	}
+	if strings.Contains(stale.Fix, "--recover") || strings.Contains(stale.Message, "gone") {
+		t.Fatalf("the recover hint presumes a dead session doctor cannot see: %+v", *stale)
+	}
+	if !strings.Contains(stale.Message, "session unknown") || !strings.Contains(stale.Fix, "takt unlock") {
+		t.Fatalf("expected an unlock-first finding, got %+v", *stale)
+	}
+}
+
 func TestIndexStalenessAndBranch(t *testing.T) {
 	t.Parallel()
 	d := newDir(t)
@@ -358,6 +403,88 @@ func TestIndexStalenessSkipsArchived(t *testing.T) {
 	fs := doctor.RunWith(context.Background(), d, o, []doctor.Check{doctor.IndexStaleness})
 	if l := levels(fs, "index-staleness"); len(l) != 1 || l[0] != "PASS" {
 		t.Fatalf("archived artifacts are history, not stale: %+v", fs)
+	}
+}
+
+// plantReviewRecordFixture writes a healthy bundle at slug, a spec gate
+// receipt, and reviews/spec.json with the given raw body — the shape both
+// review-record tests below share.
+func plantReviewRecordFixture(t *testing.T, d bundle.Dir, slug string, rc gate.Receipt, findingsJSON string) {
+	t.Helper()
+	if err := bundle.SaveState(d.Bundle(slug), healthy(slug)); err != nil {
+		t.Fatal(err)
+	}
+	rc.Gate, rc.TS = gate.Spec, time.Now()
+	if err := gate.WriteReceipt(d.Bundle(slug), rc); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(d.Bundle(slug), "reviews"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(d.Bundle(slug), "reviews", "spec.json"), []byte(findingsJSON), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// reviewRecordLevel returns the review-record finding's level for slug, "" if none.
+func reviewRecordLevel(fs []doctor.Finding, slug string) string {
+	for _, f := range fs {
+		if f.Check == "review-record" && f.Slug == slug {
+			return f.Level
+		}
+	}
+	return ""
+}
+
+// TestReviewRecordWarnsOnAHashMismatch covers #43.3: reviews/<gate>.json
+// carries the hash the pass reviewed, and a receipt at a different hash is
+// a reviewer's answer the findings file no longer matches.
+func TestReviewRecordWarnsOnAHashMismatch(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	slug := "rr"
+	rc := gate.Receipt{Hash: "h1", Verdict: gate.VerdictApprove}
+	plantReviewRecordFixture(t, d, slug, rc, `{"verdict":"approve","findings":[],"hash":"h2"}`)
+	fs := doctor.Run(context.Background(), d, false, doctor.Default, noOpts)
+	var found *doctor.Finding
+	for i := range fs {
+		if fs[i].Check == "review-record" && fs[i].Slug == slug {
+			found = &fs[i]
+		}
+	}
+	if found == nil || found.Level != "WARN" || !strings.Contains(found.Message, "reviews/spec.json") ||
+		!strings.Contains(found.Fix, "takt review spec --force --slug "+slug) {
+		t.Fatalf("expected a mismatch WARN naming reviews/spec.json and the fix: %+v", found)
+	}
+	plantReviewRecordFixture(t, d, slug, rc, `{"verdict":"approve","findings":[],"hash":"h1"}`)
+	fs = doctor.Run(context.Background(), d, false, doctor.Default, noOpts)
+	if got := reviewRecordLevel(fs, slug); got != "PASS" {
+		t.Fatalf("a matching hash → PASS: %q", got)
+	}
+}
+
+// TestReviewRecordSkipsHashlessAndErrorRecords covers the records
+// review-record must not flag: a findings file written before the hash
+// field existed, and a receipt that is not a reviewer's answer (error or
+// skipped) even though the findings file's hash differs.
+func TestReviewRecordSkipsHashlessAndErrorRecords(t *testing.T) {
+	t.Parallel()
+	d := newDir(t)
+	plantReviewRecordFixture(t, d, "hashless",
+		gate.Receipt{Hash: "h1", Verdict: gate.VerdictApprove}, `{"verdict":"approve","findings":[]}`)
+	plantReviewRecordFixture(t, d, "errored",
+		gate.Receipt{Hash: "h1", Verdict: gate.VerdictError}, `{"verdict":"approve","findings":[],"hash":"h2"}`)
+	plantReviewRecordFixture(t, d, "skipped", gate.Receipt{
+		Hash: "h1", Verdict: gate.VerdictApprove,
+		Skipped: &gate.Skipped{Reason: "backend outage", EvidencePath: "gates/spec.evidence.txt"},
+	}, `{"verdict":"approve","findings":[],"hash":"h2"}`)
+	fs := doctor.Run(context.Background(), d, false, doctor.Default, noOpts)
+	for _, slug := range []string{"hashless", "errored", "skipped"} {
+		if got := reviewRecordLevel(fs, slug); got != "PASS" {
+			t.Fatalf("%s: not a reviewer's answer or hashless, PASS: %q (%+v)", slug, got, fs)
+		}
 	}
 }
 

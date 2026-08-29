@@ -101,7 +101,7 @@ type ImplementerData struct {
 	Files           []string
 	Verify          []string
 	Goals           []GoalLine
-	SpecExcerpt     string
+	SpecPath        string // absolute path of the run's spec.md; the agent reads it as data
 	Attempt         int
 	PreviousModel   string
 	PreviousFailure string
@@ -241,15 +241,44 @@ type ReviewData struct {
 func (d ReviewData) PriorFindingLines() string {
 	var b strings.Builder
 	for _, f := range d.PriorFindings {
-		fmt.Fprintf(&b, "%s %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, f.Detail)
+		fmt.Fprintf(&b, "%s %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, lineSafe.Replace(f.Detail))
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// lineSafe collapses the line breaks in a finding's detail — the one field
+// that carries free prose — to single spaces. PriorFindingLines renders one
+// finding per line and the reviewer counts findings by line, so a detail
+// with a newline in it would otherwise arrive as several.
+var lineSafe = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ")
+
 // RunData fills the `run` op instruction templates. Every field is set for
 // every step — the templates pick out what they need — so a step that grows
 // an input does not have to be threaded through the others.
-type RunData struct{ Slug, Topic, SpecPath, GoalsPath, Branch, Base, InputsPath, RetroPath string }
+type RunData struct {
+	Slug, Topic, SpecPath, GoalsPath, Branch, Base, InputsPath, RetroPath string
+	// PRTitle and PRBodyPath belong to the push_pr step: the title the pull
+	// request is opened with and the file its body is read from (#36).
+	PRTitle, PRBodyPath string
+}
+
+// singleQuoted is s as the content of a single-quoted shell word. Every
+// apostrophe is rewritten
+//
+//	'  →  '\''
+//
+// which closes the quoted run, escapes a literal apostrophe and opens the
+// next run — the one encoding that survives arbitrary text, since a
+// single-quoted word protects everything else a shell would otherwise read
+// (spaces, $, ;, a newline) as syntax. The template supplies the
+// surrounding quotes.
+func singleQuoted(s string) string { return strings.ReplaceAll(s, "'", `'\''`) }
+
+// PRTitleQuoted is the title `gh pr create --title '…'` is given: a spec
+// heading such as "Add O'Brien's greeting" reaches the command as a single
+// argument and as itself. Only the title needs it — PRBodyPath is
+// interpolated bare, since it is takt's own `<bundle>/finish/pr.md`.
+func (d RunData) PRTitleQuoted() string { return singleQuoted(d.PRTitle) }
 
 var funcs = template.FuncMap{
 	"quote": Quote,

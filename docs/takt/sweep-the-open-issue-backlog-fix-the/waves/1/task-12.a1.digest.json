@@ -1,0 +1,9 @@
+{
+  "task": 12,
+  "attempt": 1,
+  "status": "done",
+  "summary": "push_pr` now carries `pr_title` and `pr_body_path` from a generated `finish/pr.md` (spec paragraph, goal verdicts, bundle pointer), the template and the `pr` option say `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with no `--fill` left, and the three #51 `cmd_next.go` items (single render, hoisted `ensureSliceDiff`, `lensTasks`) landed with tests.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T20:56:11.044173439Z"
+}

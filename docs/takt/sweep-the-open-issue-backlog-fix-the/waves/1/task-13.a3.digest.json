@@ -1,0 +1,9 @@
+{
+  "task": 13,
+  "attempt": 3,
+  "status": "done",
+  "summary": "Strengthened the malformed-revision-event test to actually exercise the hash type assertion, made the nil-severities test discriminating (three-row table plus on-disk shape), and replaced the blind-prompt \"correctness\" allowance with a data-block absence check plus a template-derived baseline; tests and lint green.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T22:47:53.505499919Z"
+}

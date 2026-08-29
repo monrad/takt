@@ -1,0 +1,34 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 3,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T22:59:07.958020617Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "title": "Body path interpolated unquoted in the same shell command whose title is carefully quoted",
+      "detail": "`gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` quotes the title (via singleQuoted/PRTitleQuoted, added specifically because a shell would otherwise split the command on spaces) but leaves `--body-file {{.PRBodyPath}}` bare. PRBodyPath is finish.PRPath(bdir), an absolute path under the workspace/repo root, which can contain spaces just as much as any other filesystem path — the exact risk internal/cli/archive.go's shellQuote (used for discardSweep's `git clean -fd -- '\u003crel\u003e'`) exists to guard against ('a worktree path is whatever the user's filesystem says — a space in it would otherwise split the command into arguments'). brief.go:279-280 asserts PRBodyPath is safe to interpolate bare 'since it is takt's own \u003cbundle\u003e/finish/pr.md', but that reasoning is exactly what shellQuote's own doc comment rejects for repo/bundle-relative paths. The same command should quote both arguments.",
+      "task": 12
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/brief.go",
+      "line": 275,
+      "title": "singleQuoted duplicates the existing shellQuote escaping algorithm",
+      "detail": "internal/cli/archive.go:353-355 already defines `shellQuote(s string) string { return \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\" }` for exactly this POSIX single-quote close-escape-reopen technique, with a comment explaining the same rationale repeated almost verbatim in the new singleQuoted's doc comment (internal/brief/brief.go:265-274). The new PRTitleQuoted (internal/brief/brief.go:275-281) reimplements the same one-line escaping rule in a different package instead of sharing it, so a future fix or hardening of the shell-escaping rule (e.g. for control characters) has two independent copies to update.",
+      "task": 12
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/oploop_test.go",
+      "line": 881,
+      "title": "TAKT_FAKE_REVIEW_CALLS log-parsing loop duplicated across two test files",
+      "detail": "internal/cli/oploop_test.go:881-891 and internal/cli/close_internal_test.go:324-333 (both added by this same task) contain near-identical logic: split the calls file on newlines, `strings.Cut` each line on the first space to get (rubric, logID), filter by rubric, then `strings.Cut` the matching line again to pull out the LogID for the logs/\u003cid\u003e.prompt read. A small shared helper (e.g. `callsForRubric(t, callsFile, rubric string) []string`) in the cli test package would avoid the two copies drifting (e.g. one trims trailing newline before splitting, the other doesn't need to since it reuses the same TrimRight call — but any future change to the calls-file format must be made in both places).",
+      "task": 13
+    }
+  ]
+}

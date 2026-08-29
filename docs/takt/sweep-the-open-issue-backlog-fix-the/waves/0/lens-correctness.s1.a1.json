@@ -1,0 +1,18 @@
+{
+  "lens": "correctness",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:46:00.603234279Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_status.go",
+      "line": 596,
+      "title": "alignmentLine reuse breaks loadCommitMessage's \"skipped leaves message unchanged\" contract",
+      "detail": "alignmentLine(a) now returns a non-empty string (\"skipped\", \"N clauses awaiting confirmation\", or \"N clauses confirmed, verdicts pending\") for states that previously produced \"\". internal/cli/cmd_next.go:539-552 loadCommitMessage explicitly reuses this same alignmentLine (per its own doc comment, unmodified in this diff) and relies on it returning \"\" whenever there are no verdict artifacts: 'No verdict artifacts (the audit is disabled, skipped, or has not run yet) leaves the message unchanged.' That contract is now broken for the reachable 'explicitly skipped' path: takt answer --gate agent_invalid --choice skip → skipAlignment(bdir, st) sets alignment.json's Skipped=true; decidePlan's ClausesPresent/ClausesConfirmed/VerdictsPresent facts all become true via the `|| a.Skipped` OR (internal/cli/facts.go:78-80), so the plan→execute transition proceeds immediately and loadCommitMessage is called with a.Skipped=true. alignmentLine now hits `case a.Skipped: return gateSkipped` and returns \"skipped\" (non-empty), so the commit subject/body now gets \" — alignment: skipped\" appended, directly contradicting the still-present, unmodified doc comment and the existing behaviour TestLoadCommitMessageOmitsAlignmentWhenAbsent pins for the 'no verdict artifacts' cases (that test only covers the fully-absent alignment.json case, not the explicit-skip case, so it does not catch this). The two other new non-empty branches ('N clauses awaiting confirmation' / 'N clauses confirmed, verdicts pending') cannot actually be reached from decidePlan's transition gate, so only the Skipped branch is a live regression, but it is a real, untested one.",
+      "task": 4
+    }
+  ]
+}

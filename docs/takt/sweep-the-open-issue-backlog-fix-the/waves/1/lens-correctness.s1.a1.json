@@ -1,0 +1,9 @@
+{
+  "lens": "correctness",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T21:06:05.085466303Z",
+  "findings": []
+}

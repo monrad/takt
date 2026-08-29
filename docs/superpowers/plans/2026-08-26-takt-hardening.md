@@ -1920,11 +1920,11 @@ Paste exactly:
 /takt parseReport in internal/cli/cmd_record.go reads the implementer's trailer with strings.HasPrefix on "STATUS:", "SUMMARY:" and "BLOCKERS:", so a final message whose trailer is markdown-decorated — "**STATUS:** done", "- STATUS: done", "STATUS: **done**", "`STATUS:` done" — records nothing and takt rejects the digest with "digest status must be done, failed or blocked". Make the trailer parsing tolerant of leading list markers and of bold, italic or backtick decoration around the key and around the value, while exact-prefix lines keep working; add table-driven tests for every decorated shape and for a body line that merely mentions STATUS: mid-sentence (must not match); and mention the tolerance in the implementer agent's report contract in agents/implementer.md.
 ```
 
-Answer the gates as they come (the spec review, the goals, the plan review, the alignment clauses, the branch disposition). Choose "merge locally" at `branch_finish`; do not push.
+Answer the gates as they come (the spec review, the goals, the plan review, the alignment clauses, the branch disposition). Choose `pr` at `branch_finish` — merge is unavailable while the run branch is checked out in the primary worktree (takt checks out nothing, design §4.7).
 
 - [ ] **Step 3: Capture (user)**
 
-After the `archived` stop, note in the retro (`docs/takt/<slug>/finish/retro.md`, which the `retro` step writes) and in the session:
+After the `archived` stop, note in the retro (`docs/takt/<slug>/retro.md`, which the `retro` step writes) and in the session:
 - every op whose narration or question was unclear, and every place the prompt made you guess;
 - every `takt` command that exited non-zero, with its `error` and `hint`;
 - every gate that returned twice for the same answer;

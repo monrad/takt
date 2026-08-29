@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/backend"
+	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/testutil"
@@ -128,7 +129,7 @@ func assertApproveFollowUps(t *testing.T, bdir string, wantInternal, wantApprove
 	items := followUps(t, bdir)
 	var sawInternal, sawApprove bool
 	for _, f := range items {
-		if f.Wave != 0 || f.Task != 3 {
+		if f.Wave == nil || *f.Wave != 0 || f.Task != 3 {
 			t.Fatalf("follow-up missing wave/task: %+v", f)
 		}
 		switch f.Source {
@@ -293,6 +294,111 @@ func TestCloseRunsTheScopedPassOnBlockingDisagreement(t *testing.T) {
 	if strings.Contains(p, "correctness") {
 		t.Fatalf("scoped prompt must not name the lens: %s", p)
 	}
+}
+
+// TestBlindTaskReviewPromptNeverSeesTheLensClaims is the twin of the
+// scoped-pass leak assertions in TestCloseRunsTheScopedPassOnBlockingDisagreement,
+// for the blind pass itself: a confirmed internal finding at a non-blocking
+// severity never buys a scoped pass, so the blind task-review prompt is the
+// only call — and it must never carry the lens's claim, the verifier's
+// evidence, or the lens name.
+func TestBlindTaskReviewPromptNeverSeesTheLensClaims(t *testing.T) {
+	t.Parallel()
+	root, bdir := reviewerRun(t)
+	bumpTask3Attempt(t, bdir)
+	writeInternalRecordForTask3(t, bdir, "major", "LENS-CLAIM-MARKER title", "LENS-CLAIM-MARKER detail")
+	callsFile := filepath.Join(t.TempDir(), "calls.log")
+	env := map[string]string{
+		"TAKT_FAKE_REVIEW":       `{"verdict":"approve","summary":"ok"}`,
+		"TAKT_FAKE_REVIEW_CALLS": callsFile,
+	}
+	code, o, errb := runIn(t, root, env, "close-wave", "--slug", "demo")
+	if code != 0 || o["committed"] != true {
+		t.Fatalf("%d %v %s", code, o, errb)
+	}
+	// Exactly one backend call, of the blind rubric: the whole log is
+	// counted, not the "task" lines in it, so a stray scoped pass — which
+	// would also approve, and so would not show in the committed flag — is
+	// caught here rather than filtered away.
+	calls := reviewCalls(t, callsFile)
+	if len(calls) != 1 {
+		t.Fatalf("backend calls = %d, want exactly 1 — a non-blocking finding buys no scoped pass: %+v",
+			len(calls), calls)
+	}
+	if calls[0].rubric != "task" {
+		t.Fatalf("the one call must be the blind task review, got rubric %q", calls[0].rubric)
+	}
+	p := callPrompt(t, bdir, calls[0])
+	if strings.Contains(p, "LENS-CLAIM-MARKER") {
+		t.Fatalf("blind prompt must not leak the lens's claim: %s", p)
+	}
+	if strings.Contains(p, "VERIFIER-EVIDENCE-MARKER") {
+		t.Fatalf("blind prompt must not leak the verifier's evidence: %s", p)
+	}
+	assertNeverNamesTheLens(t, p, "review-task", "correctness")
+}
+
+// assertNeverNamesTheLens fails when a reviewer prompt rendered from the
+// named template names lens.
+//
+// The prompt cannot simply be searched for the name: review-task.md's own
+// Rubric line uses "correctness" as plain English ("correctness and edge
+// cases"), so the word is in every blind prompt whatever takt fills the
+// template with, and that template is not this test's to change. The check
+// is therefore made in three parts, none of which excuses an occurrence by
+// the test's own arithmetic.
+//
+//   - Every byte takt assembled into the prompt — the quoted DATA blocks,
+//     which is where a leaked internal finding would arrive — must not
+//     contain the name at all.
+//   - The template's own prose may use the name at most once, so the
+//     allowance below is a single plain-English word and not a section that
+//     told the reviewer which lenses ran.
+//   - The whole prompt may then not contain the name more often than the
+//     same template rendered with no data does. That is what catches a name
+//     interpolated outside a quoted block — a template field rather than
+//     quoted data — since the baseline renders such a field empty.
+func assertNeverNamesTheLens(t *testing.T, prompt, template, lens string) {
+	t.Helper()
+	tok, ok := brief.TokenOf(prompt)
+	if !ok {
+		t.Fatalf("prompt carries no delimiter token: %s", prompt)
+	}
+	if data := quotedData(prompt, tok); strings.Contains(data, lens) {
+		t.Fatalf("the quoted data must not name the lens %q: %s", lens, data)
+	}
+	bare, err := brief.Render(template, brief.ReviewData{Token: tok, Schema: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := strings.Count(bare, lens)
+	if allowed > 1 {
+		t.Fatalf("%s.md names %q %d times; at most the rubric's one plain-English use is allowed: %s",
+			template, lens, allowed, bare)
+	}
+	if n := strings.Count(prompt, lens); n != allowed {
+		t.Fatalf("prompt names %q %d times; %s.md's own prose uses it %d: %s", lens, n, template, allowed, prompt)
+	}
+}
+
+// quotedData returns the content of a rendered brief's BEGIN/END
+// token-tagged blocks — everything takt quoted into it as data — with the
+// marker lines themselves dropped.
+func quotedData(prompt, token string) string {
+	var b strings.Builder
+	var in bool
+	for line := range strings.SplitSeq(prompt, "\n") {
+		switch {
+		case strings.HasPrefix(line, "BEGIN "+token+" "):
+			in = true
+		case line == "END "+token:
+			in = false
+		case in:
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
 }
 
 // TestCloseScopedPassErrorLeavesNoStaleCarry covers the two fix-round

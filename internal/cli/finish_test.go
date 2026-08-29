@@ -538,11 +538,26 @@ func atPushPROp(t *testing.T, d *driver, bdir string) map[string]any {
 	return d.nextOp()
 }
 
+// prSpec is the spec the push_pr fixture finishes with. Its H1 carries an
+// apostrophe — the one character a single-quoted shell word cannot hold as
+// itself — and its opening paragraph is two lines, so both the title's
+// escaping and the paragraph's extent are pinned by what the op produces.
+const prSpec = "# Add O'Brien's greeting\n\nFirst paragraph line one.\nline two.\n\n" +
+	"## Assumptions & Open Decisions\n| q | d | r | s |\n"
+
 // TestPushPRRunOp covers row 24's op: it names the branch to push and the
-// base to open against, and its done line asks for the URL.
+// base to open against, its done line asks for the URL, and it hands the
+// session the pull request the run itself wrote — the title from the spec's
+// H1, single-quoted, and a body file derived from the spec, the goals and
+// the bundle rather than `--fill` (#36).
 func TestPushPRRunOp(t *testing.T) {
 	t.Parallel()
 	d, bdir := finishRun(t, "--no-goals")
+	// The spec is rewritten in the finish phase, where no decision hashes it
+	// again: written any earlier, the brainstorm step would replace it with
+	// the driver's own fixture.
+	driveToFinish(t, d)
+	testutil.WriteFile(t, d.root, "docs/takt/demo/spec.md", prSpec)
 	o := atPushPROp(t, d, bdir)
 	if o["op"] != "run" || o["step"] != "push_pr" {
 		t.Fatalf("%v", o)
@@ -555,10 +570,172 @@ func TestPushPRRunOp(t *testing.T) {
 	if !ok || in["branch"] != st.Branch || in["base"] != st.Base {
 		t.Fatalf("inputs must name the branch and base: %v", o["inputs"])
 	}
-	if !strings.Contains(o["done"].(string), "--url") ||
-		!strings.Contains(o["instructions"].(string), "gh pr create") {
+	if in["pr_title"] != "Add O'Brien's greeting" {
+		t.Fatalf("pr_title must be the spec's H1: %v", in["pr_title"])
+	}
+	body, ok := in["pr_body_path"].(string)
+	if !ok || !filepath.IsAbs(body) || body != filepath.Join(bdir, "finish", "pr.md") || !fileExists(body) {
+		t.Fatalf("pr_body_path must be the written finish/pr.md: %v", in["pr_body_path"])
+	}
+	instr, ok := o["instructions"].(string)
+	if !ok || !strings.Contains(instr, "gh pr create") ||
+		!strings.Contains(instr, `--title 'Add O'\''Brien'\''s greeting'`) ||
+		!strings.Contains(instr, "--body-file "+body) || strings.Contains(instr, "--fill") {
+		t.Fatalf("instructions:\n%s", instr)
+	}
+	if !strings.Contains(o["done"].(string), "--url") {
 		t.Fatalf("%v", o)
 	}
+	raw, err := os.ReadFile(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"First paragraph line one.\nline two.", "## Run", "Bundle: docs/takt/demo/",
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("the body has no %q:\n%s", want, raw)
+		}
+	}
+	// The fixture is --no-goals: a run with no goals must not carry an empty
+	// goals section a reader would take for goals nobody met.
+	if strings.Contains(string(raw), "## Goals") {
+		t.Fatalf("body:\n%s", raw)
+	}
+}
+
+// assertPROptionDescribesTheCommand pins the text the branch_finish question
+// puts in front of the session when it offers to open a pull request. That
+// description is the only place the session is told how: it must name the
+// command the push_pr op then hands it, `--title` and `--body-file` with the
+// two inputs that fill them, and never `--fill` — which would have the
+// session title the pull request after a branch and fill its body with
+// takt's own bookkeeping commits (#36).
+func assertPROptionDescribesTheCommand(t *testing.T, o map[string]any) {
+	t.Helper()
+	opts, ok := o["options"].([]any)
+	if !ok {
+		t.Fatalf("branch_finish without options: %v", o)
+	}
+	for _, x := range opts {
+		m, isMap := x.(map[string]any)
+		if !isMap || m["choice"] != "pr" {
+			continue
+		}
+		desc, _ := m["description"].(string)
+		for _, want := range []string{
+			"gh pr create --base <base>", "--title '<title>'", "--body-file <path>",
+			"pr_title", "pr_body_path", "takt done --step push_pr",
+		} {
+			if !strings.Contains(desc, want) {
+				t.Fatalf("the pr option must say %q: %q", want, desc)
+			}
+		}
+		if strings.Contains(desc, "--fill") {
+			t.Fatalf("the pr option must not send the session to --fill: %q", desc)
+		}
+		return
+	}
+	t.Fatalf("branch_finish offers no pr option: %v", opts)
+}
+
+// driveToPushPR plays the finish phase to the push_pr op. The driver answers
+// every question with its first enabled option, which at branch_finish is
+// `pr` — so the run reaches this op the way a session would, and the option's
+// own description is checked on the way past.
+func driveToPushPR(t *testing.T, d *driver) map[string]any {
+	t.Helper()
+	for range 20 {
+		o := d.nextOp()
+		if o["step"] == "push_pr" {
+			return o
+		}
+		if o["gate"] == "branch_finish" {
+			assertPROptionDescribesTheCommand(t, o)
+		}
+		d.step(o)
+	}
+	t.Fatalf("never reached push_pr: %v", d.ops)
+	return nil
+}
+
+// assertNextFailsNaming pins that `takt next` refuses a broken bundle and
+// says which file broke. No failure may advise deleting a file to get past
+// it: a deleted finish/goals.json leaves goals_checked_sha behind, so the
+// goals still count as checked, nothing is reassessed, and the run walks on
+// to a pull request whose every goal reads "not assessed".
+func assertNextFailsNaming(t *testing.T, d *driver, wants ...string) {
+	t.Helper()
+	code, _, errb := d.cmd("next", "--slug", "demo")
+	if code != 1 {
+		t.Fatalf("takt next must fail on a broken bundle: %d %s", code, errb)
+	}
+	for _, want := range wants {
+		if !strings.Contains(errb, want) {
+			t.Fatalf("the failure must say %q: %s", want, errb)
+		}
+	}
+	if strings.Contains(errb, "delete it") {
+		t.Fatalf("no recovery advice may send the user to a delete: %s", errb)
+	}
+}
+
+// TestPushPRBodyListsGoalVerdicts covers the body's `## Goals` section on a
+// run whose goals are on: every goal is listed with what the run decided
+// about it, so the pull request carries the verdicts rather than making a
+// reviewer open the bundle for them.
+//
+// The three failures after it are why that section is not best-effort. A
+// goals-on run whose goals.md is gone or unparsable, or whose record cannot
+// be decoded, is a broken bundle: the call stops, naming the file, instead
+// of opening a pull request that says nothing about the goals — the reading
+// a silently omitted section would invite.
+func TestPushPRBodyListsGoalVerdicts(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t)
+	driveToFinish(t, d)
+	o := driveToPushPR(t, d)
+	in, ok := o["inputs"].(map[string]any)
+	if !ok {
+		t.Fatalf("push_pr without inputs: %v", o)
+	}
+	raw, err := os.ReadFile(in["pr_body_path"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "## Goals") ||
+		!strings.Contains(string(raw), "- G1 — greet works — achieved") {
+		t.Fatalf("the body must list every goal with its verdict:\n%s", raw)
+	}
+	const goalsRel = "docs/takt/demo/goals.md"
+	gp := filepath.Join(bdir, "goals.md")
+	orig, err := os.ReadFile(gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	away := filepath.Join(t.TempDir(), "goals.md")
+	if err = os.Rename(gp, away); err != nil {
+		t.Fatal(err)
+	}
+	assertNextFailsNaming(t, d, "goals.md")
+	if err = os.Rename(away, gp); err != nil {
+		t.Fatal(err)
+	}
+	// A goals.md that is there but says nothing a parser recognises is the
+	// same broken bundle as a missing one. The parser's own message opens
+	// with "goals.md:", so the file is named without prGoals wrapping it a
+	// second time.
+	testutil.WriteFile(t, d.root, goalsRel, "these are not the goals you are looking for\n")
+	assertNextFailsNaming(t, d, "goals.md")
+	testutil.WriteFile(t, d.root, goalsRel, string(orig))
+	// A record takt cannot decode is not a run whose goals were "not
+	// assessed": the call stops. It is the finish facts that decode the
+	// record on the way to this op, so they are what fails, and encoding/json
+	// names no file in "unexpected end of JSON input" — the path and the one
+	// recovery that works both come from the hint (factsHint).
+	testutil.WriteFile(t, d.root, "docs/takt/demo/finish/goals.json", "{")
+	assertNextFailsNaming(t, d,
+		filepath.Join(bdir, "finish", "goals.json"), "cannot be read", "restore it from git")
 }
 
 // TestPushPRDoneRecordsTheURL covers `done --step push_pr`: the URL is

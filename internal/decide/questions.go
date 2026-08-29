@@ -15,10 +15,15 @@ const (
 	choiceFix   = "fix"
 	choiceAbort = "abort"
 	labelStop   = "Stop"
+	// suffixRecommended marks the one option a question recommends. It is
+	// appended rather than spelled into a label where which option carries
+	// it depends on the facts — branch_finish recommends the merge it can
+	// perform and the pull request when it cannot (#26).
+	suffixRecommended = " (Recommended)"
 )
 
 // Gate ids Question switches on (spec §5.2). Vocab returns these same
-// constants, so the eleven ids in the switch below and the eleven ids the
+// constants, so the twelve ids in the switch below and the twelve ids the
 // prompt parity test reads can never drift apart without a compile error.
 const (
 	gateOwner              = "owner"
@@ -95,22 +100,30 @@ func questionOwner(q *op.Op, ctx map[string]any) {
 	}
 }
 
-// questionGateReview fills the "gate_review" gate (spec/plan review asked for
-// rework). The revise option's text depends on what revising will actually
-// do: on the spec gate, a rework verdict that found nothing blocking is
-// "usable after the listed edits" and the edit itself closes the gate
-// (fixed-point design §4), so promising a re-review there would tell the user
-// the opposite of what happens.
+// questionGateReview fills the "gate_review" gate: a review that did not
+// close its gate. An error verdict takes its own row — see
+// questionGateReviewErrored — because nothing was reviewed there.
+//
+// On the rows a reviewer really answered, the revise option's text depends on
+// what revising will actually do: on the spec gate, a rework verdict that
+// found nothing blocking is "usable after the listed edits" and the edit
+// itself closes the gate (fixed-point design §4), so promising a re-review
+// there would tell the user the opposite of what happens.
 //
 // The verdict is half of that condition, not just the severity: acceptRevision
-// writes the closing event only for a non-blocking rework, so the other three
-// rows of the design's §3 table — blocking rework, reject, and error (whose
-// result carries no findings at all, hence no blocking ones) — all keep the
+// writes the closing event only for a non-blocking rework, so the remaining
+// rows of the design's §3 table — blocking rework and reject — keep the
 // re-arm-and-re-review loop and have to keep being told so.
 func questionGateReview(q *op.Op, ctx map[string]any) {
 	g, _ := ctx["gate"].(string)
 	verdict, _ := ctx["verdict"].(string)
 	blocking, _ := ctx["blocking"].(bool)
+	if verdict == verdictError {
+		slug, _ := ctx[ctxSlug].(string)
+		reason, _ := ctx["reason"].(string)
+		questionGateReviewErrored(q, g, slug, reason)
+		return
+	}
 	q.Narration = g + " review asked for rework"
 	q.Question = fmt.Sprintf(
 		"The %s review verdict is %v: %v. How do you want to proceed?",
@@ -128,8 +141,40 @@ func questionGateReview(q *op.Op, ctx map[string]any) {
 		revise.Description = "Edit spec.md with the findings in reviews/spec.md; " +
 			"the gate closes on the edit — no second review."
 	}
-	q.Options = []op.Option{
-		revise,
+	q.Options = append([]op.Option{revise}, gateReviewAcceptAndStop()...)
+}
+
+// questionGateReviewErrored fills the "gate_review" gate for an error
+// verdict: the backend failed, so no review was taken. reviews/<gate>.md was
+// left alone and still describes the previous pass, which is why revise is
+// not offered — there are no findings to act on and an edit would only
+// re-arm the gate for the pass that never ran. retry names the one action
+// that can produce a verdict; it writes nothing, so the same question comes
+// back if the review is not re-run.
+func questionGateReviewErrored(q *op.Op, g, slug, reason string) {
+	if reason == "" {
+		reason = "(no reason recorded)"
+	}
+	q.Narration = g + " review errored"
+	q.Question = fmt.Sprintf(
+		"The %s review errored: %s. reviews/%s.md still describes the previous pass. "+
+			"How do you want to proceed?",
+		g, reason, g,
+	)
+	q.Options = append([]op.Option{{
+		Choice: choiceRetry,
+		Label:  "Re-run the review (Recommended)",
+		Description: fmt.Sprintf(
+			"Re-run the reviewer: `takt review %s --slug %s`, then `takt next`.", g, slug,
+		),
+	}}, gateReviewAcceptAndStop()...)
+}
+
+// gateReviewAcceptAndStop returns the two options every gate_review row ends
+// with — record an evidenced override, or leave the gate open — spelled once
+// because the error row and the reviewer-answered rows share them verbatim.
+func gateReviewAcceptAndStop() []op.Option {
+	return []op.Option{
 		{
 			Choice:      "accept",
 			Label:       "Accept as is",
@@ -340,15 +385,22 @@ func questionGoalsUnmet(q *op.Op, ctx map[string]any) {
 	}
 }
 
-// questionBranchFinish fills the "branch_finish" gate.
+// questionBranchFinish fills the "branch_finish" gate. Exactly one option is
+// ever recommended, it is listed first, and it is enabled: recommending the
+// disabled merge — which `takt init` blocks in its own flow, since the run
+// branch is checked out in the primary worktree — told the user to choose
+// something the binary refuses (#26). When merge is available it is still
+// the recommendation; when it is not, opening a pull request is.
 func questionBranchFinish(q *op.Op, ctx map[string]any) {
 	q.Narration = "choose what happens to the branch"
 	q.Question = fmt.Sprintf("Run %v is verified on %v (base %v). What should happen to the branch?",
 		ctx[ctxSlug], ctx["branch"], ctx["base"])
 	pr := op.Option{
-		Choice:      "pr",
-		Label:       "Push and open a pull request",
-		Description: "The session pushes the branch and runs `gh pr create --base <base> --fill`, then `takt done --step push_pr`.",
+		Choice: "pr",
+		Label:  "Push and open a pull request",
+		Description: "The session pushes the branch and runs `gh pr create --base <base> " +
+			"--title '<title>' --body-file <path>` with the op's `pr_title` and `pr_body_path` " +
+			"inputs, then `takt done --step push_pr`.",
 	}
 	keep := op.Option{
 		Choice:      "keep",
@@ -356,16 +408,14 @@ func questionBranchFinish(q *op.Op, ctx map[string]any) {
 		Description: "Archive the run; you integrate later.",
 	}
 	if adopted, _ := ctx["adopted"].(bool); adopted {
+		pr.Label += suffixRecommended
 		q.Options = []op.Option{pr, keep}
 		return
 	}
 	merge := op.Option{
 		Choice:      "merge",
-		Label:       "Merge into the base branch locally (Recommended)",
+		Label:       "Merge into the base branch locally",
 		Description: "`git merge --no-ff` in the primary worktree after the archive commit; the branch is deleted when nothing has it checked out.",
-	}
-	if allowed, _ := ctx["merge_allowed"].(bool); !allowed {
-		merge.Disabled, _ = ctx["merge_blocked"].(string)
 	}
 	discard := op.Option{
 		Choice:      "discard",
@@ -375,6 +425,13 @@ func questionBranchFinish(q *op.Op, ctx map[string]any) {
 	if allowed, _ := ctx["discard_allowed"].(bool); !allowed {
 		discard.Disabled, _ = ctx["discard_blocked"].(string)
 	}
+	if allowed, _ := ctx["merge_allowed"].(bool); !allowed {
+		merge.Disabled, _ = ctx["merge_blocked"].(string)
+		pr.Label += suffixRecommended
+		q.Options = []op.Option{pr, keep, merge, discard}
+		return
+	}
+	merge.Label += suffixRecommended
 	q.Options = []op.Option{merge, pr, keep, discard}
 }
 

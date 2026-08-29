@@ -50,11 +50,19 @@ func cmdAnswer(env Env) int {
 	if *g == "owner" {
 		return printJSON(env, map[string]any{
 			keyGate: "owner", keyChoice: *choice,
-			"hint": "takeover = `takt next --force`; abort/readonly = nothing to do",
+			keyHint: "takeover = `takt next --force`; abort/readonly = nothing to do",
 		})
 	}
 	if tgt.st.PendingGate == nil || tgt.st.PendingGate.ID != *g {
-		return printJSON(env, map[string]any{keyIgnored: true, keyReason: "no pending gate " + *g})
+		// Ignored at exit 0 is the contract (spec §5.4, same as a stale
+		// digest) — but a session that read reviews/<gate>.md itself and
+		// answered before `takt next` armed the gate would otherwise take
+		// that exit code as "answered" and find the same gate back on the
+		// next call. The hint names the missing step (#27).
+		return printJSON(env, map[string]any{
+			keyIgnored: true, keyReason: "no pending gate " + *g,
+			keyHint: "run `takt next` first: a gate is answerable only once its ask op has been emitted",
+		})
 	}
 	keep, err := applyAnswer(ctx, tgt, *g, *choice, *reason, *file, *confirm)
 	if err != nil {
@@ -108,6 +116,13 @@ func applyAnswer(ctx context.Context, tgt *runTarget, g, choice, reason, file, c
 // review found nothing blocking, so the edit closes the gate rather than
 // re-arming it — and accept records an evidenced override at the current
 // hash (spec §9, fixed-point design §4).
+//
+// retry — offered only on an error verdict, where no review was taken —
+// writes nothing at all: the caller clears the gate and commits, and the
+// session runs the named `takt review` before its next `takt next`, exactly
+// as the op table requires when an option's text names work. If it does not,
+// the same gate comes back, because the error receipt still answers at the
+// current hash; nothing has been lost either way.
 func answerGateReview(bdir string, st *bundle.State, choice, reason string) (bool, error) {
 	which := pendingGateName(st)
 	switch choice {
@@ -115,6 +130,8 @@ func answerGateReview(bdir string, st *bundle.State, choice, reason string) (boo
 		return false, acceptRevision(bdir, which)
 	case "accept":
 		return false, overrideGate(bdir, which, reason)
+	case choiceRetry:
+		return false, nil
 	case choiceStop:
 		return true, nil
 	}
@@ -184,10 +201,10 @@ func acceptRevision(bdir, which string) error {
 // The event is appended before the findings are carried, deliberately: if
 // the write dies between the two, a retry re-appends gate_overridden, and a
 // duplicate of that event is inert — gate.Compute stops at the first one
-// that matches the current hash. Carrying findings a second time is not
-// inert, since follow-ups.json has no de-duplication and a repeat would
-// show up as noise in the retro. Ordering it this way fails toward the
-// harmless duplicate.
+// that matches the current hash. The carry is now idempotent on the
+// follow-up's own identity (gate.AppendFollowUps keys each item by
+// gate.FollowUp.Key), so a repeated carry is inert too; the event-first
+// order is kept for the inert-duplicate reason alone.
 func overrideGate(bdir, which, reason string) error {
 	if strings.TrimSpace(reason) == "" {
 		return errorf("accepting a %s review verdict needs --reason", which)

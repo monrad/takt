@@ -1,0 +1,9 @@
+{
+  "task": 11,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Retro inputs now count gate and task review findings once each from the event log (split as gate_review_findings/task_review_findings) and emit one wave timing per dispatched attempt that closed, with closed_at, committed and an omitzero committed_at; wave_closed carries slice and review_findings, which the close record also stores.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T20:45:55.6878276Z"
+}

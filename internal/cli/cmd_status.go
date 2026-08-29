@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -37,15 +38,20 @@ type taskLine struct {
 	Model   string `json:"model"`
 }
 
-// alignmentDigest summarises alignment.json for status: how many clauses
-// landed each verdict, and which ones drifted the ask narrower (contraction:
-// narrowed, dropped or contradicted) or wider (creep: widened) than what was
-// confirmed (spec §7.3, §11).
+// alignmentDigest summarises alignment.json for status: how far the audit
+// has got — how many clauses it decomposed, whether the user confirmed them
+// and whether the auditor has ruled yet — then, once it has, how many
+// clauses landed each verdict and which ones drifted the ask narrower
+// (contraction: narrowed, dropped or contradicted) or wider (creep:
+// widened) than what was confirmed (spec §7.3, §11).
 type alignmentDigest struct {
-	Confirmed   bool           `json:"confirmed"`
-	Counts      map[string]int `json:"counts"`
-	Contraction []string       `json:"contraction"`
-	Creep       []string       `json:"creep"`
+	Confirmed       bool           `json:"confirmed"`
+	Clauses         int            `json:"clauses"`
+	Skipped         bool           `json:"skipped"`
+	VerdictsPresent bool           `json:"verdicts_present"`
+	Counts          map[string]int `json:"counts"`
+	Contraction     []string       `json:"contraction"`
+	Creep           []string       `json:"creep"`
 }
 
 // internalStatus is the wave's internal-review line (two-layers design §5.7).
@@ -82,6 +88,7 @@ type statusInfo struct {
 	Base          string
 	BaseSHA       string
 	TasksTotal    int
+	TasksPlanned  int
 	TasksByStatus map[string]int
 	Tasks         []taskLine
 	Gates         map[string]string
@@ -120,23 +127,18 @@ func cmdStatus(env Env) int {
 }
 
 // loadStatus resolves the workspace and the selected bundle, then builds its
-// status view (spec §11).
+// status view (spec §11). It opens through openTarget so that a bundle that
+// cannot be read reports the same message, exit code and recovery hint here
+// as it does for every other bundle command — including the hint that names
+// the branch the run's bundle lives on (#8).
 func loadStatus(env Env, dirFlag, slugFlag string) (statusInfo, int) {
 	ctx, cancel := commandContext(env)
 	defer cancel()
-	ws, err := openWorkspace(ctx, env, dirFlag)
-	if err != nil {
-		return statusInfo{}, fail(env.Stderr, 1, err.Error(), workspaceHint)
+	tgt, code := openTarget(ctx, env, dirFlag, slugFlag)
+	if code != 0 {
+		return statusInfo{}, code
 	}
-	s, err := selectSlug(ws, slugFlag)
-	if err != nil {
-		return statusInfo{}, failSelectSlug(env, err)
-	}
-	bdir, st, err := loadBundle(ws, s)
-	if err != nil {
-		return statusInfo{}, fail(env.Stderr, 1, err.Error(), "")
-	}
-	return statusDoc(bdir, st), 0
+	return statusDoc(tgt.bdir, tgt.st), 0
 }
 
 // statusDoc builds the machine-readable status (spec §11).
@@ -144,7 +146,8 @@ func statusDoc(bdir string, st *bundle.State) statusInfo {
 	info := statusInfo{
 		Slug: st.Slug, Phase: st.Phase, Branch: st.Branch, BranchAdopted: st.BranchAdopted,
 		Base: st.Base, BaseSHA: st.BaseSHA,
-		TasksTotal: len(st.Tasks), TasksByStatus: taskCounts(st.Tasks), Tasks: statusTasks(st.Tasks),
+		TasksTotal: len(st.Tasks), TasksPlanned: plannedTasks(bdir, st),
+		TasksByStatus: taskCounts(st.Tasks), Tasks: statusTasks(st.Tasks),
 		Gates: st.Gates, GatesLive: liveGates(bdir), ActiveWave: st.ActiveWave, PendingGate: st.PendingGate,
 		Goals: []statusGoal{}, Alignment: statusAlignment(bdir), Session: readStatusSession(bdir),
 	}
@@ -163,6 +166,23 @@ func statusDoc(bdir string, st *bundle.State) statusInfo {
 		info.GoalsFrozen = st.GoalsHash != nil && *st.GoalsHash == goals.Hash(b)
 	}
 	return info
+}
+
+// plannedTasks is how many tasks plan.index.json names while none of them
+// has been materialised yet: tasks reach state.json only at the plan →
+// execute transition (materialiseTasks), so a run sitting in the plan phase
+// with a whole plan on disk would otherwise report "0 total" (#33). Zero
+// once any task exists, and zero when there is no readable index — status
+// is read-only and never fails on a file it cannot parse.
+func plannedTasks(bdir string, st *bundle.State) int {
+	if len(st.Tasks) > 0 {
+		return 0
+	}
+	idx, err := readIndex(bdir)
+	if err != nil {
+		return 0
+	}
+	return len(idx.Tasks)
 }
 
 // statusFinish builds the finish-phase block: verify and goal verdicts read
@@ -323,7 +343,10 @@ func statusAlignment(bdir string) *alignmentDigest {
 	if err != nil || a == nil {
 		return nil
 	}
-	d := &alignmentDigest{Confirmed: a.Confirmed, Counts: map[string]int{}}
+	d := &alignmentDigest{
+		Confirmed: a.Confirmed, Clauses: len(a.Clauses), Skipped: a.Skipped,
+		VerdictsPresent: len(a.Verdicts) > 0, Counts: map[string]int{},
+	}
 	for _, v := range a.Verdicts {
 		d.Counts[v.Verdict]++
 		switch v.Verdict {
@@ -382,7 +405,10 @@ func statusJSON(info statusInfo) map[string]any {
 	doc := map[string]any{
 		keySlug: info.Slug, "phase": info.Phase, keyBranch: info.Branch, keyBranchAdopted: info.BranchAdopted,
 		keyBase: info.Base, keyBaseSHA: info.BaseSHA,
-		keyTasks:       map[string]any{"total": info.TasksTotal, "by_status": info.TasksByStatus, "items": info.Tasks},
+		keyTasks: map[string]any{
+			"total": info.TasksTotal, "planned": info.TasksPlanned,
+			"by_status": info.TasksByStatus, "items": info.Tasks,
+		},
 		"gates":        info.Gates,
 		"gates_live":   info.GatesLive,
 		"active_wave":  info.ActiveWave,
@@ -411,17 +437,7 @@ func renderStatus(info statusInfo) string {
 		fmt.Fprintf(&b, "session: %s@%s, heartbeat %s ago\n",
 			info.Session.ID, info.Session.Host, time.Since(info.Session.Heartbeat).Round(time.Second))
 	}
-	c := info.TasksByStatus
-	fmt.Fprintf(&b, "tasks: %d total — pending %d, done %d, failed %d, blocked %d, waived %d\n",
-		info.TasksTotal, c[bundle.StatusPending], c[bundle.StatusDone], c[bundle.StatusFailed],
-		c[bundle.StatusBlocked], c[bundle.StatusWaived])
-	for _, t := range info.Tasks {
-		if t.Model == "" {
-			fmt.Fprintf(&b, "  #%d wave %d %s (%s)\n", t.ID, t.Wave, t.Status, t.Class)
-			continue
-		}
-		fmt.Fprintf(&b, "  #%d wave %d %s (%s, attempt %d, %s)\n", t.ID, t.Wave, t.Status, t.Class, t.Attempt, t.Model)
-	}
+	renderTasks(&b, info)
 	if info.ActiveWave != nil {
 		fmt.Fprintf(&b, "active wave: %d (attempt %d, since %s)\n",
 			info.ActiveWave.N, info.ActiveWave.Attempt, info.ActiveWave.StartedAt.Format("15:04:05"))
@@ -443,12 +459,35 @@ func renderStatus(info statusInfo) string {
 		}
 	}
 	if info.Alignment != nil {
-		fmt.Fprintf(&b, "alignment: %s\n", alignmentLine(info.Alignment))
+		fmt.Fprintf(&b, "alignment: %s\n", alignmentStatusLine(info.Alignment))
 	}
 	if info.Finish != nil {
 		renderFinish(&b, info.Finish)
 	}
 	return b.String()
+}
+
+// renderTasks prints the tasks line and one line per materialised task.
+// Before the plan → execute transition no task is materialised, so the
+// counts line would read "0 total — pending 0, …" with a full plan on disk;
+// the planned count is printed instead, and there are no task lines to
+// follow it (#33).
+func renderTasks(b *strings.Builder, info statusInfo) {
+	if info.TasksPlanned > 0 {
+		fmt.Fprintf(b, "tasks: %d planned (not yet materialised)\n", info.TasksPlanned)
+		return
+	}
+	c := info.TasksByStatus
+	fmt.Fprintf(b, "tasks: %d total — pending %d, done %d, failed %d, blocked %d, waived %d\n",
+		info.TasksTotal, c[bundle.StatusPending], c[bundle.StatusDone], c[bundle.StatusFailed],
+		c[bundle.StatusBlocked], c[bundle.StatusWaived])
+	for _, t := range info.Tasks {
+		if t.Model == "" {
+			fmt.Fprintf(b, "  #%d wave %d %s (%s)\n", t.ID, t.Wave, t.Status, t.Class)
+			continue
+		}
+		fmt.Fprintf(b, "  #%d wave %d %s (%s, attempt %d, %s)\n", t.ID, t.Wave, t.Status, t.Class, t.Attempt, t.Model)
+	}
 }
 
 // renderFinish prints the finish-phase block: the verify verdict, each
@@ -539,18 +578,67 @@ func renderLiveGates(b *strings.Builder, live map[string]string) {
 }
 
 // alignmentVerdictOrder is the canonical order the alignment summary line
-// lists verdicts in.
+// lists the auditor's five verdicts in.
 var alignmentVerdictOrder = []string{"covered", "narrowed", "dropped", "widened", "contradicted"}
+
+// alignmentUnrecognisedVerdict is the bucket every other verdict value is
+// counted under. `takt record --mode verdicts` checks the auditor's reply
+// for shape, not for vocabulary (applyVerdicts, cmd_record.go), so a bundle
+// can hold a verdict word takt has no rendering for — including an empty
+// one. Counting those together says what happened without inventing a word,
+// and it is what makes the summary non-empty for every recorded verdict:
+// each verdict falls in exactly one bucket, so "some verdict is recorded"
+// and "the line says something" are the same statement.
+const alignmentUnrecognisedVerdict = "unrecognised"
+
+// alignmentStatusLine renders whichever state the audit is in, so status
+// never prints a bare "alignment:" label (#33): the audit was skipped, the
+// clauses are still waiting for the user to confirm them, they are confirmed
+// and the auditor has not ruled yet, or the auditor has ruled and the
+// verdict line says what it found.
+//
+// The order is the audit's own. An unconfirmed clause set is not yet
+// something the user has agreed to, so verdicts recorded against one are
+// still reported as awaiting confirmation rather than as a settled reading
+// of the ask; only a confirmed set with verdicts reaches alignmentLine.
+// Every branch is non-empty, the last one included: alignmentLine counts
+// every recorded verdict, whether or not takt knows the word, so
+// VerdictsPresent guarantees it has something to print.
+// This wrapper is status-only because alignmentLine has a second caller
+// with a different contract — see its doc comment.
+func alignmentStatusLine(a *alignmentDigest) string {
+	switch {
+	case a.Skipped:
+		return gateSkipped
+	case !a.Confirmed:
+		return fmt.Sprintf("%d clauses awaiting confirmation", a.Clauses)
+	case !a.VerdictsPresent:
+		return fmt.Sprintf("%d clauses confirmed, verdicts pending", a.Clauses)
+	default:
+		return alignmentLine(a)
+	}
+}
 
 // alignmentLine renders the alignment digest: verdict counts, then the
 // clause ids that narrowed, dropped or contradicted the ask (contraction)
-// and the ones that widened it (creep), each only when non-empty.
+// and the ones that widened it (creep), each only when non-empty. Every
+// recorded verdict is counted — the five known words in their canonical
+// order, anything else under alignmentUnrecognisedVerdict — so the line is
+// empty exactly when the digest carries no verdicts at all.
+// loadCommitMessage (cmd_next.go) depends on that empty string: it is how
+// the plan → execute commit message says "no verdict artifacts" and is left
+// unchanged. Status must name those states rather than print nothing, so it
+// calls alignmentStatusLine, which falls through to this line once the
+// verdicts are in.
 func alignmentLine(a *alignmentDigest) string {
-	counts := make([]string, 0, len(a.Counts))
+	counts := make([]string, 0, len(alignmentVerdictOrder)+1)
 	for _, v := range alignmentVerdictOrder {
 		if n := a.Counts[v]; n > 0 {
 			counts = append(counts, fmt.Sprintf("%d %s", n, v))
 		}
+	}
+	if n := unrecognisedVerdicts(a.Counts); n > 0 {
+		counts = append(counts, fmt.Sprintf("%d %s", n, alignmentUnrecognisedVerdict))
 	}
 	line := strings.Join(counts, ", ")
 	if len(a.Contraction) > 0 {
@@ -560,6 +648,20 @@ func alignmentLine(a *alignmentDigest) string {
 		line += fmt.Sprintf(" (creep: %s)", strings.Join(a.Creep, ", "))
 	}
 	return line
+}
+
+// unrecognisedVerdicts sums the counts of every verdict value outside
+// alignmentVerdictOrder. Summed rather than listed: the words are the
+// auditor's, so listing them would put unbounded text — and, since the
+// counts are a map, text in no fixed order — on a one-screen line.
+func unrecognisedVerdicts(counts map[string]int) int {
+	n := 0
+	for v, c := range counts {
+		if !slices.Contains(alignmentVerdictOrder, v) {
+			n += c
+		}
+	}
+	return n
 }
 
 // internalLine renders the internal review's one-line state: skipped, still

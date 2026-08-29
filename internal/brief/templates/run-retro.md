@@ -1,4 +1,4 @@
-Write the retrospective for run {{.Slug}} to {{.RetroPath}}. The facts are in {{.InputsPath}} (JSON): task and wave counts, per-wave dispatch→commit timings, retries, failures and waivers with reasons, the review findings count, review findings carried forward as follow-ups, the verification record and the goal verdicts.
+Write the retrospective for run {{.Slug}} to {{.RetroPath}}. The facts are in {{.InputsPath}} (JSON): task and wave counts, per-wave dispatch→commit timings, retries, failures and waivers with reasons, the review findings count — gate passes plus every attempt's task reviews, split as `gate_review_findings` / `task_review_findings`, review findings carried forward as follow-ups, the verification record and the goal verdicts.
 
 Structure:
 

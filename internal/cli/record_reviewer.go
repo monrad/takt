@@ -317,7 +317,7 @@ func carryUnattributed(env Env, tgt *runTarget, rec *wave.InternalRecord) int {
 	for _, f := range unowned {
 		items = append(items, gate.FollowUp{
 			Severity: f.Severity, File: f.File, Line: f.Line, Title: f.Title, Detail: f.Detail,
-			Source: gate.SourceInternal, Wave: rec.Wave, TS: timeNow(),
+			Source: gate.SourceInternal, Wave: new(rec.Wave), TS: timeNow(),
 		})
 	}
 	if err := gate.AppendFollowUps(tgt.bdir, items...); err != nil {

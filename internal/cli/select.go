@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"strings"
 
 	"github.com/monrad/takt/internal/bundle"
@@ -98,7 +99,28 @@ func openTarget(ctx context.Context, env Env, dirFlag, slugFlag string) (*runTar
 	}
 	bdir, st, err := loadBundle(ws, slug)
 	if err != nil {
-		return nil, fail(env.Stderr, exitError, err.Error(), "")
+		return nil, fail(env.Stderr, exitError, err.Error(), bundleHint(ctx, ws, slug, err))
 	}
 	return &runTarget{ws: ws, slug: slug, bdir: bdir, st: st}, 0
+}
+
+// bundleHint is the recovery advice for a loadBundle failure, so no such
+// failure is ever reported with an empty hint (#8). The common case is a
+// bundle that exists but is not in the working tree: `takt init` commits it
+// on takt/<slug>, and every file of it disappears from the checkout on any
+// other branch — so when that branch exists, the hint names it. A missing
+// state.json with no such branch is a wrong slug or a wrong bundle root;
+// anything else — unreadable, malformed, a schema from the future — is a
+// bundle only `takt doctor` can describe. ws.Repo is the repository
+// openWorkspace resolved before any bundle was touched, so it is always
+// there to ask; only the git call itself can fail, and a branch takt cannot
+// look up is reported as no branch.
+func bundleHint(ctx context.Context, ws *workspace, slug string, err error) string {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return "state.json exists but cannot be read; run takt doctor"
+	}
+	if exists, berr := ws.Repo.BranchExists(ctx, "takt/"+slug); berr == nil && exists {
+		return "the run's bundle lives on branch takt/" + slug + "; check it out, or pass --dir"
+	}
+	return "no run named " + slug + " under " + ws.Dir.Base + "; check the slug or pass --dir"
 }

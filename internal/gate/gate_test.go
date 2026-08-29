@@ -154,6 +154,110 @@ func TestOverrideEventMalformedDataDoesNotPanic(t *testing.T) {
 	}
 }
 
+// TestRevisionEventMalformedDataDoesNotPanic is the twin of
+// TestOverrideEventMalformedDataDoesNotPanic for gate_revision_accepted: an
+// event whose data carries a non-scalar where a string is expected must fail
+// the match, not panic, and a well-formed revision event alongside the
+// malformed ones still satisfies once the artifacts have moved.
+//
+// Both fields get their own case. revised (gate.go) reads "gate" first and
+// skips the event when it is not this gate's name, so an event that is
+// malformed in both fields never reaches the hash: it would pass this test
+// even if a non-string hash panicked. badHash names the gate properly and is
+// the case that actually puts a non-string through eventString's type
+// assertion for "hash".
+func TestRevisionEventMalformedDataDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h1 := specAt(t, dir, "# spec v1\n")
+	badGate := bundle.Event{
+		Type: gate.EvRevisionAccepted,
+		Data: map[string]any{"gate": []any{"spec"}, "hash": map[string]any{}},
+	}
+	badHash := bundle.Event{
+		Type: gate.EvRevisionAccepted,
+		Data: map[string]any{"gate": gate.Spec, "hash": map[string]any{}},
+	}
+	for _, c := range []struct {
+		name string
+		ev   bundle.Event
+	}{{"non-string gate", badGate}, {"non-string hash", badHash}} {
+		if st, err := gate.Compute(dir, gate.Spec, []bundle.Event{c.ev}); err != nil || st.Satisfied {
+			t.Fatalf("%s: a malformed revision event must fail the match, not panic: %+v %v", c.name, st, err)
+		}
+	}
+	wellFormed := revisionAt(h1)
+	specAt(t, dir, "# spec v2\n")
+	if st, err := gate.Compute(
+		dir,
+		gate.Spec,
+		[]bundle.Event{badGate, badHash, wellFormed},
+	); err != nil || !st.Satisfied || st.Verdict != gate.VerdictRevised {
+		t.Fatalf("a well-formed revision alongside malformed ones must still satisfy: %+v %v", st, err)
+	}
+	// The malformed events must not answer the revision either: a
+	// gate_revision_accepted whose hash is unreadable records nothing, so
+	// the well-formed one before it still governs.
+	if st, err := gate.Compute(
+		dir,
+		gate.Spec,
+		[]bundle.Event{wellFormed, badHash},
+	); err != nil || !st.Satisfied || st.Verdict != gate.VerdictRevised {
+		t.Fatalf("a malformed revision after a well-formed one must not clear it: %+v %v", st, err)
+	}
+}
+
+// TestNilSeveritiesIsNotBlocking pins the rule Blocking is computed by, and
+// with it the case Severities' doc comment names: a receipt written before
+// that field existed carries no tally at all and must read as zero of
+// everything — the safe default, since zero blocking closes on a revise
+// instead of looping. The tally is `omitempty`, so the row below with no map
+// is written and read back through exactly the shape such a receipt has, and
+// the test checks that it really did reach disk without the key.
+//
+// The other two rows are what give the first one teeth: every row is a
+// rework receipt at the current hash, so Blocking can only be "the blocking
+// count is above zero" — not "the verdict is rework" and not "there are
+// findings at all".
+func TestNilSeveritiesIsNotBlocking(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	h := specAt(t, dir, "# spec\n")
+	for _, c := range []struct {
+		severities map[string]int
+		name       string
+		blocking   bool
+	}{
+		{nil, "no tally at all", false},
+		{map[string]int{"major": 2, "minor": 1}, "findings, none blocking", false},
+		{map[string]int{"blocking": 1, "major": 1}, "one blocking", true},
+	} {
+		rc := gate.Receipt{
+			Gate: gate.Spec, Hash: h, Verdict: gate.VerdictRework,
+			Severities: c.severities, TS: time.Now(),
+		}
+		if err := gate.WriteReceipt(dir, rc); err != nil {
+			t.Fatal(err)
+		}
+		if c.severities == nil {
+			b, rerr := os.ReadFile(filepath.Join(dir, "gates", gate.Spec+".json"))
+			if rerr != nil || strings.Contains(string(b), `"severities"`) {
+				t.Fatalf("a nil tally must be absent on disk, as in a pre-Severities receipt: %s %v", b, rerr)
+			}
+		}
+		st, err := gate.Compute(dir, gate.Spec, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Blocking != c.blocking {
+			t.Fatalf("%s: blocking = %v, want %v: %+v", c.name, st.Blocking, c.blocking, st)
+		}
+		if st.Satisfied || st.Verdict != gate.VerdictRework {
+			t.Fatalf("%s: a rework verdict must not satisfy: %+v", c.name, st)
+		}
+	}
+}
+
 // TestWriteReceiptLeavesNoTempOnSuccess pins the gates directory after a
 // receipt is written: exactly the receipt. The write goes through the shared
 // atomic writer, which flushes the bytes before the rename and removes its

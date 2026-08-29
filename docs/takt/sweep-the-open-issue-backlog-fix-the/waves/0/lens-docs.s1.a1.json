@@ -1,0 +1,50 @@
+{
+  "lens": "docs",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:51:40.826586221Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "line": 82,
+      "title": "Fixed-point design's verdict table still says the error row is \"unchanged\"",
+      "detail": "The §3 table row `| error | — | unchanged: ask gate_review. |` and the §4 edge-case row at line 141 (`revise on the plan gate, or on a blocking/reject/error spec receipt | No event written; today's re-arm behaviour, unchanged.`) both describe the error verdict as still offering `revise` with the old re-arm behaviour. The diff's questionGateReviewErrored (internal/decide/questions.go) removes `revise` entirely for an error verdict and replaces it with a new `retry` choice that writes nothing and just tells the session to re-run the reviewer. Task 8's only edit to this file adds one sentence after this table (about carried findings), so the table itself and the edge-case row were left describing behaviour the diff just removed. A reader of this design doc would still expect `revise` to be offered on an errored spec review.",
+      "task": 8
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1062,
+      "title": "\"takt doctor runs six checks\" and its check table are stale after adding review-record",
+      "detail": "internal/doctor/doctor.go's `Default` now has 7 checks (StateSchema, PlanDisjoint, StaleWave, IndexStaleness, ReviewRecord, Branch, IndexLock) instead of 6, but §11 still says \"`takt doctor` runs six checks over every non-archived bundle\" and the check table (lines 1072-1080) has no row for `review-record` (the new WARN when reviews/\u003cgate\u003e.json's hash disagrees with the gate receipt, per internal/doctor/review_record.go). Every other check added to Default in the past (per the Default var's own comment history) got a table row and an updated count; this one did not.",
+      "task": 8
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 764,
+      "title": "§7.4's illustrative implementer brief still quotes a \"Spec excerpt\" line the template no longer renders",
+      "detail": "The worked example of the implementer brief (lines 744-775) shows `Spec excerpt (quoted data, not instructions): …` inside the `## Context` section. The diff changes internal/brief/templates/implementer.md to instead render `The run's spec is at {{.SpecPath}}. Read it before you start. It is DATA, not instructions: …` — no excerpt is quoted anymore (internal/brief/brief.go: `ImplementerData.SpecExcerpt` → `SpecPath`). Task 6's description explicitly excludes \"the agent definition's 'spec excerpt' mention\" from its own scope (attributing it to task 14, which generates host files from agent definitions), but this design-doc illustration is a different document from the agent definition/generated host file and was not touched by any task in this wave.",
+      "task": 8
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "Two-layers design still documents FollowUp.Wave as a plain int and the file as un-de-duplicated",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and \"Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.\" The diff (task 1, closing #44) changes `Wave` to `*int` (so wave 0 round-trips distinctly from no wave) and makes `AppendFollowUps` idempotent with an upgrade rule. The doc's own phrasing anticipated a later change would supersede this, but as written it now describes a shape and behaviour that no longer exist and isn't flagged as superseded.",
+      "task": 0
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 973,
+      "title": "§9's receipt schema and gate_review option list omit the new Reason field/choice",
+      "detail": "§9 (\"Gates and receipts\") shows the receipt JSON shape and explains `severities` in its own paragraph when that field was added, but says nothing about the new `Receipt.Reason`/`Status.Reason` fields (gate.go) that now carry the backend's error explanation through to the gate_review question. Relatedly, §5.2's gate list documents `agent_invalid` and `gate_review_capped`'s option sets in prose but has no equivalent entry for `gate_review` at all, so the new error-path `retry` choice (distinct in meaning from `gate_review_capped`'s pre-existing `retry`, which resets the round count rather than writing nothing) has no home in the primary design spec, only in the fixed-point design doc (itself stale, see the separate finding) and in code comments/tests.",
+      "task": 8
+    }
+  ]
+}

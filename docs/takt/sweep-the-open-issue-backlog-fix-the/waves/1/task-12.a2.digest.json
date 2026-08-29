@@ -1,0 +1,9 @@
+{
+  "task": 12,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Addressed every review finding — the PR body path is shell-quoted and covered by a space/apostrophe fixture, the corrupt-record failure now names `finish/goals.json` through a fact-gathering hint, the unreachable wrap is gone, `dispatchLenses` reuses `writeDispatchBrief`, and new tests pin the `goals.Parse` branch and the hoisted `ensureSliceDiff`.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T21:49:11.469569108Z"
+}

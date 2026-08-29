@@ -1,6 +1,8 @@
 package decide_test
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/monrad/takt/internal/bundle"
@@ -203,8 +205,8 @@ func TestBranchFinishOptions(t *testing.T) {
 	if choices["merge"].Disabled == "" || choices["discard"].Disabled != "" {
 		t.Fatalf("merge must carry the blocking reason, discard must not: %+v", choices)
 	}
-	if d.Op.Options[0].Choice != "merge" {
-		t.Fatalf("merge is listed first even when disabled: %+v", d.Op.Options)
+	if d.Op.Options[0].Choice != "pr" {
+		t.Fatalf("a disabled merge must not be listed first: %+v", d.Op.Options)
 	}
 	// Both blocked keys are part of the gate's payload — the question reads
 	// them, and so will the prompt renderer.
@@ -227,5 +229,81 @@ func TestBranchFinishOptions(t *testing.T) {
 	d, _ = decide.Decide(st, decide.Facts{Finish: fin})
 	if len(d.Op.Options) != 2 || d.Op.Options[0].Choice != "pr" || d.Op.Options[1].Choice != "keep" {
 		t.Fatalf("adopted branch offers pr and keep only: %+v", d.Op.Options)
+	}
+}
+
+// branchFinishChoices lists an ask op's option choices in printed order.
+func branchFinishChoices(opts []op.Option) []string {
+	out := make([]string, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, o.Choice)
+	}
+	return out
+}
+
+// assertOneChoosableRecommendation checks the invariant every branch_finish
+// rendering has to hold: exactly one option is recommended, it is the first,
+// and it is not disabled.
+func assertOneChoosableRecommendation(t *testing.T, opts []op.Option) {
+	t.Helper()
+	n := 0
+	for _, o := range opts {
+		if strings.Contains(o.Label, "(Recommended)") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("exactly one option is recommended, got %d: %+v", n, opts)
+	}
+	if !strings.Contains(opts[0].Label, "(Recommended)") {
+		t.Fatalf("the recommendation must be listed first: %+v", opts)
+	}
+	if opts[0].Disabled != "" {
+		t.Fatalf("the recommendation must be choosable: %+v", opts[0])
+	}
+}
+
+// TestQuestionBranchFinishRecommendsAChoosableOption: the recommendation has
+// to be something the binary will accept. `takt init` on the default branch
+// checks the run branch out in the primary worktree, so in that flow merge is
+// always blocked — and it was recommended anyway, and listed first, which
+// told every such run to choose the one option `takt answer` refuses (#26).
+// The blocked merge is still offered, with its reason: demoted, not hidden.
+func TestQuestionBranchFinishRecommendsAChoosableOption(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		fin  decide.FinishFacts
+		want []string
+	}{
+		{
+			"merge blocked",
+			decide.FinishFacts{Verified: true, GoalsChecked: true, HasRetro: true,
+				MergeBlocked: "primary worktree is on takt/demo, not main", DiscardAllowed: true},
+			[]string{"pr", "keep", "merge", "discard"},
+		},
+		{
+			"merge allowed",
+			decide.FinishFacts{Verified: true, GoalsChecked: true, HasRetro: true,
+				MergeAllowed: true, DiscardAllowed: true},
+			[]string{"merge", "pr", "keep", "discard"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			d, err := decide.Decide(finishState(), decide.Facts{Finish: c.fin})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := branchFinishChoices(d.Op.Options); !slices.Equal(got, c.want) {
+				t.Fatalf("options = %v, want %v", got, c.want)
+			}
+			assertOneChoosableRecommendation(t, d.Op.Options)
+			blocked := c.want[0] == "pr"
+			if disabled := d.Op.Options[slices.Index(c.want, "merge")].Disabled; blocked != (disabled != "") {
+				t.Fatalf("merge must carry its reason exactly when it is blocked: %q", disabled)
+			}
+		})
 	}
 }

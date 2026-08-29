@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,11 @@ func TestAnswerOnNoPendingGateIsIgnored(t *testing.T) {
 	code, o, _ := runIn(t, root, nil, "answer", "--gate", "gate_review", "--choice", "revise", "--slug", "demo")
 	if code != 0 || o["ignored"] != true {
 		t.Fatalf("%d %v", code, o)
+	}
+	// Exit 0 is the contract, but a session that trusts it would proceed as
+	// though the gate were answered; the hint says what to do instead (#27).
+	if hint, _ := o["hint"].(string); !strings.Contains(hint, "takt next") {
+		t.Fatalf("ignored answer carries no hint: %v", o)
 	}
 	testutil.Git(t, root, "status", "--porcelain")
 }
@@ -196,6 +202,9 @@ func TestAnswerAgentInvalidSkipRecordsInternalReviewSkipped(t *testing.T) {
 	ev := lastEventOfType(t, bdir, "internal_review_skipped")
 	if ev.Data["wave"] != 0.0 || ev.Data["slice"] != 1.0 || ev.Data["attempt"] != 1.0 {
 		t.Fatalf("internal_review_skipped event must carry the active wave/slice/attempt: %+v", ev.Data)
+	}
+	if ev.Data["reason"] != "agent_invalid" {
+		t.Fatalf("internal_review_skipped event must carry reason=agent_invalid: %+v", ev.Data)
 	}
 }
 

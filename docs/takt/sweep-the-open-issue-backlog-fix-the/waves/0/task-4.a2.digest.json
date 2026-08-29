@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Corrected the alignment state precedence to skipped → unconfirmed → confirmed-without-verdicts → verdict counts, and moved that rendering into a status-only `alignmentStatusLine` so `alignmentLine`'s empty-means-no-verdicts contract with `loadCommitMessage` is restored intact; added the missing unconfirmed-with-verdicts test and removed the unrequested unknown-verdict bucket.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T19:42:29.688762191Z"
+}

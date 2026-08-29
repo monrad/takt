@@ -1,0 +1,9 @@
+{
+  "task": 10,
+  "attempt": 1,
+  "status": "done",
+  "summary": "runReview now reads events for the round, retires the prior receipt on `--force` before the backend call, and writes findings → carry → checked `gate_reviewed` event (with reason) → receipt → commit; `reviews/\u003cgate\u003e.json` carries `hash` and `round` via a new `reviewRecord`, with five new failure-path tests and the two comment rewrites.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-28T20:45:41.167052722Z"
+}

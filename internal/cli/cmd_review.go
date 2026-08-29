@@ -57,7 +57,7 @@ func cmdReview(env Env) int {
 			})
 		}
 	}
-	return runReview(env, tgt, o.gate, hash, present)
+	return runReview(env, tgt, o.gate, hash, present, o.force)
 }
 
 // cachedReceipt returns the receipt that already answers a review of gate
@@ -115,12 +115,39 @@ func reviewFlags(env Env) (reviewOpts, int) {
 // takes a fresh commandContext for the same reason — the budget bounds each
 // git call, and the review may well have outlasted the one the command
 // started with.
-func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
+//
+// The writes are ordered so that the receipt is last: storeFindings → the
+// carry on approve → the gate_reviewed event → gate.WriteReceipt → the
+// commit. That order buys a guarantee with two halves.
+//
+// Any failure BEFORE THE RECEIPT — the findings, the carry, the event —
+// leaves no receipt, so cachedReceipt cannot answer and the next `takt
+// review` re-runs the pass instead of returning a cached verdict with the
+// carry lost. A retry re-carries idempotently (gate.AppendFollowUps keys a
+// follow-up by its identity, so the second carry adds nothing) and may
+// count one extra round, which is the direction the cap should fail. This
+// holds for a forced pass too: --force retires the prior receipt through
+// gate.RemoveReceipt before the backend runs, so a forced pass that fails
+// before its own receipt leaves none rather than the stale one.
+//
+// A failure AT THE COMMIT, after the receipt, loses nothing. The receipt and
+// everything before it are on disk, uncommitted; commitBundle stages the
+// whole bundle directory, so the next takt command that commits — an
+// `answer`, a `done`, a phase transition, the next review — sweeps them up,
+// and the next `takt review` correctly returns that receipt as cached. The
+// receipt is the record of a review that really happened, and the cost of
+// that review was already paid.
+func runReview(env Env, tgt *runTarget, g, hash string, present []string, force bool) int {
 	reviewer, be, err := reviewerFor(tgt.ws, env)
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(),
 			"install copilot or claude, or record an evidenced skip with --skip --reason … --evidence …")
 	}
+	events, err := bundle.ReadEvents(tgt.bdir)
+	if err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
+	round := gate.Rounds(events, g) + 1
 	tok, _ := brief.Token()
 	files := map[string]string{}
 	for _, name := range present {
@@ -139,6 +166,13 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
+	// Immediately before the backend call, so the window in which the old
+	// receipt is gone and the new one is not there yet is the review itself.
+	if force {
+		if err = gate.RemoveReceipt(tgt.bdir, g); err != nil {
+			return fail(env.Stderr, exitError, err.Error(), "")
+		}
+	}
 	rctx, rcancel := context.WithTimeout(context.Background(), time.Duration(be.Timeout)+reviewGrace)
 	defer rcancel()
 	res, err := reviewer.Review(rctx, backend.ReviewRequest{
@@ -149,15 +183,7 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	if err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
-	if err = storeFindings(tgt.bdir, g, res); err != nil {
-		return fail(env.Stderr, exitError, err.Error(), "")
-	}
-	rc := gate.Receipt{
-		Gate: g, Hash: hash, Verdict: res.Verdict,
-		Reviewer: gate.Reviewer{Provider: res.Provider, Model: res.Model},
-		Findings: "reviews/" + g + ".md", Severities: res.SeverityCounts(), TS: timeNow(),
-	}
-	if err = gate.WriteReceipt(tgt.bdir, rc); err != nil {
+	if err = storeFindings(tgt.bdir, g, res, hash, round); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	// An approving pass closes the gate without asking anyone for anything,
@@ -167,9 +193,9 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 			return fail(env.Stderr, exitError, err.Error(), "")
 		}
 	}
-	_ = bundle.AppendEvent(tgt.bdir, "gate_reviewed", map[string]any{
-		keyGate: g, keyHash: hash, keyVerdict: res.Verdict, keyProvider: res.Provider, keyFindings: len(res.Findings),
-	})
+	if err = recordReviewed(tgt.bdir, g, hash, res); err != nil {
+		return fail(env.Stderr, exitError, err.Error(), "")
+	}
 	gctx, gcancel := commandContext(env)
 	defer gcancel()
 	if _, _, err = commitBundle(gctx, tgt.ws, tgt.bdir, tgt.slug, g+" reviewed: "+res.Verdict); err != nil {
@@ -178,6 +204,37 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string) int {
 	return printJSON(env, map[string]any{
 		keyGate: g, keyVerdict: res.Verdict, keyFindings: len(res.Findings),
 		keyProvider: res.Provider, keyReason: res.Reason,
+	})
+}
+
+// recordReviewed appends the gate_reviewed event and then writes the
+// receipt, the last two writes of a review pass.
+//
+// The event is appended first and checked like every other write in
+// runReview: a failure exits 1 and leaves no receipt (#43.1), so the pass
+// is re-run rather than answered from a receipt whose round was never
+// counted — gate.Rounds counts exactly these events, so an unchecked append
+// would let a run review forever under a cap that never advanced.
+//
+// The receipt carries the backend's reason so an error verdict can say what
+// went wrong; a reviewer's answer leaves it empty and carries findings
+// instead.
+func recordReviewed(bdir, g, hash string, res backend.ReviewResult) error {
+	data := map[string]any{
+		keyGate: g, keyHash: hash, keyVerdict: res.Verdict,
+		keyProvider: res.Provider, keyFindings: len(res.Findings),
+	}
+	if res.Reason != "" {
+		data[keyReason] = res.Reason
+	}
+	if err := bundle.AppendEvent(bdir, gate.EvReviewed, data); err != nil {
+		return err
+	}
+	return gate.WriteReceipt(bdir, gate.Receipt{
+		Gate: g, Hash: hash, Verdict: res.Verdict,
+		Reviewer: gate.Reviewer{Provider: res.Provider, Model: res.Model},
+		Findings: "reviews/" + g + ".md", Severities: res.SeverityCounts(),
+		Reason: res.Reason, TS: timeNow(),
 	})
 }
 
@@ -249,21 +306,22 @@ func preserveEvidence(bdir, g, src string) (string, error) {
 // drop the run back into the unscoped re-review loop the spec gate's fixed
 // point exists to end. The receipt is still written by the caller, so the
 // run sees the failure; only the findings survive it.
-func storeFindings(bdir, g string, res backend.ReviewResult) error {
+func storeFindings(bdir, g string, res backend.ReviewResult, hash string, round int) error {
 	if res.Verdict == gate.VerdictError {
 		return nil
 	}
 	if err := writeFindings(filepath.Join(bdir, "reviews", g+".md"), g, res); err != nil {
 		return err
 	}
-	return writeResultJSON(filepath.Join(bdir, "reviews", g+".json"), res)
+	return writeResultJSON(filepath.Join(bdir, "reviews", g+".json"), res, hash, round)
 }
 
-// writeFindings renders a reviewer result as markdown for humans.
-func writeFindings(path, title string, res backend.ReviewResult) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
+// renderFindings renders a reviewer result as markdown for humans. It
+// returns the text rather than writing it so that a caller with more to say
+// about the same pass — writeTaskFindings, which adds the scoped pass and
+// the confirmed internal findings — can build one document and write it
+// once.
+func renderFindings(title string, res backend.ReviewResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Review: %s — %s\n\n%s\n\n", title, res.Verdict, res.Summary)
 	if res.Reason != "" {
@@ -273,20 +331,40 @@ func writeFindings(path, title string, res backend.ReviewResult) error {
 		fmt.Fprintf(&b, "- **%s** %s:%d — %s: %s\n", f.Severity, f.File, f.Line, f.Title, f.Detail)
 	}
 	fmt.Fprintf(&b, "\n_%s / %s_\n", res.Provider, res.Model)
-	return os.WriteFile(path, []byte(b.String()), 0o600)
+	return b.String()
+}
+
+// writeFindings writes renderFindings' markdown to path, atomically; the
+// write creates the reviews directory when it is not there yet.
+func writeFindings(path, title string, res backend.ReviewResult) error {
+	return bundle.WriteFileAtomic(path, []byte(renderFindings(title, res)))
+}
+
+// reviewRecord is reviews/<gate>.json: a pass's structured result plus the
+// two facts that say which pass it was. The result is embedded, so
+// encoding/json flattens its fields into the same object a plain
+// backend.ReviewResult wrote — a file written before hash and round existed
+// still decodes, with Hash "" and Round 0.
+type reviewRecord struct {
+	backend.ReviewResult
+
+	// Hash is the gate hash the pass reviewed and Round is gate.Rounds after
+	// it. Together they pin the findings to one pass, which is what lets the
+	// review-record doctor check see a findings file that has drifted from
+	// the receipt beside it (#43.3).
+	Hash  string `json:"hash,omitempty"`
+	Round int    `json:"round,omitempty"`
 }
 
 // writeResultJSON stores the reviewer's structured result beside the human
-// rendering. writeFindings renders severities into a markdown bullet and the
-// structure is lost, so nothing downstream can read a finding as data: the
-// scoped follow-up pass needs the prior findings to quote, and the
-// carry-forward needs them to record. Written for both gates because
-// runReview is shared and the cost is one file; only the spec gate reads it.
-func writeResultJSON(path string, res backend.ReviewResult) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	return bundle.WriteJSONAtomic(path, res)
+// rendering, tagged with the gate hash it reviewed and the round it was.
+// writeFindings renders severities into a markdown bullet and the structure
+// is lost, so nothing downstream can read a finding as data: the scoped
+// follow-up pass needs the prior findings to quote, and the carry-forward
+// needs them to record. Written for both gates because runReview is shared
+// and the cost is one file; only the spec gate reads it.
+func writeResultJSON(path string, res backend.ReviewResult, hash string, round int) error {
+	return bundle.WriteJSONAtomic(path, reviewRecord{ReviewResult: res, Hash: hash, Round: round})
 }
 
 // priorFindingsForScopedPass returns the previous spec pass's findings when
@@ -312,7 +390,7 @@ func writeResultJSON(path string, res backend.ReviewResult) error {
 // receipt was convention, not a checkable invariant.
 func priorFindingsForScopedPass(bdir string) []brief.PriorFinding {
 	res, err := readReviewResult(bdir, gate.Spec)
-	if err != nil || res.Verdict != backend.VerdictRework || res.SeverityCounts()["blocking"] == 0 {
+	if err != nil || res.Verdict != gate.VerdictRework || res.SeverityCounts()["blocking"] == 0 {
 		return nil
 	}
 	out := make([]brief.PriorFinding, 0, len(res.Findings))
@@ -325,20 +403,22 @@ func priorFindingsForScopedPass(bdir string) []brief.PriorFinding {
 }
 
 // readReviewResult reads reviews/<gate>.json, the structured result
-// runReview stored beside the human rendering. An absent file means no
-// findings: a run whose reviews predate the file carries nothing forward
-// rather than failing.
-func readReviewResult(bdir, g string) (backend.ReviewResult, error) {
+// runReview stored beside the human rendering, with the hash and round that
+// say which pass wrote it. An absent file means no findings: a run whose
+// reviews predate the file carries nothing forward rather than failing, and
+// a file written before the two fields existed reads Hash "" and Round 0.
+// Callers that only want the verdict and the findings take .ReviewResult.
+func readReviewResult(bdir, g string) (reviewRecord, error) {
 	b, err := os.ReadFile(filepath.Join(bdir, "reviews", g+".json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return backend.ReviewResult{}, nil
+		return reviewRecord{}, nil
 	}
 	if err != nil {
-		return backend.ReviewResult{}, err
+		return reviewRecord{}, err
 	}
-	var r backend.ReviewResult
+	var r reviewRecord
 	if uerr := json.Unmarshal(b, &r); uerr != nil {
-		return backend.ReviewResult{}, fmt.Errorf("reviews/%s.json: %w", g, uerr)
+		return reviewRecord{}, fmt.Errorf("reviews/%s.json: %w", g, uerr)
 	}
 	return r, nil
 }

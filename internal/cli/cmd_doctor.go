@@ -79,14 +79,25 @@ func countErrors(findings []doctor.Finding) int {
 	return errs
 }
 
-// renderDoctor prints the text form: one line per finding, an indented
-// fix: line when present, and a one-line summary.
+// renderDoctor prints the text form: one line per check row, an indented
+// fix: line when present, and a one-line summary. The summary counts only
+// WARN and ERROR rows as findings — a PASS row is a check that ran, not
+// something needing attention — so a clean workspace says so instead of
+// reporting its own PASS rows as "N finding(s)" (#34).
 func renderDoctor(w io.Writer, findings []doctor.Finding, errs int) {
+	attention := 0
 	for _, f := range findings {
 		fmt.Fprintf(w, "%-5s %s: %s\n", f.Level, f.Check+" "+f.Slug, f.Message)
 		if f.Fix != "" {
 			fmt.Fprintf(w, "      fix: %s\n", f.Fix)
 		}
+		if f.Level != "PASS" {
+			attention++
+		}
 	}
-	fmt.Fprintf(w, "takt doctor: %d finding(s), %d error(s)\n", len(findings), errs)
+	if attention == 0 {
+		fmt.Fprintf(w, "takt doctor: %d check(s), all PASS\n", len(findings))
+		return
+	}
+	fmt.Fprintf(w, "takt doctor: %d check(s), %d finding(s), %d error(s)\n", len(findings), attention, errs)
 }

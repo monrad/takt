@@ -1,0 +1,34 @@
+{
+  "lens": "intent",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T19:55:40.904818942Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/finish/goals.go",
+      "line": 284,
+      "title": "Required //nolint:gosec directive omitted from os.ReadFile call",
+      "detail": "Task 5 explicitly specifies annotating the citation file read with `//nolint:gosec // G304: the path is constrained to the resolved repository root above` (nolintlint requires linter name + explanation). Instead, checkRange's os.ReadFile(resolved) call (goals.go:280-284) carries only a prose comment arguing gosec won't fire — no nolint directive at all. This contradicts the codebase's own established convention: other provably-safe resolved paths in this repo (e.g. internal/cli/archive.go:386 `//nolint:gosec // G304: p is produced by WalkDir over the run's own bundle directory`, internal/cli/cmd_review.go:228) do carry the directive precisely because gosec's G304 rule is syntactic (flags any non-literal path argument) and does not perform the dataflow reasoning the added comment assumes. .golangci.yml enables gosec repo-wide with no exclusion for internal/finish, so this line is very likely to fail the project's lint gate.",
+      "task": 5
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 431,
+      "title": "Undocumented, out-of-scope additions to the design spec beyond task 8's brief",
+      "detail": "Task 8's description authorizes exactly 5 edits to this file's declared scope (§4.6 lock_taken-by-holder wording, §8.2 --no-custom-instructions), and plan.index.json's own verify commands for task 8 check only those items plus the plan-doc/fixed-point-doc/README changes. The diff additionally inserts substantial new, unrequested content: a new `gate_review` paragraph describing the `retry` choice on `error` verdicts (line 431-438), a new `reason` field paragraph under §9 (line 992-995), and a new doctor `review-record` check row plus the six→seven check-count change under §11 (lines ~1073, 1090). None of this is mentioned in task 8's brief or covered by its verify greps — it documents behavior/checks not implemented anywhere in this wave's diff (no cmd_answer.go, doctor, or backend changes appear in the diff), so it is unreviewed, unauthorized scope creep injected into a file task 8 is only licensed to touch for its 5 stated edits.",
+      "task": 8
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "line": 82,
+      "title": "Undocumented, out-of-scope additions to the fixed-point spec beyond task 8's brief",
+      "detail": "Task 8 authorizes only one addition to this file: one sentence after the table in §6 (present and correct). The diff additionally rewrites the §3 verdict table's `error` row (line 82, changing 'unchanged: ask `gate_review`.' to a multi-clause description of the `retry`/`accept`/`stop` choices) and adds a new Edge-cases table row for '`revise` on an `error` spec receipt' (line 142). Neither is requested by task 8's description or its plan.index.json verify commands, and it duplicates/extends the same unauthorized `gate_review`-retry documentation added to the other spec file — content describing a feature not implemented by any code in this wave's diff.",
+      "task": 8
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "verdict": "approve",
+  "summary": "Every prior finding is addressed in the revised text.",
+  "findings": null,
+  "provider": "copilot",
+  "model": "gpt-5.6-sol"
+}

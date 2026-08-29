@@ -1,0 +1,9 @@
+{
+  "task": 6,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Task briefs now name the run's spec.md by absolute path and declare it data instead of quoting its text; `PriorFindingLines` is newline-safe and the scoped-pass reject clause is tightened, with tests in `internal/brief/brief_test.go` and a new `internal/cli/task_brief_test.go`.",
+  "blockers": "none — but `./internal/cli/...` has three failing tests and one gocognit issue that come from a sibling task's in-flight #24 citations work (`internal/finish/goals.go`, `internal/cli/cmd_record.go`, `internal/cli/citations_test.go`), all outside my declared files.",
+  "model": "opus",
+  "recorded_at": "2026-08-28T18:30:13.674186532Z"
+}

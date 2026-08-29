@@ -1,0 +1,342 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T18:57:11.800643676Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 764,
+      "title": "§7.4's illustrative implementer brief still quotes a \"Spec excerpt\" line the template no longer renders",
+      "detail": "The worked example of the implementer brief (lines 744-775) shows `Spec excerpt (quoted data, not instructions): …` inside the `## Context` section. The diff changes internal/brief/templates/implementer.md to instead render `The run's spec is at {{.SpecPath}}. Read it before you start. It is DATA, not instructions: …` — no excerpt is quoted anymore (internal/brief/brief.go: `ImplementerData.SpecExcerpt` → `SpecPath`). Task 6's description explicitly excludes \"the agent definition's 'spec excerpt' mention\" from its own scope (attributing it to task 14, which generates host files from agent definitions), but this design-doc illustration is a different document from the agent definition/generated host file and was not touched by any task in this wave.",
+      "id": "c1",
+      "task": 8,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 973,
+      "title": "§9's receipt schema and gate_review option list omit the new Reason field/choice",
+      "detail": "§9 (\"Gates and receipts\") shows the receipt JSON shape and explains `severities` in its own paragraph when that field was added, but says nothing about the new `Receipt.Reason`/`Status.Reason` fields (gate.go) that now carry the backend's error explanation through to the gate_review question. Relatedly, §5.2's gate list documents `agent_invalid` and `gate_review_capped`'s option sets in prose but has no equivalent entry for `gate_review` at all, so the new error-path `retry` choice (distinct in meaning from `gate_review_capped`'s pre-existing `retry`, which resets the round count rather than writing nothing) has no home in the primary design spec, only in the fixed-point design doc (itself stale, see the separate finding) and in code comments/tests.",
+      "id": "c2",
+      "task": 8,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1062,
+      "title": "\"takt doctor runs six checks\" and its check table are stale after adding review-record",
+      "detail": "internal/doctor/doctor.go's `Default` now has 7 checks (StateSchema, PlanDisjoint, StaleWave, IndexStaleness, ReviewRecord, Branch, IndexLock) instead of 6, but §11 still says \"`takt doctor` runs six checks over every non-archived bundle\" and the check table (lines 1072-1080) has no row for `review-record` (the new WARN when reviews/\u003cgate\u003e.json's hash disagrees with the gate receipt, per internal/doctor/review_record.go). Every other check added to Default in the past (per the Default var's own comment history) got a table row and an updated count; this one did not.",
+      "id": "c3",
+      "task": 8,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "line": 82,
+      "title": "Fixed-point design's verdict table still says the error row is \"unchanged\"",
+      "detail": "The §3 table row `| error | — | unchanged: ask gate_review. |` and the §4 edge-case row at line 141 (`revise on the plan gate, or on a blocking/reject/error spec receipt | No event written; today's re-arm behaviour, unchanged.`) both describe the error verdict as still offering `revise` with the old re-arm behaviour. The diff's questionGateReviewErrored (internal/decide/questions.go) removes `revise` entirely for an error verdict and replaces it with a new `retry` choice that writes nothing and just tells the session to re-run the reviewer. Task 8's only edit to this file adds one sentence after this table (about carried findings), so the table itself and the edge-case row were left describing behaviour the diff just removed. A reader of this design doc would still expect `revise` to be offered on an errored spec review.",
+      "id": "c4",
+      "task": 8,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md",
+      "line": 351,
+      "title": "Two-layers design still documents FollowUp.Wave as a plain int and the file as un-de-duplicated",
+      "detail": "§5.4 says `gate.FollowUp gains Wave int and Task int, both omitempty` and \"Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.\" The diff (task 1, closing #44) changes `Wave` to `*int` (so wave 0 round-trips distinctly from no wave) and makes `AppendFollowUps` idempotent with an upgrade rule. The doc's own phrasing anticipated a later change would supersede this, but as written it now describes a shape and behaviour that no longer exist and isn't flagged as superseded.",
+      "id": "c5",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/takt/sweep-the-open-issue-backlog-fix-the/logs/wave-0.s1.a1.diff",
+      "line": 1,
+      "title": "Task 5 (goal-assessor citation validation, #24) is entirely absent from the reviewed diff",
+      "detail": "None of task 5's required changes appear anywhere in wave-0.s1.a1.diff: no internal/finish/goals.go CheckCitations addition, no internal/cli/cmd_record.go readVerdicts root-param wiring, no internal/brief/templates/goal-assessor.md grammar update, and neither new test file (internal/finish/goals_test.go additions, internal/cli/citations_test.go) is present. Requirement coverage for task 5 is 0% in this diff. (For context: docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json records the task-5 attempt as status \"blocked\" — the implementer reports the core work complete but blocked on a pre-existing fixture in the undeclared file internal/cli/cmd_record_test.go citing a.go:1 in a repo with no a.go — which is presumably why it did not land in this wave's diff. The corresponding code does already exist in the working tree at internal/finish/goals.go:142 (CheckCitations) and internal/cli/cmd_record.go:222, but that is not part of the diff being reviewed here and the task is not marked done.)",
+      "id": "c6",
+      "task": 0,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_status.go",
+      "line": 596,
+      "title": "alignmentLine reuse breaks loadCommitMessage's \"skipped leaves message unchanged\" contract",
+      "detail": "alignmentLine(a) now returns a non-empty string (\"skipped\", \"N clauses awaiting confirmation\", or \"N clauses confirmed, verdicts pending\") for states that previously produced \"\". internal/cli/cmd_next.go:539-552 loadCommitMessage explicitly reuses this same alignmentLine (per its own doc comment, unmodified in this diff) and relies on it returning \"\" whenever there are no verdict artifacts: 'No verdict artifacts (the audit is disabled, skipped, or has not run yet) leaves the message unchanged.' That contract is now broken for the reachable 'explicitly skipped' path: takt answer --gate agent_invalid --choice skip → skipAlignment(bdir, st) sets alignment.json's Skipped=true; decidePlan's ClausesPresent/ClausesConfirmed/VerdictsPresent facts all become true via the `|| a.Skipped` OR (internal/cli/facts.go:78-80), so the plan→execute transition proceeds immediately and loadCommitMessage is called with a.Skipped=true. alignmentLine now hits `case a.Skipped: return gateSkipped` and returns \"skipped\" (non-empty), so the commit subject/body now gets \" — alignment: skipped\" appended, directly contradicting the still-present, unmodified doc comment and the existing behaviour TestLoadCommitMessageOmitsAlignmentWhenAbsent pins for the 'no verdict artifacts' cases (that test only covers the fully-absent alignment.json case, not the explicit-skip case, so it does not catch this). The two other new non-empty branches ('N clauses awaiting confirmation' / 'N clauses confirmed, verdicts pending') cannot actually be reached from decidePlan's transition gate, so only the Skipped branch is a live regression, but it is a real, untested one.",
+      "id": "c7",
+      "task": 4,
+      "lenses": [
+        "correctness"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "internal/cli/cmd_status.go",
+      "line": 598,
+      "title": "alignmentLine's new non-empty branches break loadCommitMessage's documented 'no verdicts → unchanged' contract",
+      "detail": "Task 4 rewrote alignmentLine (used by both status and, per its own doc comment at cmd_status.go:593, by cmd_next.go's loadCommitMessage) so the `Skipped` case now returns the literal \"skipped\" instead of \"\". loadCommitMessage (internal/cli/cmd_next.go:524-553) treats an empty alignmentLine result as \"no verdict artifacts (the audit is disabled, skipped, or has not run yet) — leave the message unchanged\" (its own doc comment says so verbatim) and otherwise appends \" — alignment: \u003cline\u003e\" to the plan→execute commit subject/body. skipAlignment (internal/cli/cmd_answer.go:307-314) writes alignment.json with Skipped=true and no verdicts, and decide.go's decidePlan (internal/decide/decide.go:331-341) treats Skipped as satisfying ClausesPresent/ClausesConfirmed/VerdictsPresent, so the run proceeds straight to ActLoadPlan without ever gaining verdicts. The next `takt next` therefore reaches loadCommitMessage with a non-nil, Skipped alignment digest, and the plan→execute commit now reads \"...— alignment: skipped\" — contradicting loadCommitMessage's own documented behaviour and permanently altering commit history for a path task 4 never mentions touching. No test exercises this: TestLoadCommitMessageOmitsAlignmentWhenAbsent (internal/cli/cmd_next_test.go:346) only covers alignment fully disabled (statusAlignment returns nil), not the skipped-with-clauses case.",
+      "id": "c8",
+      "task": 4,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_status.go",
+      "line": 609,
+      "title": "alignmentVerdictLine grows unrequested unknown-verdict handling",
+      "detail": "Task 4's brief specifies alignmentLine's four cases (skipped / awaiting confirmation / confirmed-pending-verdicts / today's counts line) but says nothing about handling verdict words outside alignmentVerdictOrder. The diff adds a `seen` map plus a second pass that collects and sort.Strings' any unrecognised verdict word into a `rest` bucket (lines 616-633) — extra state and a second loop to defend against an auditor emitting a word the fixed order doesn't know. It's a reasonable robustness fix (previously such words were silently dropped) but it is scope creep beyond what the task asked for in a diff whose other status changes are otherwise minimal and tightly scoped to the brief. Flagging for awareness rather than blocking — the added complexity is small and self-contained.",
+      "id": "c9",
+      "task": 4,
+      "lenses": [
+        "simplicity"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_status.go",
+      "line": 624,
+      "title": "alignmentVerdictLine's \"unknown verdict\" bucket is untested",
+      "detail": "The refactor into alignmentVerdictLine adds a new branch (lines 624-633) that buckets and sorts any verdict word outside alignmentVerdictOrder rather than silently dropping it — a genuinely new code path per the doc comment (\"nothing validates the auditor's word\"). No test in internal/cli/cmd_status_test.go supplies an alignment.json verdict outside {covered, narrowed, dropped, widened, contradicted}, so this branch (and its sort.Strings ordering) has zero coverage.",
+      "id": "c10",
+      "task": 4,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 143,
+      "title": "PlanGate.Reason wiring only exercised indirectly, not through gatherGateFacts",
+      "detail": "Both SpecGate and PlanGate literals in gatherGateFacts gain `Reason: s.Reason` (lines 135-137 and 143-145). The spec-gate branch is covered end-to-end by TestAnswerRetryOnAnErroredGateWritesNothingAndClearsIt (internal/cli/cmd_answer_retry_test.go), which plants a real error receipt and drives it through gate.Compute → gatherGateFacts → decide → question. The plan-gate branch's Reason threading is only checked via decide_test.go's TestTheGateReviewAskCarriesTheReceiptsReason/plan subtest, which constructs `decide.GateStatus{Verdict: \"error\", Reason: \"x\"}` directly and never calls gatherGateFacts or gate.Compute — so a bug specifically in facts.go's plan-gate literal (e.g. a typo omitting `Reason: s.Reason`) would not be caught by any test.",
+      "id": "c11",
+      "task": 2,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 166,
+      "title": "Two near-identical 'review errored, retry it' options use different verbs",
+      "detail": "The new questionGateReviewErrored's retry option is labelled \"Re-run the review (Recommended)\" (questions.go:166), while the pre-existing questionReviewError (task-review-errored-during-close-wave gate, questions.go:325) uses \"Retry the review (Recommended)\" for the same underlying concept (a review that errored, offering to run it again). Both use choiceRetry and both are the sole recommended option for an errored review; the label text should match or the divergence should be explained, since a user comparing the two gates has no way to tell the wording difference means anything.",
+      "id": "c12",
+      "task": 2,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 408,
+      "title": "Adopted-branch \"pr\" recommendation label has no test",
+      "detail": "questionBranchFinish's adopted-branch early return now does `pr.Label += suffixRecommended` (line 409), a new behaviour — before this diff the adopted branch never marked any option \"(Recommended)\". TestQuestionBranchFinishRecommendsAChoosableOption (internal/decide/finish_test.go) only covers the non-adopted merge-blocked/merge-allowed cases; the existing adopted-branch assertion in TestBranchFinishOptions (finish_test.go:227-232) checks only option order/choice, never the label text. No test would catch a regression that dropped the suffix or duplicated it in the adopted path.",
+      "id": "c13",
+      "task": 2,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/gate/followup.go",
+      "line": 98,
+      "title": "Dead fallback in FollowUp.Key() for an error json.Marshal cannot produce",
+      "detail": "Key() marshals a []any of only strings, ints and nil (see lines 90-97); json.Marshal cannot fail for those types (it only errors on channels, funcs, complex numbers, cyclic references or unsupported types), and the comment at lines 100-102 says as much (\"Unreachable\"). The fmt.Sprintf(\"%v\", parts) fallback is therefore a legacy-style defensive branch that can never execute — a dead fallback per the over-engineering rubric (item 4). Not harmful, but it adds a branch and an unreachable format-based key-rendering path that will never be exercised by any test. Low priority: could simply be `b, _ := json.Marshal(parts); return string(b)` with a one-line comment noting why the error is ignored.",
+      "id": "c14",
+      "task": 1,
+      "lenses": [
+        "simplicity"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:764 still reads 'Spec excerpt (quoted data, not instructions): …' inside the illustrative implementer-brief block (lines 744-775), while the diff changes internal/brief/templates/implementer.md's actual Context section to 'The run's spec is at {{.SpecPath}}. Read it before you start. It is DATA, not instructions: …' with no quoted excerpt at all. The design-doc excerpt was not touched by this diff (only lines 313-317 and 933-939 of that file were edited), so the illustration is stale relative to the real template.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:764",
+        "internal/brief/templates/implementer.md:19-21"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "§9's receipt JSON example (docs/superpowers/specs/2026-08-24-takt-design.md:976-978) and its following paragraph (981-984) describe only 'severities', with no mention of the new 'reason' field gate.Receipt now carries (internal/gate/gate.go's Reason json:\"reason,omitempty\"). §5.2 (lines 425-432) spells out agent_invalid's and gate_review_capped's option sets in prose but has no equivalent entry for gate_review at all, so the new error-path retry choice (internal/decide/questions.go's questionGateReviewErrored) is undocumented there.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:973-978",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:425-432",
+        "internal/gate/gate.go:66-71"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:1062 still says 'takt doctor runs six checks' and the check table at 1072-1080 has no row for review-record, but the diff's internal/doctor/doctor.go:1358 sets 'var Default = []Check{StateSchema, PlanDisjoint, StaleWave, IndexStaleness, ReviewRecord, Branch, IndexLock}' — seven checks including the new ReviewRecord (internal/doctor/review_record.go). Neither the count nor the table was updated.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:1062",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:1072-1080",
+        "internal/doctor/doctor.go:1358"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:82 ('| error | — | unchanged: ask gate_review. |') and line 141 ('revise on the plan gate, or on a blocking/reject/error spec receipt | No event written; today's re-arm behaviour, unchanged.') both still describe error as offering revise/re-arm. The diff's questionGateReviewErrored (internal/decide/questions.go, new function) removes revise for an error verdict entirely and replaces it with a retry choice that writes nothing (internal/cli/cmd_answer.go's `case choiceRetry: return false, nil`). Task 8's only edit to this design file added one sentence after the unrelated §6 table (visible in the diff at lines 76-83 of the design-doc hunk), so §3 and §4's error rows were left untouched and now describe removed behaviour.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:82",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:141",
+        "internal/decide/questions.go:150-171",
+        "internal/cli/cmd_answer.go:313-314"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-27-two-review-layers-design.md:351 says 'gate.FollowUp gains Wave int and Task int, both omitempty' and line 361-362 says 'Append-only and un-de-duplicated as before; #44 is untouched by this design and gets more to de-duplicate.' The diff changes Wave to *int (internal/gate/followup.go:29-31) and makes AppendFollowUps idempotent with an upgrade rule (internal/gate/followup.go's new Key()/AppendFollowUps). This design doc file is not touched anywhere in the diff, so it still describes the superseded int/un-de-duplicated shape.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-27-two-review-layers-design.md:351",
+        "docs/superpowers/specs/2026-08-27-two-review-layers-design.md:361-362",
+        "internal/gate/followup.go:29-31"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "Grepping the diff for CheckCitations, goal-assessor, readVerdicts, citations_test and goals_test returns no matches anywhere in wave-0.s1.a1.diff — none of task 5's required changes are present. docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json confirms status 'blocked' with summary 'CheckCitations, its wiring into readVerdicts, the brief grammar and both test files are complete... but three pre-existing tests in the undeclared file internal/cli/cmd_record_test.go fail'. The corresponding code does exist already in the working tree outside the diff, e.g. internal/finish/goals.go:142 `func CheckCitations(vs []GoalVerdict, root string) []string {`.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-5.a1.digest.json:4-6",
+        "internal/finish/goals.go:142"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "alignmentLine (internal/cli/cmd_status.go:631-641) now returns 'skipped' (gateSkipped='skipped', internal/cli/cli.go:87) for a.Skipped instead of ''. loadCommitMessage's own doc comment (internal/cli/cmd_next.go:532-533) says 'No verdict artifacts (the audit is disabled, skipped, or has not run yet) leaves the message unchanged,' and its code (cmd_next.go:542-546) treats align=='' as the unchanged case. skipAlignment (internal/cli/cmd_answer.go:307-313) sets Skipped=true with no verdicts, and facts.go:78-80 ORs `|| a.Skipped` into ClausesPresent/ClausesConfirmed/VerdictsPresent so decidePlan (internal/decide/decide.go:331-341) falls through to ActLoadPlan without those facts blocking it — meaning at the loadCommitMessage call site the other two new alignmentLine branches (awaiting-confirmation / confirmed-pending-verdicts) cannot be reached, since decidePlan requires all three facts true (or Skipped, or config.Alignment off) to reach ActLoadPlan, leaving only the Skipped branch live. TestLoadCommitMessageOmitsAlignmentWhenAbsent (internal/cli/cmd_next_test.go:346-359) only covers the fully-absent alignment.json case (statusAlignment returns nil), not this explicit-skip case.",
+      "citations": [
+        "internal/cli/cmd_status.go:631-641",
+        "internal/cli/cmd_next.go:532-546",
+        "internal/cli/cmd_answer.go:307-313",
+        "internal/cli/facts.go:76-83",
+        "internal/decide/decide.go:305-341",
+        "internal/cli/cmd_next_test.go:343-359"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "Same defect as c7, verified against the same spans: alignmentLine's Skipped case now returns the literal 'skipped' (internal/cli/cmd_status.go:633-634), loadCommitMessage's doc comment (cmd_next.go:532-533) promises the message stays unchanged when there are no verdict artifacts including 'skipped', skipAlignment (cmd_answer.go:307-313) plants a Skipped alignment.json with no verdicts, decidePlan/facts.go's `|| a.Skipped` (facts.go:78-80, decide.go:331-341) lets the run reach ActLoadPlan straight away, and TestLoadCommitMessageOmitsAlignmentWhenAbsent (cmd_next_test.go:346) only exercises the fully-absent-alignment case, not this reachable skipped-with-clauses path.",
+      "citations": [
+        "internal/cli/cmd_status.go:631-641",
+        "internal/cli/cmd_next.go:524-553",
+        "internal/cli/cmd_answer.go:307-314",
+        "internal/cli/facts.go:76-83",
+        "internal/decide/decide.go:331-341",
+        "internal/cli/cmd_next_test.go:343-359"
+      ]
+    },
+    {
+      "id": "c9",
+      "verdict": "confirmed",
+      "evidence": "Task 4's brief (docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-4.a1.md:10) specifies exactly the four alignmentLine cases: 'skipped when Skipped; N clauses awaiting confirmation when !Confirmed; N clauses confirmed, verdicts pending when Confirmed \u0026\u0026 !VerdictsPresent; otherwise today's counts/contraction/creep line' — nothing about unknown verdict words. The diff's alignmentVerdictLine (internal/cli/cmd_status.go:650-668) adds a new `seen` map and a second loop collecting/sorting any Counts key outside alignmentVerdictOrder into a `rest` bucket — logic absent from the pre-diff alignmentLine, which only iterated alignmentVerdictOrder and silently dropped anything else.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/0/task-4.a1.md:10",
+        "internal/cli/cmd_status.go:650-668"
+      ]
+    },
+    {
+      "id": "c10",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/cmd_status.go:624-633's 'rest'/'seen' branch handles a verdict word outside alignmentVerdictOrder={covered,narrowed,dropped,widened,contradicted}. No test in internal/cli/cmd_status_test.go supplies any verdict outside that set (grep shows only 'covered' and 'contradicted' used). applyVerdicts in internal/cli/cmd_record.go:317-330 stores the auditor's verdict string verbatim into alignment.json with no enum validation, so the branch is genuinely reachable from real auditor output, and it has zero test coverage.",
+      "citations": [
+        "internal/cli/cmd_status.go:624-633",
+        "internal/cli/cmd_record.go:317-330",
+        "internal/cli/cmd_status_test.go:106-107"
+      ]
+    },
+    {
+      "id": "c11",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/facts.go:143-145 sets `f.PlanGate = decide.GateStatus{Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking, Reason: s.Reason}` inside gatherGateFacts. The only test asserting PlanGate.Reason propagation, TestTheGateReviewAskCarriesTheReceiptsReason's 'plan' subtest (internal/decide/decide_test.go:1068-1082), constructs `decide.GateStatus{Verdict: \"error\", Reason: \"x\"}` directly and calls mustDecide — it never calls gatherGateFacts or gate.Compute. No test in internal/cli exercises the plan-gate Reason wiring end to end (grep for PlanGate/plan-error-reason in internal/cli shows only the facts.go definition itself).",
+      "citations": [
+        "internal/cli/facts.go:138-146",
+        "internal/decide/decide_test.go:1068-1082"
+      ]
+    },
+    {
+      "id": "c12",
+      "verdict": "confirmed",
+      "evidence": "internal/decide/questions.go:166 labels the new questionGateReviewErrored's retry option 'Re-run the review (Recommended)', while the pre-existing questionReviewError at questions.go:325 labels its retry option 'Retry the review (Recommended)' for the same choiceRetry concept (an errored review, offered a re-run as the recommended option). The two labels differ with no explanation for the divergence.",
+      "citations": [
+        "internal/decide/questions.go:164-170",
+        "internal/decide/questions.go:320-333"
+      ]
+    },
+    {
+      "id": "c13",
+      "verdict": "confirmed",
+      "evidence": "internal/decide/questions.go:409 adds `pr.Label += suffixRecommended` in the adopted-branch early return, new behaviour per the diff. TestBranchFinishOptions' adopted-branch check (internal/decide/finish_test.go:227-232) only asserts `len(d.Op.Options) != 2 || d.Op.Options[0].Choice != \"pr\" || d.Op.Options[1].Choice != \"keep\"` — no label check. The new TestQuestionBranchFinishRecommendsAChoosableOption's case table (internal/decide/finish_test.go, added by the diff) only covers 'merge blocked' and 'merge allowed', with no BranchAdopted=true case, so the adopted-branch suffix addition is untested.",
+      "citations": [
+        "internal/decide/questions.go:406-410",
+        "internal/decide/finish_test.go:227-232"
+      ]
+    },
+    {
+      "id": "c14",
+      "verdict": "confirmed",
+      "evidence": "internal/gate/followup.go's Key() builds `parts := []any{...}` from only strings.TrimSpace strings, a nil-or-int `w`, and int fields (Task, Line) — all JSON-marshalable types that json.Marshal cannot fail on (it only errors on channels, funcs, complex numbers, cycles or unsupported types). The `if err != nil` fallback branch's own comment says 'Unreachable: parts holds only strings, ints and nil, all of which marshal,' confirming the branch can never execute.",
+      "citations": [
+        "internal/gate/followup.go:90-99"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14"
+  ]
+}

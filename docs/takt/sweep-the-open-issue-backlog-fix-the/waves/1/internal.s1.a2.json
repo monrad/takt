@@ -1,0 +1,242 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-28T22:07:20.235345961Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "commands/takt.md",
+      "line": 31,
+      "title": "Claude Code op-table prompt still spells out `gh pr create --fill` for push_pr",
+      "detail": "The `run` row's push_pr parenthetical reads \"...then `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`\", which no longer matches the op's rendered instructions (title/body-file from the run's own artifacts, no `--fill`). This is the live prompt text loaded for the `/takt` command (design spec §6), so it should reflect the new command.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 194,
+      "title": "§4.2's exhaustive bundle-file listing omits the new finish/pr.md artifact",
+      "detail": "The `### 4.2 Files` tree lists every file a bundle can contain, including `finish/verify.json`, `finish/goals.json` and `finish/retro-inputs.json` (lines 194-197), but the diff adds a new artifact written under the same directory — `finish/pr.md` (internal/finish/pr.go's `PRPath`/`WritePR`, populated by `preparePushPR`) — and the tree was not updated to list it.",
+      "id": "c2",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 860,
+      "title": "Design spec still documents push_pr as `gh pr create --fill`",
+      "detail": "§7.5 step 4 says: \"`pr`: `run push_pr` — the session runs `git push -u origin \u003cbranch\u003e` and `gh pr create --base \u003cbase\u003e --fill`, then `done --step push_pr --url \u003cpr-url\u003e`\". The diff replaces `--fill` with a generated `--title '\u003ctitle\u003e' --body-file \u003cpath\u003e` (internal/finish/pr.go, internal/brief/templates/run-push_pr.md, internal/decide/questions.go's `pr` option text) precisely to stop describing inputs that don't exist, but this master spec — the doc the rubric names as authoritative — was not updated and now self-contradicts the template it is supposed to describe.",
+      "id": "c3",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "hosts/copilot/skills/takt/SKILL.md",
+      "line": 32,
+      "title": "Copilot host prompt still spells out `gh pr create --fill` for push_pr",
+      "detail": "Same stale parenthetical as commands/takt.md line 31 (\"`gh pr create --base \u003cbase\u003e --fill`\"). Design spec §6.1 states this file is meant to carry \"the same op table as `commands/takt.md`\" — both copies are now stale together and neither documents the new `--title`/`--body-file` command this diff introduces.",
+      "id": "c4",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/brief/templates/run-push_pr.md",
+      "line": 4,
+      "title": "push_pr body-file path is quoted, contradicting the task's literal template and the option description it must match",
+      "detail": "Task 12(C) specifies the exact template line `gh pr create --base {{.Base}} --title '{{.PRTitleQuoted}}' --body-file {{.PRBodyPath}}` (body path unquoted). The diff instead renders `--body-file '{{.PRBodyPathQuoted}}'`, adding a new, unrequested `RunData.PRBodyPathQuoted()` method (internal/brief/brief.go, singleQuoted applied to the body path) not mentioned anywhere in the task. Worse, this creates a real inconsistency with the task's own literal Description text in internal/decide/questions.go (`gh pr create --base \u003cbase\u003e --title '\u003ctitle\u003e' --body-file \u003cpath\u003e` — body path deliberately left unquoted per task 12(D)), so the branch_finish option text the deciding session reads no longer matches the command the run-push_pr op actually renders. Task 12(B)'s brief_test.go table entry was likewise changed to a body path containing an apostrophe to exercise the added quoting, deviating from the task's literal `PRBodyPath: \"/b/finish/pr.md\"` fixture and expected unquoted rendering. This is scope beyond what task 12 asked for in (B)/(C)/(D), executed consistently but not as specified.",
+      "id": "c5",
+      "task": 12,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1037,
+      "title": "preparePushPR's own finish.ReadGoals error branch is never exercised by any test",
+      "detail": "The task requires that ANY error from `finish.ReadGoals(r.bdir)` inside preparePushPR (line 1037-1039) be returned. But `goalFacts` (internal/cli/finish_facts.go:186) already reads finish/goals.json unconditionally during fact-gathering, earlier in the same `next` call, and its failure is what actually surfaces (via factsHint) before decide ever produces the push_pr op. The test that appears to target this branch, TestPushPRBodyListsGoalVerdicts's third failure case (internal/cli/finish_test.go:668-680, corrupting finish/goals.json), explicitly acknowledges in its own comment that the failure comes from fact-gathering, not from this line ('It is the finish facts that decode the record on the way to this op, so they are what fails'). No test drives execution to a state where fact-gathering succeeds but this line's own ReadGoals call fails, so the defensive branch the task explicitly required has zero coverage.",
+      "id": "c6",
+      "task": 12,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1071,
+      "title": "prGoals double-names goals.md in its error, diverging from every other goals.Parse caller",
+      "detail": "prGoals wraps a goals.Parse failure with `fmt.Errorf(\"%s: %w\", p, err)` where p is the full path (internal/cli/cmd_next.go:1066-1073). But every error goals.Parse itself returns already begins with the literal prefix \"goals.md:\" (internal/goals/goals.go:80, 84, 98, 104, 114), so the wrap produces a doubled, confusing message like \"/…/docs/takt/demo/goals.md: goals.md: no goals under `## Goals`\". Every other caller of goals.Parse in this package — cmd_goals.go:38-41, cmd_done.go:163-166, cmd_record.go:210-213, and cmd_next.go's own assessorBrief at line 876-878 — passes the error through unwrapped via err.Error(), relying on goals.Parse's built-in file-naming. prGoals is the only caller that adds a second, redundant name for the same file, and it is inconsistent with the neighboring os.ReadFile error two lines above it in the same function, which is correctly left unwrapped (os.ReadFile errors already carry the path via Go's own PathError formatting, exactly like goals.Parse's messages already carry \"goals.md:\").",
+      "id": "c7",
+      "task": 12,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/decide/questions.go",
+      "line": 399,
+      "title": "The rewritten pr option Description (title/body-file wording) has no test coverage",
+      "detail": "The pr option's Description was rewritten from the old `--fill` wording to the new `gh pr create --base \u003cbase\u003e --title '\u003ctitle\u003e' --body-file \u003cpath\u003e` text naming the op's pr_title/pr_body_path inputs (questions.go:399-403) — this is exactly the user-facing text a session reads to know how to open the PR, and the task explicitly required '--fill' be gone from the file. No test in the diff asserts on this Description's content. internal/decide/finish_test.go's branch_finish table test (around line 104-114) only checks the action type and step, never option text, so a regression here (stale flag name, wrong input key, reintroduced --fill) would not be caught by any test.",
+      "id": "c8",
+      "task": 12,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/gate/gate_test.go",
+      "line": 162,
+      "title": "TestRevisionEventMalformedDataDoesNotPanic does not actually test a malformed hash field",
+      "detail": "The test's doc comment claims 'a non-string gate and a non-string hash must fail the match, not panic', but revised() (internal/gate/gate.go, the EvRevisionAccepted path) filters on the 'gate' field first and `continue`s the loop when it doesn't match a string ('gate': []any{\"spec\"} fails the type assertion), before ever calling eventString(e, \"hash\") for that event. So the malformed hash value in the fixture (Data: map[string]any{\"gate\": []any{\"spec\"}, \"hash\": map[string]any{}}) is never actually parsed. This differs from its twin, TestOverrideEventMalformedDataDoesNotPanic (gate_test.go:134), whose target code (gate.go:238-239, `Compute`) reads both `gate` and `hash` unconditionally on every iteration before the combined boolean check short-circuits — so that twin does exercise the malformed-hash type assertion, but this new test does not.",
+      "id": "c9",
+      "task": 13,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/gate/gate_test.go",
+      "line": 187,
+      "title": "TestNilSeveritiesIsNotBlocking is a fake test — it cannot fail",
+      "detail": "The test asserts that gate.Compute reports Blocking == false for a Receipt with Severities: nil. The production line under test, `st.Blocking = r.Severities[\"blocking\"] \u003e 0` (internal/gate/gate.go:249), is a plain map key read; in Go, reading a key from a nil map is always safe and returns the zero value, never panics, regardless of any refactor that keeps this shape. The test therefore passes for any correct or incorrect implementation that keeps the same map-lookup pattern, and could only fail if the code were rewritten to something unrelated (e.g. an explicit nil check that panics) — it adds no real regression protection despite the doc comment's 'pins that ... computes Blocking == false rather than panicking on a nil map read' framing.",
+      "id": "c10",
+      "task": 13,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "commands/takt.md:31 does still say `gh pr create --base \u003cbase\u003e --fill`, but this diff's task (T12) explicitly forbids editing that file — task-12.a2.md's 'Files you may change (and only these)' list has no commands/takt.md, and its Rules say 'Never write outside the listed files' / 'Creating or editing a file that is not listed is out of scope and will be reverted.' The plan itself states this staleness is deliberate and sequenced: plan.md lines 32-37 say 'Nothing the session reads names the push_pr inputs before they exist: the pr option's description changes in T12 ... and the skill rows and design §7.5 change in T9, one wave later,' and T9's own entry (plan.md:257-268) is the task that rewrites commands/takt.md's push_pr row. So the file not matching yet is by design, not a defect this diff introduced.",
+      "citations": [
+        "commands/takt.md:31",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:36",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/1/task-12.a2.md:20"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "false_positive",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md is not among task 12's 'Files you may change' (waves/1/task-12.a2.md:20-30), so this diff could not touch it without violating the task's own rules ('out of scope and will be reverted'). The plan sequences design-doc updates for push_pr into a later task (T9, plan.md:257-268, Wave 3) that has not run yet in this diff's wave. The omission at design doc line 194 is real but not something this task's diff was permitted or expected to fix.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:194",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/1/task-12.a2.md:20"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "false_positive",
+      "evidence": "Design §7.5's `--fill` sentence is explicitly assigned to task T9 ('Design §7.5's --fill sentence becomes the same command', plan.md:263), a separate, later-wave task ('Wave 3, after T12', plan.md:259) that has not executed in this diff. Task 12's own file allowlist (waves/1/task-12.a2.md:20-30) excludes this design doc, and the plan explicitly frames the mismatch as intentional sequencing, not an oversight (plan.md:35-37: 'the skill rows and design §7.5 change in T9, one wave later').",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:860",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:257"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "false_positive",
+      "evidence": "hosts/copilot/skills/takt/SKILL.md is likewise explicitly T9's file to rewrite ('commands/takt.md and hosts/copilot/skills/takt/SKILL.md get the push_pr row rewritten', plan.md:259-261), not task 12's — it is absent from task 12's 'Files you may change' allowlist (waves/1/task-12.a2.md:20-30), and touching it in this diff would have been reverted per the task's own rules. The staleness is deliberately deferred, matching commands/takt.md's identical situation (c1).",
+      "citations": [
+        "hosts/copilot/skills/takt/SKILL.md:32",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/plan.md:259"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "false_positive",
+      "evidence": "The candidate claims the PRBodyPathQuoted addition and the space+apostrophe test fixture are 'not mentioned anywhere in the task' and 'scope beyond what task 12 asked for.' But the same task file quotes an explicit review finding from the previous attempt that task 12 is instructed to address: 'major internal/brief/templates/run-push_pr.md:4 — PR body path is interpolated as an unquoted shell word ... Shell-quote this generated operand and add coverage using a bundle path containing spaces and an apostrophe or other metacharacter.' (waves/1/task-12.a2.md, review-findings block). This is precisely what PRBodyPathQuoted and the brief_test.go fixture with '/b/o'brien runs/finish/pr.md' implement, so the changes are requested, not unrequested scope creep.",
+      "citations": [
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/1/task-12.a2.md:396",
+        "internal/brief/templates/run-push_pr.md:4"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "cmd_next.go:1037 (`rec, err := finish.ReadGoals(r.bdir)` inside preparePushPR) can only run after decide.Decide routes to push_pr, which only happens after loop()'s gatherFacts succeeds; gatherFacts -\u003e gatherFinishFacts unconditionally calls goalFacts (finish_facts.go:83, 'if fin.Goals, err = goalFacts(ctx, ws, bdir, head); err != nil { return fin, err }'), and goalFacts itself calls finish.ReadGoals(bdir) first (finish_facts.go:186) and fails the whole `next` call before run()/preparePushPR is ever reached. The diff's own new test acknowledges this directly: finish_test.go:670-672 comments 'It is the finish facts that decode the record on the way to this op, so they are what fails' before asserting on factsHint's 'cannot be read' wording (finish_test.go:678) — which preparePushPR's own bare `return err` at line 1037-1039 does not produce. So preparePushPR's own ReadGoals error branch has no test that actually reaches it.",
+      "citations": [
+        "internal/cli/cmd_next.go:1037",
+        "internal/cli/finish_facts.go:83",
+        "internal/cli/finish_facts.go:186",
+        "internal/cli/finish_test.go:670"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "prGoals wraps goals.Parse's error with the full path: `g, err := goals.Parse(b); if err != nil { return nil, fmt.Errorf(\"%s: %w\", p, err) }` (cmd_next.go:1071-1073). But goals.Parse's own errors already begin with the literal string 'goals.md:' (internal/goals/goals.go:80,84,98,104,114, e.g. `errors.New(\"goals.md: no goals under ...\")`), so the wrap doubles the filename into something like '/…/goals.md: goals.md: no goals under...'. Every sibling caller in the package passes the error through unwrapped instead: cmd_goals.go:38-41, cmd_done.go:163-166, cmd_record.go:210-213, and cmd_next.go's own assessorBrief at 876-878 all just use err/err.Error() directly. The os.ReadFile error two lines above prGoals's Parse call (cmd_next.go:1067-1069) is also left unwrapped, unlike the Parse call right after it.",
+      "citations": [
+        "internal/cli/cmd_next.go:1071",
+        "internal/goals/goals.go:84",
+        "internal/cli/cmd_goals.go:38"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "The rewritten Description text lives at questions.go:399-403 ('gh pr create --base \u003cbase\u003e --title '\u003ctitle\u003e' --body-file \u003cpath\u003e` with the op's `pr_title` and `pr_body_path` inputs'). A repo-wide grep for any _test.go file that checks `.Description` finds only internal/decide/decide_test.go:831 and 881-882, both about the spec-review retry option, never the branch_finish/pr option. internal/decide/finish_test.go's TestBranchFinishOptions (line 193 onward) and its table-driven test around lines 104-114 assert only Action/Gate/Step/Agent/Choice/Disabled fields, never Description content, so a regression in this text (stale --fill wording, wrong input key) would not be caught.",
+      "citations": [
+        "internal/decide/questions.go:399",
+        "internal/decide/finish_test.go:193"
+      ]
+    },
+    {
+      "id": "c9",
+      "verdict": "confirmed",
+      "evidence": "revised() (gate.go:290-306) filters events by the 'gate' field first: `g, gok := eventString(e, \"gate\"); if !gok || g != gate { continue }` — for the malformed fixture `{\"gate\": []any{\"spec\"}, \"hash\": map[string]any{}}`, gok is false (a []any is not a string), so the loop continues immediately, before ever reaching `case EvRevisionAccepted: if h, hok := eventString(e, \"hash\"); hok` — the malformed hash value is never inspected for this event. This differs from Compute's override loop (gate.go:238-239) which reads both `gate` and `hash` unconditionally via eventString before the combined boolean check, so its twin test does exercise the hash assertion while this one (gate_test.go:162) does not, despite the doc comment claiming it covers 'a non-string hash.'",
+      "citations": [
+        "internal/gate/gate.go:293",
+        "internal/gate/gate.go:238",
+        "internal/gate/gate_test.go:162"
+      ]
+    },
+    {
+      "id": "c10",
+      "verdict": "confirmed",
+      "evidence": "The production line under test is a plain map index, `st.Blocking = r.Severities[\"blocking\"] \u003e 0` (gate.go:249), on `Severities map[string]int` (gate.go:81). Reading any key, including on a nil map, is safe in Go and returns the zero value (0), never panics — this is guaranteed language semantics, not an implementation choice this code makes. TestNilSeveritiesIsNotBlocking (gate_test.go:187) therefore passes for any implementation that keeps this same map-read shape and could only fail if the code were rewritten to something unrelated (e.g., an explicit nil-map panic check), so it pins no real regression in the current code path.",
+      "citations": [
+        "internal/gate/gate.go:249",
+        "internal/gate/gate.go:81",
+        "internal/gate/gate_test.go:187"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10"
+  ]
+}

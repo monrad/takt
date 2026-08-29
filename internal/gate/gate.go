@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -66,6 +67,12 @@ type Receipt struct {
 	Verdict  string   `json:"verdict"`
 	Reviewer Reviewer `json:"reviewer"`
 	Findings string   `json:"findings"`
+	// Reason is the backend's account of why a review could not be taken: it
+	// is set only on an error verdict, and is what the gate_review question
+	// shows instead of a summary nobody wrote. Absent on a reviewer's answer
+	// (an approve, rework or reject all carry findings instead) and on
+	// receipts written before this field existed, which read as "".
+	Reason string `json:"reason,omitempty"`
 	// Severities tallies the review's findings by severity. Counts only, not
 	// the findings themselves, so a gate decision never has to open a second
 	// file. Absent on receipts written before this field existed, which read
@@ -86,6 +93,10 @@ type Status struct {
 	// spec gate or re-arms it for a scoped confirming pass, and it decides
 	// which of the two revise option texts the user is shown.
 	Blocking bool
+	// Reason is the receipt's Reason when a receipt answers at the current
+	// hash, "" otherwise. It travels to the gate_review question so an error
+	// verdict can say what went wrong.
+	Reason string
 }
 
 // Artifacts lists the files a gate hashes, in order.
@@ -187,6 +198,23 @@ func WriteReceipt(bundleDir string, r Receipt) error {
 	return bundle.WriteJSONAtomic(receiptPath(bundleDir, r.Gate), r)
 }
 
+// RemoveReceipt deletes gates/<gate>.json, reporting an absent file as
+// success: there is nothing to retire and the caller wanted none.
+//
+// A forced review starts by retiring the receipt that already answers,
+// whatever hash it is at. Without that, a `takt review --force` pass that
+// fails before writing its own receipt would leave the prior one in place,
+// and the next unforced `takt review` would return that stale verdict as
+// cached instead of re-running the pass the user forced. Retiring it first
+// means a forced pass that fails before its own receipt leaves none rather
+// than the stale one.
+func RemoveReceipt(bundleDir, gate string) error {
+	if err := os.Remove(receiptPath(bundleDir, gate)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // eventString reads a string field out of an event's data map. Data is
 // map[string]any decoded from arbitrary JSON, so a malformed event can carry
 // a non-scalar value (an array or object) under a key we expect to be a
@@ -219,6 +247,7 @@ func Compute(bundleDir, gate string, events []bundle.Event) (Status, error) {
 	}
 	if r != nil && r.Hash == cur {
 		st.Blocking = r.Severities["blocking"] > 0
+		st.Reason = r.Reason
 		switch {
 		case r.Skipped != nil:
 			st.Satisfied, st.Verdict = true, "skipped"
