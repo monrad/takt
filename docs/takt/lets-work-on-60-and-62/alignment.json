@@ -1,0 +1,16 @@
+{
+  "anchor_hash": "sha256:99d3cfe9835db6090704c38ba0d3d05d31b0b3c769f20ebe1aedcdde4fc88484",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "work on #60",
+      "span": "work on #60"
+    },
+    {
+      "id": "A2",
+      "text": "work on #62",
+      "span": "and #62"
+    }
+  ],
+  "confirmed": true
+}
