@@ -1,0 +1,11 @@
+{
+  "anchor_hash": "sha256:fd7ea5829af9eb2f6c7dfa6c77e9da81854d7fbcdcbf4d17a0477e7a2a19db6c",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Work on issue #63",
+      "span": "lets work on #63"
+    }
+  ],
+  "confirmed": true
+}

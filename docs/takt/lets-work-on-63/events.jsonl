@@ -13,3 +13,6 @@
 {"ts":"2026-08-29T10:44:19.256005032Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-29T10:46:01.880801651Z","type":"gate_reviewed","data":{"findings":3,"gate":"plan","hash":"sha256:94daac40badd86d7b33ec667f74e03962f96a3b87d5a56e979477086a1263b67","provider":"copilot","verdict":"rework"}}
 {"ts":"2026-08-29T10:48:27.154883561Z","type":"gate_reviewed","data":{"findings":2,"gate":"plan","hash":"sha256:e2fa8deae73fea63e64cc6f8cc7b27f25e2de75c7c9ede5c4fc2f10f7fcf648a","provider":"copilot","verdict":"approve"}}
+{"ts":"2026-08-29T10:48:48.948745005Z","type":"alignment_clauses","data":{"count":1}}
+{"ts":"2026-08-29T10:48:52.149891914Z","type":"gate_opened","data":{"gate":"alignment_confirm"}}
+{"ts":"2026-08-29T10:57:58.643619754Z","type":"gate_answered","data":{"choice":"confirm","gate":"alignment_confirm"}}
