@@ -35,10 +35,19 @@ host parity) is the finish gate. No task commits — takt owns every commit.
 - Plain `+` and `*` on `time.Duration` (an int64 of nanoseconds) wrap near the maximum,
   which would make `Session(x) > x` and `Close`'s lower bounds false exactly where the
   invariant test asserts them. **Spec A2.1/A2.3 and G3 have been amended** to require
-  saturating arithmetic over a declared domain: sums and products cap at `MaxDuration`
-  instead of wrapping, negative inputs clamp to zero, and `Session(x) > x` is stated over
-  `[0, MaxDuration - SessionMargin)` with saturation at or above it. Task 2 carries the
-  helpers and `TestSaturatesInsteadOfWrapping`.
+  saturating arithmetic over a domain rule stated **once and applied to every function
+  alike**: sums and products cap at `MaxDuration` instead of wrapping, negative inputs
+  clamp to zero, the strict bounds (`Session(x) > x`, `GateReview(bt) > bt`) are claimed
+  only below saturation, and at or above it each function returns exactly `MaxDuration`
+  with only the non-strict form claimed. The uniformity is the point: granting `Session`
+  a boundary exemption and not `GateReview` is what made the invariant list unsatisfiable
+  in the first place (plan review rounds 4 and 5). Task 2 carries the helpers and
+  `TestSaturatesInsteadOfWrapping`, with one boundary row per function.
+- Neither the close budget nor the finish budget may **fail open**. An index that cannot
+  be read is propagated as an error, never mapped to a zero `Budget` or zero command
+  count: a floored 10m deadline wrapped around a close that then runs real work is
+  precisely the containment break A2.2 exists to remove. Tasks 3 and 4 each carry an
+  error-path test.
 - Spec A2.3 and G3 originally said the functions are "monotonically non-decreasing in
   every input". For `Budget.MaxParallel` that is unsatisfiable by construction: it is a
   divisor, so more parallelism can only shrink the review term. Rather than let the plan

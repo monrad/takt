@@ -94,20 +94,29 @@ func Session(inner time.Duration) time.Duration          // what the session hon
   computes the session deadline for `exec takt review` as
   `Session(GateReview(backendTimeout))`, and it cannot see an unexported constant in
   `internal/cli`. One owner for the arithmetic means one owner for its terms.
-- **Saturating arithmetic over a declared domain.** `time.Duration` is an int64 of
+- **Saturating arithmetic over one declared domain.** `time.Duration` is an int64 of
   nanoseconds, so `x + SessionMargin` and `VerifyTimeout × VerifyCommands` can overflow
-  and wrap negative — which would make `Session(x) > x` and the `Close` work bounds
-  false for inputs near the maximum. Every function therefore computes with saturating
-  add and multiply: a sum or product that would exceed `MaxDuration`
-  (`time.Duration(math.MaxInt64)`, ~292 years) yields `MaxDuration` instead of wrapping,
-  and negative inputs (a `verify_timeout` of `-1h`, a count below zero) are clamped to
-  zero before anything else. The contract the invariants are stated over is then:
-  **`Session(x) > x` for every `x` in `[0, MaxDuration - SessionMargin)`, and
-  `Session(x) == MaxDuration` at or above it** — the one point where strict containment
-  is unrepresentable rather than merely unmet, and where a deadline that large is
-  indistinguishable from no deadline anyway. The same shape applies to `Close` and
-  `Verify`: their lower bounds hold across the representable domain and saturate at
-  `MaxDuration` beyond it.
+  and wrap negative. Every function here therefore computes with saturating add and
+  multiply — a sum or product that would exceed `MaxDuration`
+  (`time.Duration(math.MaxInt64)`, ~292 years) yields `MaxDuration` rather than wrapping
+  — and clamps every negative duration or count to zero first.
+
+  The domain rule is stated **once and applies to every function alike**, rather than
+  per-function: for each of `Session`, `GateReview`, `Verify` and `Close`, let *w* be the
+  work term it adds to its input (`SessionMargin`, `Grace`, its margin, `Overhead`).
+
+  - **Below saturation** — whenever the result is representable, the strict bound holds:
+    `Session(x) > x`, `GateReview(bt) > bt`, `Verify(per, n) >= per*n`,
+    and `Close`'s lower bounds as listed below.
+  - **At or above saturation** — when an input exceeds `MaxDuration - w`, the function
+    returns exactly `MaxDuration`. Strict containment is then *unrepresentable*, not
+    merely unmet, and a deadline of 292 years is indistinguishable from no deadline. The
+    non-strict form (`>=`) still holds everywhere.
+
+  Every invariant in A2.3 is read under this rule; none of them is a claim about the
+  saturating endpoint, and each function's boundary behaviour is its own test row. This
+  is deliberately uniform: an exemption granted to one function and not the others is
+  what makes an invariant list quietly unsatisfiable.
 
 - **No ceiling.** Every inner unit is already individually bounded — each verify command
   by `verify_timeout`, each backend call by `backends.<name>.timeout` — so `Close` is a
@@ -143,11 +152,10 @@ Deleting the constants makes the containment relation a property of one pure fun
 so it is a table test in `internal/deadline` rather than three unexported constants in
 three packages that no single test can observe:
 
-- `Session(x) > x` for every `x` in `[0, MaxDuration - SessionMargin)`;
-  `Session(x) == MaxDuration` at or above that bound (saturation, never a wrap).
+- `Session(x) > x` (below saturation, per the domain rule in A2.1).
 - `Close(b) >= b.VerifyTimeout*b.VerifyCommands` and, when `b.ReviewTasks >= 1`,
   `Close(b) >= 2*b.BackendTimeout`.
-- `GateReview(bt) > bt`; `Verify(per, n) >= per*n`.
+- `GateReview(bt) > bt` (below saturation); `Verify(per, n) >= per*n`.
 - `Close`, `Verify` and `GateReview` are monotonically non-decreasing in every input
   that adds work — `VerifyTimeout`, `VerifyCommands`, `BackendTimeout`, `ReviewTasks`,
   and `GateReview`'s argument. `MaxParallel` is the one exception and goes the
@@ -156,9 +164,10 @@ three packages that no single test can observe:
   exemption would be unsatisfiable for the stated formula.
 - `Close(b) >= Floor` for every `b`, including the zero value and every negative
   field (clamped to zero first).
-- Boundary cases are their own rows: a `Budget` whose terms saturate returns
-  `MaxDuration` rather than a negative or wrapped duration, and every lower bound
-  above still holds there.
+- Boundary cases are their own rows, one per function: `Session(MaxDuration)`,
+  `GateReview(MaxDuration)`, `Verify` with a saturating product and a `Budget` whose
+  terms saturate each return exactly `MaxDuration` — never a negative or wrapped
+  duration — and every non-strict bound above still holds there.
 
 ### A3. Name the key and the deadline on the `review_error` gate
 
