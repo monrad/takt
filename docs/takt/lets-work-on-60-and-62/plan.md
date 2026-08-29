@@ -129,7 +129,10 @@ from `st.Config` — unit-tested in a new package-internal
 term). `cmd_verify.go:111` becomes `deadline.Verify(per, len(cmds))` and the local
 `verifyMargin` goes; `cmd_review.go:176` becomes
 `deadline.GateReview(time.Duration(be.Timeout))` and the local
-`reviewGrace` goes (its doc comment's cross-reference moves with it). Task 4's
+`reviewGrace` goes (its doc comment's cross-reference moves with it, and
+`internal/backend/live_test.go:30`'s `smokeGrace` comment — which says it mirrors
+`cli.reviewGrace` — is retargeted to `deadline.Grace` in the same task, since deleting the
+constant would otherwise leave that comment naming something gone). Task 4's
 integration test then compares this very helper against the gathered facts, which is why
 both descriptions pin "pending tasks of the active wave".
 
@@ -167,14 +170,20 @@ fails a test instead of only weakening a deadline. No doctor change (see correct
 `gatherFacts` from `ws.Cfg.Backends.Reviewer` in preference order through
 `Backends.Timeout(name)` — entries with no config key (`fake`, unknown names) are skipped,
 no health probe, no shelling out. `decideActiveWave`'s `review_error` ask (decide.go:451)
-adds a pre-rendered, JSON-round-trip-stable `"backends"` context entry;
+adds a pre-rendered, JSON-round-trip-stable `"backends"` context entry, built as `[]any`
+so the constructed shape already matches what decoding produces;
 `questionReviewError` (questions.go:321) renders them into the retry option's description
 only: each backend's `backends.<name>.timeout` key with its current deadline, and that
 raising it in `.takt.json` is the fix when the cause was a timeout; when the list is empty
 it falls back to the literal `backends.<name>.timeout` with no deadline. Question text,
 option set and answer commands unchanged. Tests in `internal/decide` cover rendering for
 the three shapes G5 names (a keyed set, a set that had a keyless entry skipped, an empty
-set). And — the seam the plan review flagged — a new package-internal
+set), plus one that round-trips only the `Context` map through JSON and calls `Question`
+again, asserting identical option text. That is the honest form of the check: `Question`
+runs exactly once per gate — `nextRun.ask` persists the rendered op and re-emits the stored
+payload verbatim, and `cmd_answer.go` only unmarshals it — so there is no rerender path
+that re-invokes `questionReviewError`, and no both-shapes normaliser to write. And — the
+seam the plan review flagged — a new package-internal
 `internal/cli/reviewer_facts_test.go` runs the real `gatherFacts` over a workspace whose
 chain is mixed (`[claude, fake, nonesuch, copilot]` with two distinct configured
 timeouts), asserts `Facts.ReviewerBackends` is exactly the two keyed entries in preference
@@ -192,6 +201,12 @@ reports `committed=false` when nothing is staged, so identical bytes make no com
 genuinely changed body makes a correct second `pr body` commit. The test extends
 `finish_test.go`'s existing push_pr drivers: drive to the op, assert `finish/pr.md` is in
 HEAD and the subject is `takt(demo): pr body`, replay `next` and assert HEAD unchanged.
+`brief_stable_test.go` is in scope too: it calls `preparePushPR` directly
+(`TestPreparePushPRWritesTheBodyAndNamesIt`, line 165), so the signature change reaches it.
+Its `prFixture` builds `ws: &workspace{}` — `Dir.InRepo` false — so the new `commitBundle`
+call is the documented external-bundle no-op and the existing assertions stand; the task
+adds one assertion saying so, which is also the fixture's documentation of why a bundle
+outside a repository never commits.
 Class bounded: the exact call, message, plumbing route and test are fully specified by the
 spec; no design decisions remain.
 

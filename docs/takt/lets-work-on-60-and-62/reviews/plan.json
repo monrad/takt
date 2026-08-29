@@ -1,31 +1,38 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition largely covers the spec, but Task 6 cannot be implemented cleanly within its declared scope: changing preparePushPR to receive context and commit the bundle affects existing direct callers and fixtures in brief_stable_test.go. The plan also contains two smaller test/documentation inaccuracies.",
+  "summary": "The decomposition covers the substantive spec, but three execution-critical gaps must be corrected: task 3 can regress replay behavior, task 6 has an incomplete caller inventory, and task 2 does not verify overflow-safe round calculation.",
   "findings": [
     {
       "severity": "major",
       "file": "",
       "line": 0,
-      "title": "Task 6 omits required preparePushPR test changes from its file scope",
-      "detail": "Task 6 requires run to pass ctx into preparePushPR and requires preparePushPR to call commitBundle. Existing direct callers in internal/cli/brief_stable_test.go invoke the old signature, and its prFixture constructs a workspace without a repository, so merely changing the signature is not the only problem: those tests and their fixture must be adapted for the new commit side effect. That file is absent from Task 6's files list. A variadic or conditional-context compatibility workaround would contradict the specified unconditional preparePushPR behavior. Add internal/cli/brief_stable_test.go to Task 6 and specify the fixture/assertion updates."
+      "title": "Task 3 makes an already-landed close depend on a readable plan index",
+      "detail": "The plan moves readIndex into cmdCloseWave before calling closeWave, but closeWave currently checks landedClose before reading the index so a successful close can be replayed as a no-op. Eagerly reading the index would make that replay fail if plan.index.json were later missing or malformed, silently changing the established replay contract outside A2. Preserve the landed-close fast path before requiring the index, and add a test that a landed close still replays after the index becomes unreadable."
+    },
+    {
+      "severity": "major",
+      "file": "",
+      "line": 0,
+      "title": "Task 6 misses a preparePushPR caller and does not run its affected tests",
+      "detail": "Task 6 claims there is no caller beyond TestPreparePushPRWritesTheBodyAndNamesIt, but brief_stable_test.go also calls preparePushPR from assertPreparePushPRRefuses. Changing the signature requires updating that call too. Its verify filter, -run TestPushPR, excludes the TestPreparePushPR... tests, including the promised external-bundle no-op assertion and refusal paths. Enumerate both call sites and run a pattern covering TestPushPR and TestPreparePushPR."
+    },
+    {
+      "severity": "major",
+      "file": "",
+      "line": 0,
+      "title": "Task 2 leaves integer overflow in ceil calculation unproved",
+      "detail": "Task 2 requires every arithmetic step to avoid wrapping, but only specifies duration add/multiply helpers. The common ceil expression (ReviewTasks + MaxParallel - 1) / MaxParallel overflows int for large positive counts, potentially producing a negative review term and violating Close's lower bounds and monotonicity while all described saturation rows still pass. Require quotient/remainder-based overflow-safe ceil calculation and add a boundary row using a near-MaxInt ReviewTasks value."
     },
     {
       "severity": "minor",
       "file": "",
       "line": 0,
-      "title": "Task 5's round-trip test does not prove the claimed decoded-context normalization",
-      "detail": "Task 5 says a persisted gate is re-rendered through questionReviewError and therefore the normalizer must accept JSON-decoded []any. In the current architecture, rerender unmarshals and returns the already-rendered op; it does not call Question or questionReviewError. Marshaling and rerendering the complete gate payload therefore proves byte stability of persisted option text, but not that questionReviewError handles a decoded context. Either remove the unnecessary decoded-shape requirement or explicitly round-trip only Context and call Question again in the test."
-    },
-    {
-      "severity": "minor",
-      "file": "",
-      "line": 0,
-      "title": "Task 3 deliberately leaves a stale reviewGrace reference",
-      "detail": "Task 3 deletes cli.reviewGrace and moves the value to deadline.Grace, yet explicitly says to leave internal/backend/live_test.go's comment referring to cli.reviewGrace. That comment becomes factually false. Include the test file in Task 3's scope and update the reference to deadline.Grace; no behavioral test change is needed."
+      "title": "Task 1's tolerance does not prove the mirrored defaults are equal",
+      "detail": "G1 requires the backend fallback and shipped defaults not to drift, while the proposed remaining-time assertion allows roughly 30 seconds of divergence and the grep only proves that some 15*time.Minute expression exists in run.go. Bound the observed remaining duration using timestamps taken immediately around Review with only a small scheduling allowance, or otherwise expose an exact comparison seam, so a distinct fallback cannot pass."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:b7aae81d7f93ee158760018d757da73991e0dc90c6362a35e5ab29e457f79872",
-  "round": 7
+  "hash": "sha256:bad554cdc0c489f4e038bf2f062a24e0802c6c8649824a1067850e6f06021876",
+  "round": 8
 }
