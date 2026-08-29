@@ -14,3 +14,4 @@
 {"ts":"2026-08-29T10:53:53.888922705Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-29T10:57:51.575318863Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-29T10:58:50.373215237Z","type":"goals_amended","data":{"count":9,"new":"sha256:622ef6752c6d7a1ff4c1afe67eeda863b1e4142e7a724a5798cde892dc319da7","old":"sha256:161e3d6b5421013b18fc0225d1b60609bbea703a16aab2960716b7fbd5335b80"}}
+{"ts":"2026-08-29T11:00:47.04227372Z","type":"gate_reviewed","data":{"findings":3,"gate":"plan","hash":"sha256:8bb4a2f1fb812df0bf2ac2305fcf9a5108ce139e4b6d4ac23c45b13674e19baf","provider":"copilot","verdict":"rework"}}
