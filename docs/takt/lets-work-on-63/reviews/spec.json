@@ -1,52 +1,17 @@
 {
   "verdict": "rework",
-  "summary": "The direction is viable, but planning is blocked by contradictions in the renderer API, finish-phase ordering, and concurrency model. In particular, the normal retro cannot contain the disposition, and the proposed renderer cannot obtain task titles.",
+  "summary": "Five findings are addressed, but the reasonless gate-answer rule remains internally contradictory.",
   "findings": [
     {
       "severity": "blocking",
       "file": "spec.md",
-      "line": 88,
-      "title": "The initial retro cannot include the disposition",
-      "detail": "`decideFinish` emits the retro before asking `branch_finish`, so `state.Disposition` is necessarily nil when the normal skeleton is built. The spec nevertheless requires the disposition to be always rendered, G6 requires it as one of five sources, and line 221 explicitly places changing that ordering out of scope. Decide whether the retro moves after disposition, is regenerated after disposition, or deliberately omits it on the initial pass."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 77,
-      "title": "The renderer has no access to task titles",
-      "detail": "`ShippedRow` carries only `Tasks []int`, while `RenderSkeleton` receives only `RetroInputs` and `SkeletonExtras`; neither contains `plan.Index` or an ID-to-title mapping. Therefore it cannot satisfy the requirement, repeated in goals.md G2, to render task IDs and titles from `plan.Index`. Carry titles in each row or pass an explicit immutable lookup into the renderer."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 167,
-      "title": "Atomic per-file writes do not make the unlocked rewrite concurrency-safe",
-      "detail": "The command rewrites two tracked files sequentially without a lock. In the archived phase, concurrent `takt next` calls `recommitArchive`, which stages and commits any dirty bundle content, so it can commit after one file is replaced but before the other is written. Purity and per-file atomic renames do not provide a consistent multi-file snapshot. The design needs coordination with archived `next`, a transactional publication strategy, or an explicit prohibition on concurrent mutation."
-    },
-    {
-      "severity": "blocking",
-      "file": "spec.md",
-      "line": 87,
-      "title": "Reasonless gate answers have contradictory rendering rules",
-      "detail": "The decision-source list includes only `gate_answered` events with a non-empty reason, and goals.md G6 says the same. Line 114 instead says a legacy event is rendered as a choice with no reason. These produce different output for legacy and ordinary reasonless events; specify whether they are omitted or rendered, then align the goals and tests."
-    },
-    {
-      "severity": "major",
-      "file": "spec.md",
-      "line": 68,
-      "title": "Assumptions have two conflicting ownership paths",
-      "detail": "`SkeletonExtras` separately contains `Assumptions`, but `BuildDecisions(events, state, assumptions)` already filters those assumptions and emits `spec_assumption` decisions. It is unclear whether `RenderSkeleton` consumes `ex.Assumptions`, consumes only `ex.Decisions`, or risks rendering assumptions twice. Remove the redundant field or define a single ownership path."
-    },
-    {
-      "severity": "minor",
-      "file": "spec.md",
-      "line": 189,
-      "title": "Documentation target names the wrong section",
-      "detail": "The design document's CLI command table is in §5.1, not §6. Section 6 describes the command prompt. goals.md G11 repeats the same incorrect target, so both should identify where the new `takt retro` command is actually documented."
+      "line": 117,
+      "title": "Reasonless gate answers still have contradictory rendering rules",
+      "detail": "Section 4 and G6 say reasonless and legacy gate answers contribute nothing, but §5.1 still says a legacy event reads as an empty reason and is \"rendered as a choice with no reason.\" The stale sentence must be aligned with the single omission rule."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:b9ea2b803aec9df7a932e8ef6d3d7c3130dd23e080173059cc1ba9bbbf00c016",
-  "round": 1
+  "hash": "sha256:63998a4ca20df158fecf436cb42734d6268926f0514f198ce681fb3c56ed99ba",
+  "round": 2
 }
