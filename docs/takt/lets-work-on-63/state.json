@@ -120,14 +120,23 @@
     {
       "id": 5,
       "wave": 2,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/retro.go",
         "internal/cli/cmd_next.go",
         "internal/cli/finish_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 5,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Extracted the retro step into internal/cli/retro.go — one helper derives and atomically writes retro-inputs.json plus the new retro-skeleton.md, and one `retroRunOp` fills the op (now carrying `skeleton_path`) for both `next` and, later, `takt retro`.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T13:07:41.136949667Z"
+      }
     },
     {
       "id": 6,
@@ -187,13 +196,13 @@
     }
   ],
   "active_wave": {
-    "n": 1,
+    "n": 2,
     "slice": 1,
-    "attempt": 2,
-    "started_at": "2026-08-29T12:33:40.580809849Z",
+    "attempt": 1,
+    "started_at": "2026-08-29T12:59:46.633187422Z",
     "session_id": "dcc38050-c2a1-44c6-a9d7-69b497b8c1e6",
     "tasks": [
-      3
+      5
     ],
     "baseline": []
   },

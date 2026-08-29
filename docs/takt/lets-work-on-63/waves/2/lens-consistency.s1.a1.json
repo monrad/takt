@@ -1,0 +1,26 @@
+{
+  "lens": "consistency",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:13:53.982286738Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/retro.go",
+      "line": 30,
+      "title": "RunData's common fields are constructed twice for the retro step",
+      "detail": "nextRun.run builds a brief.RunData with Slug/Topic/SpecPath/GoalsPath/Branch/Base (internal/cli/cmd_next.go:982-986) before the switch, then for op.StepRetro discards it entirely and calls retroRunOp, which rebuilds the identical six fields from bdir/st (internal/cli/retro.go:30-36) plus the three retro-only paths. The duplication is presumably required so retroRunOp can be shared with the future cmdRetro caller, but it means the same field derivation (e.g. filepath.Join(bdir, \"spec.md\")) now lives in two places for one op; if either construction changes independently the two would drift for the retro step specifically. Not a behaviour bug today, but a real duplicated-construction risk worth a comment or a shared field-building helper.",
+      "task": 5
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/finish_test.go",
+      "line": 480,
+      "title": "inputs_path vs skeleton_path assertions use different shapes for the same kind of value",
+      "detail": "TestRetroRunInputsAndDone checks inputs_path with `!filepath.IsAbs(p) || !fileExists(p)` (line 469) but checks skeleton_path with an exact literal equality `sk != filepath.Join(bdir, \"finish\", \"retro-skeleton.md\")` plus fileExists (line 480). Both are absolute paths to a written artifact named in the same op; the second is a stronger check (which is fine) but the two adjacent assertions read as if they're testing different things when they're testing the same shape of value.",
+      "task": 5
+    }
+  ]
+}

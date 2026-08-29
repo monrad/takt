@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -472,7 +473,15 @@ func TestRetroRunInputsAndDone(t *testing.T) {
 	if !strings.Contains(string(b), `"tasks": 2`) || !strings.Contains(string(b), `"verify"`) {
 		t.Fatalf("retro inputs: %s", b)
 	}
+	// The skeleton is derived and written beside the inputs by the same
+	// call, so the op names it too and the instructions send the session to
+	// it (spec §4, §6).
+	sk, _ := in["skeleton_path"].(string)
+	if sk != filepath.Join(bdir, "finish", "retro-skeleton.md") || !fileExists(sk) {
+		t.Fatalf("skeleton_path must name the written skeleton: %q", sk)
+	}
 	if !strings.Contains(o["instructions"].(string), "retro.md") ||
+		!strings.Contains(o["instructions"].(string), sk) ||
 		!strings.Contains(o["done"].(string), "--step retro") {
 		t.Fatalf("%v", o)
 	}
@@ -494,10 +503,61 @@ func TestRetroRunInputsAndDone(t *testing.T) {
 	if after := testutil.Git(t, d.root, "rev-parse", "HEAD"); after != before {
 		t.Fatal("a no-op done must not commit")
 	}
-	_ = bdir
 	if o = d.nextOp(); o["op"] != "ask" || o["gate"] != "branch_finish" {
 		t.Fatalf("retro done → branch_finish: %v", o)
 	}
+}
+
+// TestRetroArtifactsReplayByteIdentical pins G3 on the `next` side: the
+// skeleton is written by the same code path as the inputs it renders, and
+// every part of that path is a function of what is on disk, so a replayed
+// `next` writes both files again byte for byte and hands back the same op.
+// That is what makes re-emitting the retro op free (spec §4, design §5.4).
+func TestRetroArtifactsReplayByteIdentical(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	first := d.nextOp()
+	if first["op"] != "run" || first["step"] != "retro" {
+		t.Fatalf("%v", first)
+	}
+	inputs, skeleton := retroArtifacts(t, bdir)
+	// The skeleton is the document the template tells the session to copy:
+	// it is titled for the run, it carries the rendered sections, and it
+	// says the disposition is not yet chosen — which on a first pass it
+	// never is, since row 22 emits this op and row 23 asks branch_finish.
+	for _, want := range []string{"# Retro — demo", "## What shipped", "disposition: not yet chosen"} {
+		if !strings.Contains(skeleton, want) {
+			t.Fatalf("the skeleton is missing %q:\n%s", want, skeleton)
+		}
+	}
+	second := d.nextOp()
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("a replayed next changed the op:\n%v\n%v", first, second)
+	}
+	againInputs, againSkeleton := retroArtifacts(t, bdir)
+	if againInputs != inputs {
+		t.Fatalf("retro-inputs.json changed on replay:\n%s\n%s", inputs, againInputs)
+	}
+	if againSkeleton != skeleton {
+		t.Fatalf("retro-skeleton.md changed on replay:\n%s\n%s", skeleton, againSkeleton)
+	}
+}
+
+// retroArtifacts reads the pair the retro op derives: the inputs and the
+// skeleton rendered from them.
+func retroArtifacts(t *testing.T, bdir string) (string, string) {
+	t.Helper()
+	in, err := os.ReadFile(filepath.Join(bdir, "finish", "retro-inputs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk, err := os.ReadFile(filepath.Join(bdir, "finish", "retro-skeleton.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(in), string(sk)
 }
 
 // fileExists reports whether an op's path names something that is there.

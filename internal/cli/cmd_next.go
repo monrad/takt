@@ -983,21 +983,20 @@ func (r *nextRun) run(o op.Op) int {
 		Slug: r.slug, Topic: r.st.Topic,
 		SpecPath: filepath.Join(r.bdir, "spec.md"), GoalsPath: filepath.Join(r.bdir, "goals.md"),
 		Branch: r.st.Branch, Base: r.st.Base,
-		RetroPath: filepath.Join(r.bdir, "retro.md"), InputsPath: finish.RetroInputsPath(r.bdir),
 	}
 	inputs := map[string]any{
 		keySlug: r.slug, "topic": r.st.Topic, "spec_path": data.SpecPath, "goals_path": data.GoalsPath,
 	}
 	switch o.Step {
 	case op.StepRetro:
-		// The inputs are re-derived on every call that emits this op: they
-		// are a pure function of what is on disk, so a repeated `next`
-		// writes the same bytes and hands back the same op (spec §5.4).
-		if err := r.writeRetroInputs(); err != nil {
-			return fail(r.env.Stderr, exitError, err.Error(), "")
+		// The retro op is filled whole by the helper `takt retro` shares
+		// with this branch, artifacts and all, so the two commands derive
+		// and emit exactly the same thing (spec §7).
+		filled, ferr := retroRunOp(o, r.bdir, r.st)
+		if ferr != nil {
+			return fail(r.env.Stderr, exitError, ferr.Error(), "")
 		}
-		inputs["inputs_path"] = data.InputsPath
-		inputs["retro_path"] = data.RetroPath
+		return r.emit(filled)
 	case op.StepPushPR:
 		// The body is re-derived on every call that emits this op, exactly
 		// as the retro inputs are: a replayed `next` writes the same bytes
@@ -1079,77 +1078,6 @@ func (r *nextRun) prGoals() ([]goals.Goal, error) {
 		return nil, err
 	}
 	return g.Items, nil
-}
-
-// writeRetroInputs re-derives finish/retro-inputs.json from the run's own
-// records, so the retro op always names a file that describes the run as it
-// stands (spec §7.5 step 3).
-func (r *nextRun) writeRetroInputs() error {
-	idx, err := readIndex(r.bdir)
-	if err != nil {
-		return err
-	}
-	events, err := bundle.ReadEvents(r.bdir)
-	if err != nil {
-		return err
-	}
-	closes, err := readCloses(r.bdir, r.st.Tasks)
-	if err != nil {
-		return err
-	}
-	v, err := finish.ReadVerify(r.bdir)
-	if err != nil {
-		return err
-	}
-	g, err := finish.ReadGoals(r.bdir)
-	if err != nil {
-		return err
-	}
-	fu, err := gate.ReadFollowUps(r.bdir)
-	if err != nil {
-		return err
-	}
-	var internals []wave.InternalRecord
-	for _, n := range waveNumbers(r.st.Tasks) {
-		recs, ierr := wave.AllInternalRecords(r.bdir, n)
-		if ierr != nil {
-			return ierr
-		}
-		internals = append(internals, recs...)
-	}
-	return finish.WriteRetroInputs(r.bdir,
-		finish.BuildRetroInputs(r.st, idx, events, closes, v, g, fu.Items, internals))
-}
-
-// waveNumbers is every wave number the run has tasks in, ascending and
-// deduplicated — the wave list readCloses and writeRetroInputs's internal
-// review gathering both walk.
-func waveNumbers(tasks []bundle.Task) []int {
-	var waves []int
-	for _, t := range tasks {
-		if !slices.Contains(waves, t.Wave) {
-			waves = append(waves, t.Wave)
-		}
-	}
-	slices.Sort(waves)
-	return waves
-}
-
-// readCloses collects every slice record of every wave the run has tasks in,
-// in wave then slice order; a wave that never wrote one is skipped rather
-// than reported, because a run can reach finish with a wave whose tasks were
-// all waived. A sliced wave contributes one record per slice, and the retro
-// wants all of them: each slice graded different tasks.
-func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
-	out := make([]wave.CloseResult, 0, len(tasks))
-	for _, n := range waveNumbers(tasks) {
-		all, err := wave.AllCloses(bdir, n)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, all...)
-	}
-	return out, nil
 }
 
 // plannerSchema is quoted into the planner brief (spec §7.3). spec_hash is

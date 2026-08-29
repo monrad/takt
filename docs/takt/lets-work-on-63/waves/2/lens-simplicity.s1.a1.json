@@ -1,0 +1,18 @@
+{
+  "lens": "simplicity",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:11:36.439993104Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 982,
+      "title": "Dead RunData/inputs construction on the retro path",
+      "detail": "run() unconditionally builds `data := brief.RunData{...}` and `inputs := map[string]any{...}` (lines 982-989) before the switch. Before this diff those were used by the StepRetro case too (it fell through to the shared brief.Render call at the bottom using this same `data`). After the diff, the StepRetro case (lines 991-999) calls retroRunOp(o, r.bdir, r.st), which builds its own separate, nearly-identical brief.RunData (internal/cli/retro.go:30-36, same Slug/Topic/SpecPath/GoalsPath/Branch/Base fields derived from st/bdir) and returns early via r.emit(filled) — so the outer `data` and `inputs` built at the top of run() are now allocated and then discarded, unused, whenever o.Step == op.StepRetro. This is a small duplication the extraction introduced: the same RunData fields are now computed independently in two places rather than the retro path reusing the one already built by its caller, which is exactly the kind of double-derivation the task's 'derived once, never twice' framing was meant to avoid (even though it only guarantees that for writeRetroArtifacts, not for this RunData literal). No functional bug — just wasted computation and a second place that must be kept in sync if SpecPath/GoalsPath derivation ever changes.",
+      "task": 5
+    }
+  ]
+}
