@@ -133,7 +133,10 @@ It is a bundle file and is committed by whichever command next commits the bundl
 through and record it `omitempty`. This gives *Decisions* one uniform source for every gate
 the user answered with a reason, instead of stitching gate receipts, `task_waived`,
 `goal_waived` and `disposition` back together. An event written before this field existed
-reads as `""` — the status quo, rendered as a choice with no reason.
+carries no reason and so contributes no decision at all, which is §4's single omission rule
+applied to legacy events rather than an exception to it: the run that wrote them recorded no
+reason anywhere, and inventing a reasonless decision line would say less than saying
+nothing.
 
 ### 5.2 `internal/spec` — the assumptions table
 
