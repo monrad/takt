@@ -1,0 +1,92 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T01:26:57.835294564Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 855,
+      "title": "Design doc §7.5 change has zero automated test coverage",
+      "detail": "No test in the repository loads or asserts against docs/superpowers/specs/2026-08-24-takt-design.md (confirmed by search — only internal/prompt/prompt_test.go covers commands/takt.md and hosts/copilot/skills/takt/SKILL.md). Task 9 item (3) requires this file's `gh pr create --base \u003cbase\u003e --fill` to become the title/body-file form, but that edit is verified only by manual/reviewer inspection, not by any test — so a stale re-edit of this file later would go undetected.",
+      "id": "c1",
+      "task": 9,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 91,
+      "title": "No regression test asserts `--fill` is gone",
+      "detail": "Task 9 requires 'no `--fill` remains in either' (commands/takt.md, hosts/copilot/skills/takt/SKILL.md) and 'no `--fill` remains in the file' (docs/superpowers/specs/2026-08-24-takt-design.md). The new crossHostInvariants entries (lines 91-94) only assert the new text is present via `mustContain`; nothing asserts `--fill` is absent from the op-table `run` bullet in either prompt file or from design doc §7.5. A future edit (e.g. a bad merge that restores `gh pr create --base \u003cbase\u003e --fill` alongside the new text) would pass every existing test. Compare internal/brief/brief_test.go:180 and internal/cli/finish_test.go:583,634-635, which do assert `--fill` absence for the Go-generated op instructions — the prose files got no equivalent negative check.",
+      "id": "c2",
+      "task": 9,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 94,
+      "title": "Invariant-bullet placement (\"immediately after\") is unverified",
+      "detail": "Task 9 item (2) specifies the new bundle-inspection bullet must be inserted 'immediately after' the `state.json`/`events.jsonl` bullet in both files' Invariants sections. `mustContain` (line 161) only checks substring presence anywhere in the section text, so the ordering requirement isn't pinned by TestPromptInvariantsReadTheSameOnEveryHost — a later reorder that leaves the bullet elsewhere in the section would still pass.",
+      "id": "c3",
+      "task": 9,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "No _test.go file in the repo references the design doc path at all (grep for '2026-08-24-takt-design' across glob *_test.go returns zero files), and the only automated repo-wide check that touches non-generated docs is `task hosts:check`, which only runs `hostgen --check` (regenerated agent files), not this design doc (Taskfile.yml:39-42). The only verification of the §7.5 edit is the task's own one-off `grep -c -e '--fill' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0` line in the task brief (docs/takt/sweep-the-open-issue-backlog-fix-the/waves/2/task-9.a1.md:28), which is not part of `go test ./...`, `golangci-lint run ./...`, or `task hosts:check` and so does not run again on a later edit.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:860",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/2/task-9.a1.md:28",
+        "Taskfile.yml:39"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "crossHostInvariants (internal/prompt/prompt_test.go:84-95) adds the two new sentences at lines 91-92 and 93-94, checked only via `mustContain(t, claude, inv, ...)` / `mustContain(t, copilot, inv, ...)` (prompt_test.go:112-115), and `mustContain` (prompt_test.go:161-166) is a bare `strings.Contains` positive check — nothing calls `strings.Contains(..., \"--fill\")` anywhere under internal/prompt (confirmed by grep: no matches). By contrast, the Go-generated instruction paths do get a negative check: internal/brief/brief_test.go:180 (`if strings.Contains(pushPR, \"--fill\") { t.Fatalf(...) }`) and internal/cli/finish_test.go:583 (`... || strings.Contains(instr, \"--fill\")`) and :634-635 (`if strings.Contains(desc, \"--fill\") { t.Fatalf(...) }`). No equivalent exists for commands/takt.md, hosts/copilot/skills/takt/SKILL.md, or the design doc's prose sentence, so a bad merge reintroducing `--fill` alongside the new text in those three files would pass every existing test.",
+      "citations": [
+        "internal/prompt/prompt_test.go:91",
+        "internal/prompt/prompt_test.go:161",
+        "internal/brief/brief_test.go:180",
+        "internal/cli/finish_test.go:583",
+        "internal/cli/finish_test.go:634"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "Task 9 item (2) required the new bundle bullet to be inserted 'immediately after' the state.json/events.jsonl bullet in both files' Invariants sections (docs/takt/sweep-the-open-issue-backlog-fix-the/waves/2/task-9.a1.md:10). The only test touching that text, crossHostInvariants' entry \"Inspect bundle files by absolute path — never `cd` into the bundle\" (internal/prompt/prompt_test.go:94), is checked with `mustContain`, which is `strings.Contains(text, needle)` (prompt_test.go:161-166) — a substring-anywhere check with no positional assertion. Nothing in TestPromptInvariantsReadTheSameOnEveryHost or TestPromptHandshakeVerbsAndInvariants inspects bullet order within the Invariants section, so a later reorder placing the bullet elsewhere in that section would still pass.",
+      "citations": [
+        "internal/prompt/prompt_test.go:94",
+        "internal/prompt/prompt_test.go:161",
+        "docs/takt/sweep-the-open-issue-backlog-fix-the/waves/2/task-9.a1.md:10"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3"
+  ]
+}

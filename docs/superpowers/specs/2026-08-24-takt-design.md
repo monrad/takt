@@ -858,9 +858,11 @@ slice, which keeps every commit verified.
    reads) and refuses to record an unavailable choice; once accepted, it records `{choice, at, reason,
    pr_url, applied}` and does no git work of its own. Step 5 still re-checks before doing, since the
    primary worktree can go stale again in the gap between `answer` and `archive`. `pr`: `run push_pr` —
-   the session runs `git push -u origin <branch>` and `gh pr create --base <base> --fill`, then
-   `done --step push_pr --url <pr-url>` (§5.1's no-op rule applies: the same URL again is a no-op, a
-   different one replaces it). `keep`: nothing further.
+   the session runs `git push -u origin <branch>` and `gh pr create --base <base> --title '<title>'
+   --body-file <path>`, the title and body file taken from the op's `inputs.pr_title` and
+   `inputs.pr_body_path` (the latter naming `finish/pr.md`), then `done --step push_pr --url <pr-url>`
+   (§5.1's no-op rule applies: the same URL again is a no-op, a different one replaces it). `keep`:
+   nothing further.
 5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
    before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
    happens here too, before the commit, so the copy predates the branch about to lose it); lock released;

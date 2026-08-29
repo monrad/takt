@@ -88,6 +88,10 @@ var crossHostInvariants = []string{
 	"An `answer` that prints `\"kept\": true` leaves the gate open — end the turn (the user chose to stop or abort).",
 	// the `git add -A` prohibition (Invariants)
 	"never run `git add -A`",
+	// the push_pr command (op table, `run` bullet, #36)
+	"gh pr create --base <base> --title '<title>' --body-file <path>",
+	// the never-cd-into-the-bundle invariant (Invariants, #37)
+	"Inspect bundle files by absolute path — never `cd` into the bundle",
 }
 
 // TestPromptInvariantsReadTheSameOnEveryHost pins #15's third gap:

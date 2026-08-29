@@ -221,7 +221,7 @@
     {
       "id": 9,
       "wave": 2,
-      "status": "pending",
+      "status": "done",
       "files": [
         "commands/takt.md",
         "hosts/copilot/skills/takt/SKILL.md",
@@ -229,7 +229,16 @@
         "internal/prompt/prompt_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 9,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Updated the push_pr command wording (title/body-file instead of --fill) and added the never-cd-into-the-bundle invariant in commands/takt.md, SKILL.md, the design doc §7.5, and pinned both shared sentences in prompt_test.go's crossHostInvariants.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T01:20:52.89104227Z"
+      }
     },
     {
       "id": 10,
@@ -353,13 +362,13 @@
     }
   ],
   "active_wave": {
-    "n": 1,
+    "n": 2,
     "slice": 1,
-    "attempt": 4,
-    "started_at": "2026-08-29T00:56:22.393710075Z",
+    "attempt": 1,
+    "started_at": "2026-08-29T01:15:47.772310998Z",
     "session_id": "f76d7b85-fefb-4ba6-b865-54f9ca2266c6",
     "tasks": [
-      13
+      9
     ],
     "baseline": []
   },

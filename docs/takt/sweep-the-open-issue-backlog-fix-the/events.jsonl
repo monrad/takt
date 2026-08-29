@@ -140,3 +140,15 @@
 {"ts":"2026-08-29T01:11:15.072443592Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"tests","slice":1,"wave":1}}
 {"ts":"2026-08-29T01:11:56.153485184Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"consistency","slice":1,"wave":1}}
 {"ts":"2026-08-29T01:14:07.972594769Z","type":"lens_recorded","data":{"attempt":4,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":1}}
+{"ts":"2026-08-29T01:15:37.575398267Z","type":"wave_committed","data":{"attempt":4,"sha":"6096bc7dd9b222eb9f6e5d400d1dee0fe346753b","slice":1,"tasks":[13],"wave":1}}
+{"ts":"2026-08-29T01:15:37.57543097Z","type":"wave_closed","data":{"attempt":4,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"rework":[],"sha":"6096bc7dd9b222eb9f6e5d400d1dee0fe346753b","wave":1}}
+{"ts":"2026-08-29T01:15:47.794863537Z","type":"wave_cleared","data":{"wave":1}}
+{"ts":"2026-08-29T01:15:47.805721571Z","type":"wave_dispatched","data":{"attempt":1,"slice":1,"tasks":[9],"wave":2}}
+{"ts":"2026-08-29T01:20:52.892196539Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":9}}
+{"ts":"2026-08-29T01:24:20.652944481Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":2}}
+{"ts":"2026-08-29T01:24:37.745772834Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":2}}
+{"ts":"2026-08-29T01:24:37.750578406Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"docs","slice":1,"wave":2}}
+{"ts":"2026-08-29T01:24:37.754684757Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":2}}
+{"ts":"2026-08-29T01:24:37.758727993Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"consistency","slice":1,"wave":2}}
+{"ts":"2026-08-29T01:24:37.762608051Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":3,"mode":"tests","slice":1,"wave":2}}
+{"ts":"2026-08-29T01:26:57.835860579Z","type":"internal_review_recorded","data":{"attempt":1,"candidates":3,"confirmed":3,"slice":1,"wave":2}}
