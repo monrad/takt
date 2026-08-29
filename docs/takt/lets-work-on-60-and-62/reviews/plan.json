@@ -1,0 +1,38 @@
+{
+  "verdict": "rework",
+  "summary": "The decomposition is broadly sound and covers the requested behavior, but several load-bearing facts and git branches are only tested in isolation. The specified verification could pass while deadline containment, backend filtering, or archived-PR cleanup is wired incorrectly.",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 4 does not verify CLI-to-decide deadline facts",
+      "detail": "Task 3 tests closeBudget and Task 4 tests internal/decide using manually populated Facts, but no planned test exercises gatherFacts, gatherWaveFacts, or gatherFinishFacts and compares their values with the binary-side budget. VerifyCommands, ReviewTasks, or finish command counts could remain zero or use the wrong task set while every listed verify command passes, so A2.2/G4's same-work containment is not proved."
+    },
+    {
+      "severity": "major",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 5 does not test reviewer-chain fact gathering",
+      "detail": "TestReviewErrorNamesTheBackendTimeouts constructs ReviewerBackends directly, while Task 1 tests the accessor separately. Nothing verifies that gatherFacts iterates ws.Cfg.Backends.Reviewer in preference order, preserves configured durations, and skips fake and unknown names. A broken or empty integration would still satisfy all listed checks. Add a package-cli test that gathers facts from a mixed configured chain and asserts the resulting slice and rendered gate."
+    },
+    {
+      "severity": "major",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 7 misses two explicitly required git branches",
+      "detail": "The planned flow covers a missing tracking ref, equality, and a strictly-ahead branch; the cancelled-context test fails CommitExists before IsAncestor runs. It does not exercise a diverged history or an IsAncestor error. Because the verify commands do not even require an IsAncestor call, an ahead-only implementation or an implementation that propagates the second read error could pass despite contradicting B2. Add explicit divergent-history and second-read-failure cases."
+    },
+    {
+      "severity": "minor",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 1 does not explicitly pin unknown-backend lookup behavior",
+      "detail": "The listed accessor cases cover fake and several known-backend chains but do not explicitly call Timeout with an unknown name, even though A3 requires both fake and unknown names to report no real config key. This should be a direct table row rather than inferred from the fake case."
+    }
+  ],
+  "provider": "copilot",
+  "model": "gpt-5.6-sol",
+  "hash": "sha256:66cd0581f1bd04046e152585c967e71437cb3d88a23a5841f6f1402f218d562b",
+  "round": 1
+}
