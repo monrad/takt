@@ -17,3 +17,4 @@
 {"ts":"2026-08-29T11:00:47.04227372Z","type":"gate_reviewed","data":{"findings":3,"gate":"plan","hash":"sha256:8bb4a2f1fb812df0bf2ac2305fcf9a5108ce139e4b6d4ac23c45b13674e19baf","provider":"copilot","verdict":"rework"}}
 {"ts":"2026-08-29T11:01:20.134969004Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-29T11:01:48.750118622Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
+{"ts":"2026-08-29T11:03:16.513011231Z","type":"goals_amended","data":{"count":9,"new":"sha256:7eec997801209d72403a9f692db17ed4548795ecaaf2b20f2aad60a1fcef9bcb","old":"sha256:622ef6752c6d7a1ff4c1afe67eeda863b1e4142e7a724a5798cde892dc319da7"}}

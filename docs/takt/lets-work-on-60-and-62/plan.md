@@ -19,18 +19,26 @@ branch.
 Everything is test-first; `task check` (build + `go test ./... -race -count=1` + lint +
 host parity) is the finish gate. No task commits — takt owns every commit.
 
-## Corrections found while surveying (spec vs. tree)
+## Corrections found while surveying (all now ratified in the spec)
 
-- The spec says `cmd_doctor.go:54` "builds `Facts` too". It does not: it builds
+- The spec said `cmd_doctor.go:54` "builds `Facts` too". It does not: it builds
   `doctor.Options` (a different type in `internal/doctor` that never feeds `decide.Decide`).
   No doctor change is needed; task 4 confines the new fields to `decide.Facts` and
-  `internal/cli/facts.go`.
-- The spec keeps `reviewGrace` as a constant in `cmd_review.go` passed to
+  `internal/cli/facts.go`. **Spec A2.2 has been amended** to record that the citation was
+  an error, so plan and spec agree.
+- The spec originally kept `reviewGrace` as a constant in `cmd_review.go` passed to
   `deadline.GateReview`. The decide side needs the same grace to compute a session deadline
-  that provably contains the binary's cap, so the constant moves into `internal/deadline`
-  as exported `Grace` (30s, value unchanged) and `cmd_review.go` passes `deadline.Grace`.
-  This serves the spec's own stated goal — the containment relation as a property of one
-  package — better than a mirrored constant would.
+  that provably contains the binary's cap, and cannot see an unexported constant in
+  `internal/cli`, so the constant moves into `internal/deadline` as exported `Grace` (30s,
+  value unchanged) and `GateReview` takes one argument. **Spec A2.1/A2.2 have been
+  amended** accordingly: the containment relation, and every term in it, has one owner.
+- Plain `+` and `*` on `time.Duration` (an int64 of nanoseconds) wrap near the maximum,
+  which would make `Session(x) > x` and `Close`'s lower bounds false exactly where the
+  invariant test asserts them. **Spec A2.1/A2.3 and G3 have been amended** to require
+  saturating arithmetic over a declared domain: sums and products cap at `MaxDuration`
+  instead of wrapping, negative inputs clamp to zero, and `Session(x) > x` is stated over
+  `[0, MaxDuration - SessionMargin)` with saturation at or above it. Task 2 carries the
+  helpers and `TestSaturatesInsteadOfWrapping`.
 - Spec A2.3 and G3 originally said the functions are "monotonically non-decreasing in
   every input". For `Budget.MaxParallel` that is unsatisfiable by construction: it is a
   divisor, so more parallelism can only shrink the review term. Rather than let the plan
@@ -107,7 +115,7 @@ from `st.Config` — unit-tested in a new package-internal
 `internal/cli/close_budget_test.go` (an 8×2 wave exceeds 30m; review off zeroes the
 term). `cmd_verify.go:111` becomes `deadline.Verify(per, len(cmds))` and the local
 `verifyMargin` goes; `cmd_review.go:176` becomes
-`deadline.GateReview(time.Duration(be.Timeout), deadline.Grace)` and the local
+`deadline.GateReview(time.Duration(be.Timeout))` and the local
 `reviewGrace` goes (its doc comment's cross-reference moves with it). Task 4's
 integration test then compares this very helper against the gathered facts, which is why
 both descriptions pin "pending tasks of the active wave".
@@ -116,7 +124,7 @@ both descriptions pin "pending tasks of the active wave".
 
 Deletes `reviewTimeoutS`/`closeTimeoutS` (`decide.go:264-267`) and `verifyTimeoutS`
 (`finish.go:38`). Each `exec` op emits `int(deadline.Session(cap).Seconds())` where cap is
-the matching binary cap: `GateReview(f.BackendTimeout, deadline.Grace)` for
+the matching binary cap: `GateReview(f.BackendTimeout)` for
 `takt review spec|plan`, `Close(budget)` for `takt close-wave` (budget from
 `f.VerifyTimeout`, `f.Wave.VerifyCommands`, `f.BackendTimeout`, `f.Wave.ReviewTasks`,
 `st.Config.MaxParallel`), `Verify(f.VerifyTimeout, f.Finish.VerifyCommands)` for

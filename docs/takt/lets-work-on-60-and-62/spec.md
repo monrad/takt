@@ -76,7 +76,7 @@ type Budget struct {
 
 func Close(b Budget) time.Duration                       // the binary's cap for close-wave
 func Verify(per time.Duration, cmds int) time.Duration   // the binary's cap for takt verify
-func GateReview(backend, grace time.Duration) time.Duration // the binary's cap for takt review
+func GateReview(backend time.Duration) time.Duration     // the binary's cap for takt review
 func Session(inner time.Duration) time.Duration          // what the session honours for any of them
 ```
 
@@ -89,7 +89,26 @@ func Session(inner time.Duration) time.Duration          // what the session hon
   binary always reports its own timeout as a result rather than being cut off.
 - Constants: `Overhead` 2m (scope, git, result serialization, process start),
   `SessionMargin` 5m, `Floor` 10m (a one-task wave still gets slack),
-  `Bootstrap` 2m (see A2.2).
+  `Bootstrap` 2m (see A2.2), and `Grace` 30s — the value `internal/cli`'s `reviewGrace`
+  holds today, moved here and that constant deleted. It has to move: `internal/decide`
+  computes the session deadline for `exec takt review` as
+  `Session(GateReview(backendTimeout))`, and it cannot see an unexported constant in
+  `internal/cli`. One owner for the arithmetic means one owner for its terms.
+- **Saturating arithmetic over a declared domain.** `time.Duration` is an int64 of
+  nanoseconds, so `x + SessionMargin` and `VerifyTimeout × VerifyCommands` can overflow
+  and wrap negative — which would make `Session(x) > x` and the `Close` work bounds
+  false for inputs near the maximum. Every function therefore computes with saturating
+  add and multiply: a sum or product that would exceed `MaxDuration`
+  (`time.Duration(math.MaxInt64)`, ~292 years) yields `MaxDuration` instead of wrapping,
+  and negative inputs (a `verify_timeout` of `-1h`, a count below zero) are clamped to
+  zero before anything else. The contract the invariants are stated over is then:
+  **`Session(x) > x` for every `x` in `[0, MaxDuration - SessionMargin)`, and
+  `Session(x) == MaxDuration` at or above it** — the one point where strict containment
+  is unrepresentable rather than merely unmet, and where a deadline that large is
+  indistinguishable from no deadline anyway. The same shape applies to `Close` and
+  `Verify`: their lower bounds hold across the representable domain and saturate at
+  `MaxDuration` beyond it.
+
 - **No ceiling.** Every inner unit is already individually bounded — each verify command
   by `verify_timeout`, each backend call by `backends.<name>.timeout` — so `Close` is a
   sum of bounded parts plus overhead, tight by construction. Its job is a backstop
@@ -102,7 +121,7 @@ func Session(inner time.Duration) time.Duration          // what the session hon
 | --- | --- | --- |
 | `internal/cli/cmd_close_wave.go:50` | `context.WithTimeout(…, closeWaveTimeout)` before `openTarget` | `openTarget` under `deadline.Bootstrap`; then `closeWave` under `deadline.Close(budget)`, built once state and the plan index are known |
 | `internal/cli/cmd_verify.go:111` | `per*len(cmds) + verifyMargin` inline | `deadline.Verify(per, len(cmds))` — same arithmetic, one owner |
-| `internal/cli/cmd_review.go:176` | `be.Timeout + reviewGrace` inline | `deadline.GateReview(be.Timeout, reviewGrace)` — same arithmetic, one owner |
+| `internal/cli/cmd_review.go:176` | `be.Timeout + reviewGrace` inline | `deadline.GateReview(be.Timeout)`; `reviewGrace` is deleted and its value becomes `deadline.Grace` |
 | `internal/decide/decide.go:265-266`, `internal/decide/finish.go:38` | `reviewTimeoutS`, `closeTimeoutS`, `verifyTimeoutS` constants | deleted; each `exec` op emits `deadline.Session(<the matching cap>).Seconds()` |
 
 `internal/decide` gets the inputs through `Facts`, the established pattern for
@@ -115,7 +134,8 @@ config-derived durations (`LockTTL`, `WaveStaleAfter`, `internal/decide/decide.g
   (`internal/cli/facts.go:98`).
 - `MaxParallel` is already on `st.Config`.
 
-`cmd_doctor.go:54` builds `Facts` too and gets the same two config fields.
+`cmd_doctor.go:54` needs nothing: it builds `doctor.Options`, not `decide.Facts`, and
+`doctor` never calls `Decide` — an earlier draft of this spec cited it in error.
 
 #### A2.3 The invariants, testable in one place
 
@@ -123,17 +143,22 @@ Deleting the constants makes the containment relation a property of one pure fun
 so it is a table test in `internal/deadline` rather than three unexported constants in
 three packages that no single test can observe:
 
-- `Session(x) > x` for every `x`.
+- `Session(x) > x` for every `x` in `[0, MaxDuration - SessionMargin)`;
+  `Session(x) == MaxDuration` at or above that bound (saturation, never a wrap).
 - `Close(b) >= b.VerifyTimeout*b.VerifyCommands` and, when `b.ReviewTasks >= 1`,
   `Close(b) >= 2*b.BackendTimeout`.
-- `GateReview(bt, g) > bt`; `Verify(per, n) >= per*n`.
+- `GateReview(bt) > bt`; `Verify(per, n) >= per*n`.
 - `Close`, `Verify` and `GateReview` are monotonically non-decreasing in every input
   that adds work — `VerifyTimeout`, `VerifyCommands`, `BackendTimeout`, `ReviewTasks`,
-  and `GateReview`'s two arguments. `MaxParallel` is the one exception and goes the
+  and `GateReview`'s argument. `MaxParallel` is the one exception and goes the
   other way: it is a divisor (reviews fan out across it), so `Close` is monotonically
   non-*increasing* in it. Requiring non-decreasing in every input without this
   exemption would be unsatisfiable for the stated formula.
-- `Close(b) >= Floor` for every `b`, including the zero value.
+- `Close(b) >= Floor` for every `b`, including the zero value and every negative
+  field (clamped to zero first).
+- Boundary cases are their own rows: a `Budget` whose terms saturate returns
+  `MaxDuration` rather than a negative or wrapped duration, and every lower bound
+  above still holds there.
 
 ### A3. Name the key and the deadline on the `review_error` gate
 
