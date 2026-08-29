@@ -1,31 +1,24 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition is broadly sound, but execution should not start: Task 2 contains an impossible boundary invariant, Task 1's proposed test does not prove that the unset fallback is actually enforced, and Tasks 3/4 introduce fail-open zero budgets that can break the required containment.",
+  "summary": "The decomposition covers the specification comprehensively, but Task 1 contains conflicting implementation contracts and Task 4's verification omits a required fail-closed test. Resolve these before execution.",
   "findings": [
     {
-      "severity": "blocking",
-      "file": "",
+      "severity": "major",
+      "file": "plan.md",
       "line": 0,
-      "title": "Task 2 requires an impossible GateReview invariant",
-      "detail": "Task 2 requires every addition to saturate at MaxDuration while also asserting GateReview(bt) \u003e bt without the boundary exception given to Session. For bt == MaxDuration, GateReview must return MaxDuration and therefore cannot be greater than bt. The task and spec must define the saturation-domain exception for GateReview, and its boundary behavior must be tested explicitly."
+      "title": "Task 1 contradicts itself about what the fake reviewer records",
+      "detail": "Task 1 initially requires TAKT_FAKE_REVIEW_TIMEOUT_FILE to receive d.String(), while its round-5 correction requires the remaining duration obtained from the applied context's Deadline(). These values and evidentiary strength differ. plan.md also retains stale language saying the seam records the resolved value. Replace all superseded language so Task 1 consistently requires recording time remaining on the actual work context, with the unset-timeout tolerance assertion and explicit-timeout cancellation check."
     },
     {
-      "severity": "major",
-      "file": "",
+      "severity": "minor",
+      "file": "plan.md",
       "line": 0,
-      "title": "Task 1's fake-reviewer test does not prove the fallback deadline is honored",
-      "detail": "The test records resolveTimeout(req.Timeout) for an unset request, but exercises cancellation only with a short explicit Timeout. An implementation could record the resolved 15m value while applying a context deadline only for explicit timeouts, and every listed assertion would pass. The seam must observe the deadline on the context actually passed through the fake's work, or otherwise directly test that the resolved fallback is used to construct that context."
-    },
-    {
-      "severity": "major",
-      "file": "",
-      "line": 0,
-      "title": "Tasks 3 and 4 fail open to undersized budgets on read errors",
-      "detail": "Task 3 says an initial readIndex failure should use a zero Budget and rely on closeWave rereading and surfacing the error; Task 4 similarly maps a finish index-read error to zero commands. This contradicts A2.2's requirement that the outer timeout use the matching binary cap. If a later read succeeds or observes changed bytes, real work can run under Floor or Verify(per, 0). Parse once and thread the value where possible, or propagate the first error instead of emitting/running work, with error-path tests."
+      "title": "Task 4's verify filter does not execute its index-error test",
+      "detail": "Task 4 requires TestGatherFinishFactsPropagatesAnIndexReadError, but its CLI command uses `-run TestGathered`, which does not match that test name. The later whole-repository gate would eventually run it, but Task 4's own verification does not prove its fail-closed containment requirement. Expand the filter to include `TestGatherFinishFactsPropagatesAnIndexReadError` or rename the test consistently."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:d50ef435b831adc306fe7af0a6e5c721e05c9b00efffd7084203f22ac26b5176",
-  "round": 5
+  "hash": "sha256:b702108b62e4b1f027352bd50b04737d07ed6d8a0d98b69c25f7fcb0ed5ac648",
+  "round": 6
 }
