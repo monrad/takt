@@ -1,38 +1,31 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition covers the substantive spec, but three execution-critical gaps must be corrected: task 3 can regress replay behavior, task 6 has an incomplete caller inventory, and task 2 does not verify overflow-safe round calculation.",
+  "summary": "The decomposition covers the specification comprehensively, but the primary G1 verification does not prove that the real backend execution path uses the mirrored fallback. The plan should strengthen that test before execution; the remaining issues are minor consistency gaps.",
   "findings": [
     {
       "severity": "major",
       "file": "",
       "line": 0,
-      "title": "Task 3 makes an already-landed close depend on a readable plan index",
-      "detail": "The plan moves readIndex into cmdCloseWave before calling closeWave, but closeWave currently checks landedClose before reading the index so a successful close can be replayed as a no-op. Eagerly reading the index would make that replay fail if plan.index.json were later missing or malformed, silently changing the established replay contract outside A2. Preserve the landed-close fast path before requiring the index, and add a test that a landed close still replays after the index becomes unreadable."
-    },
-    {
-      "severity": "major",
-      "file": "",
-      "line": 0,
-      "title": "Task 6 misses a preparePushPR caller and does not run its affected tests",
-      "detail": "Task 6 claims there is no caller beyond TestPreparePushPRWritesTheBodyAndNamesIt, but brief_stable_test.go also calls preparePushPR from assertPreparePushPRRefuses. Changing the signature requires updating that call too. Its verify filter, -run TestPushPR, excludes the TestPreparePushPR... tests, including the promised external-bundle no-op assertion and refusal paths. Enumerate both call sites and run a pattern covering TestPushPR and TestPreparePushPR."
-    },
-    {
-      "severity": "major",
-      "file": "",
-      "line": 0,
-      "title": "Task 2 leaves integer overflow in ceil calculation unproved",
-      "detail": "Task 2 requires every arithmetic step to avoid wrapping, but only specifies duration add/multiply helpers. The common ceil expression (ReviewTasks + MaxParallel - 1) / MaxParallel overflows int for large positive counts, potentially producing a negative review term and violating Close's lower bounds and monotonicity while all described saturation rows still pass. Require quotient/remainder-based overflow-safe ceil calculation and add a boundary row using a near-MaxInt ReviewTasks value."
+      "title": "Task 1 tests the fake seam, not the real runCLI fallback",
+      "detail": "Task 1’s cross-package test drives fakeReviewer.Review, which newly calls resolveTimeout itself. It can pass even if runCLI—the production path named by A1—does not call resolveTimeout or applies a different unset-timeout fallback. The grep checks only that resolveTimeout exists. Add verification that exercises or otherwise directly pins runCLI’s use of the shared resolver; otherwise G1’s no-drift evidence is indirect and defeatable."
     },
     {
       "severity": "minor",
       "file": "",
       "line": 0,
-      "title": "Task 1's tolerance does not prove the mirrored defaults are equal",
-      "detail": "G1 requires the backend fallback and shipped defaults not to drift, while the proposed remaining-time assertion allows roughly 30 seconds of divergence and the grep only proves that some 15*time.Minute expression exists in run.go. Bound the observed remaining duration using timestamps taken immediately around Review with only a small scheduling allowance, or otherwise expose an exact comparison seam, so a distinct fallback cannot pass."
+      "title": "Task 1 disagrees about the explicit-timeout cancellation row",
+      "detail": "The plan.md Task 1 section requires a second row with a short explicit Timeout and longer fake sleep, but plan.index.json Task 1 specifies only the unset-timeout fallback test and its verify selector does not clearly require the cancellation row. Either include the row explicitly in the executable task or remove it from plan.md."
+    },
+    {
+      "severity": "minor",
+      "file": "",
+      "line": 0,
+      "title": "Boundary tests weaken a representable strict-containment case",
+      "detail": "Task 2 classifies MaxDuration-SessionMargin and MaxDuration-Grace as saturation points where only non-strict bounds are asserted. At exactly those inputs, adding the margin produces representable MaxDuration and is still strictly greater than the input. Assert the strict relation at equality, reserving the non-strict-only rule for inputs above the threshold."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:bad554cdc0c489f4e038bf2f062a24e0802c6c8649824a1067850e6f06021876",
-  "round": 8
+  "hash": "sha256:5c941c4bbbe263ffbb9676334b063a29e5ff4954c55d45049bae7e9f67c226ad",
+  "round": 9
 }

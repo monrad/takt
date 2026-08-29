@@ -43,6 +43,17 @@ host parity) is the finish gate. No task commits — takt owns every commit.
   a boundary exemption and not `GateReview` is what made the invariant list unsatisfiable
   in the first place (plan review rounds 4 and 5). Task 2 carries the helpers and
   `TestSaturatesInsteadOfWrapping`, with one boundary row per function.
+- The landed-close fast path must not gain a dependency on the plan index. `closeWave`
+  asks `landedClose` (`cmd_close_wave.go:78-81`) and returns *before* `readIndex`
+  (line 82), so a close whose commit already landed replays as a no-op even if
+  `plan.index.json` has since gone missing. Task 3 therefore reads the index only on the
+  path that still has work to do, and pins the fast path with a test that replays a landed
+  close after deleting the index.
+- The round count in `Close` is computed as `n/d` plus a remainder bump, never
+  `(n + d - 1) / d`: that numerator overflows `int` for a large `ReviewTasks` and yields a
+  *negative* round count, breaking `Close`'s lower bounds and monotonicity while every
+  duration-saturation row still passes. The saturating helpers guard durations; this is an
+  int, and it gets its own `math.MaxInt` boundary row.
 - Neither the close budget nor the finish budget may **fail open**. An index that cannot
   be read is propagated as an error, never mapped to a zero `Budget` or zero command
   count: a floored 10m deadline wrapped around a close that then runs real work is
@@ -201,8 +212,11 @@ reports `committed=false` when nothing is staged, so identical bytes make no com
 genuinely changed body makes a correct second `pr body` commit. The test extends
 `finish_test.go`'s existing push_pr drivers: drive to the op, assert `finish/pr.md` is in
 HEAD and the subject is `takt(demo): pr body`, replay `next` and assert HEAD unchanged.
-`brief_stable_test.go` is in scope too: it calls `preparePushPR` directly
-(`TestPreparePushPRWritesTheBodyAndNamesIt`, line 165), so the signature change reaches it.
+`brief_stable_test.go` is in scope too: it calls `preparePushPR` directly from *two* places
+(line 165 in `TestPreparePushPRWritesTheBodyAndNamesIt` and line 191 in
+`assertPreparePushPRRefuses`), so the signature change reaches both, and the task's own
+filter is widened to `TestPushPR|TestPreparePushPR` — `-run TestPushPR` alone does not
+match the `TestPreparePushPR…` names.
 Its `prFixture` builds `ws: &workspace{}` — `Dir.InRepo` false — so the new `commitBundle`
 call is the documented external-bundle no-op and the existing assertions stand; the task
 adds one assertion saying so, which is also the fixture's documentation of why a bundle
