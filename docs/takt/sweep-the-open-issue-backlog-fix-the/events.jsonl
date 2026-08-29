@@ -163,3 +163,4 @@
 {"ts":"2026-08-29T01:43:39.00375728Z","type":"disposition","data":{"choice":"pr","reason":""}}
 {"ts":"2026-08-29T01:43:39.005265702Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
 {"ts":"2026-08-29T01:45:00.042043409Z","type":"pr_pushed","data":{"url":"https://github.com/monrad/takt/pull/56"}}
+{"ts":"2026-08-29T01:45:00.092576592Z","type":"archived","data":{"choice":"pr"}}
