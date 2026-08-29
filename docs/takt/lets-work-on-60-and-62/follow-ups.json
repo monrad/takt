@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "gate": "plan",
+      "severity": "major",
+      "title": "Task 1 tests the fake seam, not the real runCLI fallback",
+      "detail": "Task 1’s cross-package test drives fakeReviewer.Review, which newly calls resolveTimeout itself. It can pass even if runCLI—the production path named by A1—does not call resolveTimeout or applies a different unset-timeout fallback. The grep checks only that resolveTimeout exists. Add verification that exercises or otherwise directly pins runCLI’s use of the shared resolver; otherwise G1’s no-drift evidence is indirect and defeatable.",
+      "source": "override",
+      "ts": "2026-08-29T11:27:53.51200711Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "minor",
+      "title": "Task 1 disagrees about the explicit-timeout cancellation row",
+      "detail": "The plan.md Task 1 section requires a second row with a short explicit Timeout and longer fake sleep, but plan.index.json Task 1 specifies only the unset-timeout fallback test and its verify selector does not clearly require the cancellation row. Either include the row explicitly in the executable task or remove it from plan.md.",
+      "source": "override",
+      "ts": "2026-08-29T11:27:53.512008015Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "minor",
+      "title": "Boundary tests weaken a representable strict-containment case",
+      "detail": "Task 2 classifies MaxDuration-SessionMargin and MaxDuration-Grace as saturation points where only non-strict bounds are asserted. At exactly those inputs, adding the margin produces representable MaxDuration and is still strictly greater than the input. Assert the strict relation at equality, reserving the non-strict-only rule for inputs above the threshold.",
+      "source": "override",
+      "ts": "2026-08-29T11:27:53.51200805Z"
+    }
+  ]
+}
