@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "clearGate` now takes `choice, reason string`, records `reason` only when non-empty (map-key omitempty), and `cmd_answer.go` passes `*reason`; added `TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty` covering a reasoned answer, a reasonless answer, and a hand-appended legacy event, all asserting via `bundle.ReadEvents`.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:06:05.774979238Z"
+}

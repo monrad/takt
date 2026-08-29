@@ -44,19 +44,37 @@
         "internal/spec/assumptions_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 1,
+        "attempt": 2,
+        "status": "done",
+        "summary": "New `internal/spec` package parses spec.md's assumptions table by header name with tolerant table discovery, plus a test file whose positive and malformed cases are mutation-proved non-vacuous; tests, lint and all greps pass.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:37:27.515881821Z"
+      }
     },
     {
       "id": 2,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/cli/bundleops.go",
         "internal/cli/cmd_answer.go",
         "internal/cli/cmd_answer_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "clearGate` now takes `choice, reason string`, records `reason` only when non-empty (map-key omitempty), and `cmd_answer.go` passes `*reason`; added `TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty` covering a reasoned answer, a reasonless answer, and a hand-appended legacy event, all asserting via `bundle.ReadEvents`.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T11:06:05.774979238Z"
+      }
     },
     {
       "id": 3,
@@ -72,14 +90,23 @@
     {
       "id": 4,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/brief/templates/run-retro.md",
         "internal/brief/brief.go",
         "internal/brief/brief_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 4,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Rewrote run-retro.md around the skeleton (seven named sections, numbers-only \"grounded in the inputs\", no-invention rule, no dispatch→commit), added RunData.SkeletonPath, and added the dedicated table-driven test covering headings and all five load-bearing instructions.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T11:07:13.648759535Z"
+      }
     },
     {
       "id": 5,
@@ -121,12 +148,21 @@
     {
       "id": 8,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "docs/superpowers/specs/2026-08-24-takt-design.md"
       ],
       "class": "docs",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 8,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Corrected §7.5 step 3 to name only the four prose-slot sections (matching the run-retro template) and aligned the new §5.1 `takt retro --rewrite` row on the document's established \"session lock\" term; all eleven verify greps pass.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:33:18.701708441Z"
+      }
     },
     {
       "id": 9,

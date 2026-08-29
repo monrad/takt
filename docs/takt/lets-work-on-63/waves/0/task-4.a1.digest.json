@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Rewrote run-retro.md around the skeleton (seven named sections, numbers-only \"grounded in the inputs\", no-invention rule, no dispatch→commit), added RunData.SkeletonPath, and added the dedicated table-driven test covering headings and all five load-bearing instructions.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:07:13.648759535Z"
+}

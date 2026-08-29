@@ -17,6 +17,50 @@
       "detail": "Task 8 says its scoped greps prove wave_committed row semantics, first-pass disposition behavior, and archived done behavior, but the commands only require isolated tokens such as wave_committed, not yet chosen, and archived. Contrary or incomplete prose containing those words would pass. Grepping distinctive required phrases such as one row per wave_committed event and accepted in finish and archived would make the checks match the description.",
       "source": "approve",
       "ts": "2026-08-29T10:48:27.154386493Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/bundleops.go",
+      "line": 252,
+      "wave": 0,
+      "task": 2,
+      "title": "clearGate doc comment cites the wrong document's section 4, inside the same package that already uses the convention correctly",
+      "detail": "The new sentence 'the answer a Decision the retro can render (spec §4)' points at docs/superpowers/specs/2026-08-24-takt-design.md §4 ('The run bundle': directory layout, state.json, events.jsonl, path rules, session lock, git) — nothing about Decisions or reasons. The rule being described ('a reasonless answer is process, not a decision') actually lives in §4 of this run's own local docs/takt/lets-work-on-63/spec.md ('The skeleton renderer'), a different, ephemeral document. This is the same miscitation pattern as internal/spec/assumptions.go:2, and it's especially visible here because internal/cli/cli.go:35 (same package) already uses 'spec §5.1' correctly to mean the design doc — so the package now contains two incompatible meanings for the same citation shorthand. The pattern recurs in test comments too (internal/brief/brief_test.go:190 '(spec §6)', internal/cli/cmd_answer_test.go:228 'spec §5.1') but those are lower-stakes than the two production doc comments.",
+      "source": "internal",
+      "ts": "2026-08-29T11:30:11.474899221Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_answer_test.go",
+      "line": 232,
+      "wave": 0,
+      "task": 2,
+      "title": "reason-threading only tested for two of the many gates that now carry it",
+      "detail": "clearGate's new reason parameter (internal/cli/bundleops.go:254-268) is threaded from cmdAnswer (internal/cli/cmd_answer.go:74) for every gate handled by applyAnswer — gate_review, gate_review_capped, wave_failures, review_error, verification_failed, no_verification, goals_unmet, branch_finish. The task text explicitly calls out 'no_verification's specify' as exercising 'the spec's single rule', yet TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty (the only new test for this behaviour) checks gate_answered's reason field solely for gate_review_capped/accept and gate_review/revise. The other five gate paths that also call clearGate with a caller-supplied reason (e.g. no_verification's specify, which internal/cli/finish_test.go:180 already answers with --reason \"test -f a.go\" but never inspects the resulting event) are untested for this new field.",
+      "source": "internal",
+      "ts": "2026-08-29T11:30:11.474899559Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_answer_test.go",
+      "line": 270,
+      "wave": 0,
+      "task": 2,
+      "title": "legacy-event assertion doesn't exercise the changed code",
+      "detail": "The final block of TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty (lines 270-281) calls bundle.AppendEvent/bundle.ReadEvents directly with a hand-built map that never had a \"reason\" key — it never goes through clearGate. It re-confirms a pre-existing bundle-package invariant (JSON without a key doesn't grow one on read) rather than testing task 2's actual change, despite the surrounding comment framing it as covering backward compatibility of the new field.",
+      "source": "internal",
+      "ts": "2026-08-29T11:30:11.474899663Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 23,
+      "wave": 0,
+      "task": 4,
+      "title": "Lessons drops the illustrative examples task 4 pairs with it",
+      "detail": "Task 4's description groups 'What went well / what was hard' and 'Lessons' under one line of guidance: 'the session's OWN account of driving this run — the reviewer that contradicted itself, the waiver whose grounds the tree disproves, the tool that misbehaved.' The template gives that full example list only to What went well / what was hard (line 16-17) and gives Lessons a different, shorter line ('written for the next run in this repository', line 24-25) without the examples. This is a defensible editorial choice but is a narrower rendering of the paired instruction than the task text describes for Lessons specifically.",
+      "source": "internal",
+      "ts": "2026-08-29T11:30:11.475875485Z"
     }
   ]
 }

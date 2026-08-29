@@ -1,0 +1,179 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "tasks": [
+    {
+      "task": 1,
+      "status": "rework",
+      "reason": "The parser silently truncates a valid table when a data row without outer pipes begins with a hash character.",
+      "files_changed": [
+        "internal/spec/assumptions.go",
+        "internal/spec/assumptions_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func ParseAssumptions' internal/spec/assumptions.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func TestParseAssumptionsWellFormed' internal/spec/assumptions_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func TestParseAssumptionsReorderedColumns' internal/spec/assumptions_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'separator' internal/spec/assumptions_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/spec/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/spec\t1.010s",
+          "elapsed_ms": 1154
+        },
+        {
+          "command": "golangci-lint run ./internal/spec/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 344
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "The parser silently truncates a valid table when a data row without outer pipes begins with a hash character.",
+        "findings": [
+          {
+            "severity": "major",
+            "file": "internal/spec/assumptions.go",
+            "line": 97,
+            "title": "Valid pipe-separated rows beginning with `#` are mistaken for headings",
+            "detail": "Rows may omit outer pipes, as `cells` explicitly supports. A valid row such as `#123 | Yes | Required by the issue | user-confirmed` is therefore well formed, but this condition treats it as a heading and stops parsing, omitting that row and all following rows. Only actual Markdown headings should terminate row parsing (for example, a hash run followed by whitespace), while `#123` and similar cell content must be parsed normally."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "task": 8,
+      "status": "done",
+      "files_changed": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "verify": [
+        {
+          "command": "sed -n '/^  finish\\/retro-inputs.json/,/^```/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'retro-skeleton.md'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "sed -n '/^### 5.1 /,/^### 5.2 /p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'takt retro --rewrite'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^### 5.1 /,/^### 5.2 /p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'writes no state'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'retro-skeleton.md'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'What shipped'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'Not proven'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'Numbers'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'wave_committed'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'prose'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'not yet chosen'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'archived'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The documentation change fully matches the requested scope and substance: the bundle layout adds the skeleton, §7.5 step 3 defines all seven retro sections and required rendering/completion semantics, and §5.1 documents the rewrite command with locking, phase, usage-error, and no-state behavior. No task-specific issues found.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "review_findings": 1,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": false,
+  "closed_at": "2026-08-29T11:45:30.378032828Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [
+    1
+  ],
+  "review_errors": []
+}

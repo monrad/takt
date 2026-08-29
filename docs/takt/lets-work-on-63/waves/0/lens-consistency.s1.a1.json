@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:19:39.701284379Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 369,
+      "title": "New command-table row calls the mechanism \"run lock\", diverging from the document's own established term \"session lock\"",
+      "detail": "The new `takt retro --rewrite` row says '...takes the run lock as `next` does and writes no state.' But this same document names the identical mechanism (the advisory lock in `logs/session.json` that `next` refreshes every call) the 'session lock' everywhere else it appears: the §4.6 heading 'Session lock', decision D14 ('Advisory session lock in the bundle's untracked `logs/session.json`...'), the `internal/bundle/` line in §4.1 ('dir resolution, state I/O, events, session lock'), and the `takt unlock` row ('Clears a stale session lock'). The run's own spec.md (docs/takt/lets-work-on-63/spec.md:192, '...takes the run lock, exactly as `next` does...') is where this wording originated, but importing it verbatim into the shared design doc introduces a second name for the same concept inside one file. A reader of §5.1 alone could plausibly take 'run lock' as a distinct, unexplained lock from the 'session lock' defined in §4.6. Recommend wording the new row as '...takes the session lock as `next` does...' to match the document's established term.",
+      "task": 8
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:45:22.236158768Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "internal/spec/assumptions_test.go",
+      "line": 372,
+      "title": "No test for the documented 'data rows until a blank line or the next heading' termination — and the implementation likely discards a fully valid table when trailing content follows without a blank line",
+      "detail": "rows() (internal/spec/assumptions.go:138-157) treats every non-blank, non-'#' line after the header as a data row, and internal/spec/assumptions.go:146 discards the *entire* table (`return []Assumption{}`) if that line has fewer than c.width cells. Since section() only cuts the body at the next `## ` heading (not at a blank line), any trailing prose immediately after the table's last row but still inside the same section — and not preceded by a blank line — will be read as a short 'data row' and wipe out all previously-parsed valid rows. The task's own description of the parser ('read the first markdown table: … then data rows until a blank line or the next heading') implies well-formed rows already read should survive such trailing content, but no test exercises a table followed by non-blank, non-heading, non-table content before the next `## ` heading (or EOF). TestParseAssumptionsWellFormed only happens to hit the blank-line path incidentally via the trailing '\\n' in the Go raw string literal, not via an explicit case with genuine trailing prose in the same section, so this discard-on-trailing-content path is untested and the resulting behaviour (losing valid rows) goes unverified.",
+      "id": "c1",
+      "task": 1,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "The claimed defect (a valid, already-parsed row silently discarded because a subsequent problematic line follows it with no intervening blank line, within the same section) is both spec-mandated and explicitly unit-tested. The task's spec text says: 'Tolerant by construction: no section, no table, missing headers or a short row yields an empty slice and never an error' (docs/takt/lets-work-on-63/spec.md:155-157) — i.e. discarding the whole table (not just the bad row) on a short row is the intended contract, not an accidental bug. And internal/spec/assumptions_test.go's TestParseAssumptionsTolerant includes a 'short data row' case: one valid row ('| Is it parsed? | No | A short row follows | assumed |') immediately followed, with no blank line, by a too-short row ('| Is this row short? | Yes |'), asserting the parser returns zero rows overall (internal/spec/assumptions_test.go:401-407, checked at line 435-436: `if got := spec.ParseAssumptions([]byte(in)); len(got) != 0 { t.Fatalf(...) }`). That exercises exactly the code path the candidate flags — rows() at internal/spec/assumptions.go:146-148 (`if len(cs) \u003c c.width { return []Assumption{} }`) — discarding a previously-collected valid row because a subsequent non-blank, non-heading line in the same section has too few cells. The candidate's distinction that the tested 'short row' still contains pipe characters while hypothetical 'trailing prose' might not is immaterial: cells() (assumptions.go:223-231) treats a line with no pipes as a single-cell row, hitting the identical `len(cs) \u003c c.width` branch already covered by the existing test. The behavior is documented as deliberate in the package comment ('A half-parsed table is worse than none, so a malformation found part-way through a table discards the rows read before it too', internal/spec/assumptions.go:60-61) and in the doc comment on rows() itself (assumptions.go:137: 'A row too short for the matched columns discards the whole table'), so it is neither an unverified defect nor a bug — it is a specified, tested behavior.",
+      "citations": [
+        "internal/spec/assumptions.go:138-157",
+        "internal/spec/assumptions_test.go:401-407",
+        "internal/spec/assumptions_test.go:432-438",
+        "docs/takt/lets-work-on-63/spec.md:155-157"
+      ]
+    }
+  ],
+  "confirmed": []
+}
