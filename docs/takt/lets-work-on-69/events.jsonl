@@ -23,3 +23,6 @@
 {"ts":"2026-08-30T16:54:09.293438641Z","type":"alignment_clauses","data":{"count":1}}
 {"ts":"2026-08-30T16:54:09.301949524Z","type":"gate_opened","data":{"gate":"alignment_confirm"}}
 {"ts":"2026-08-30T16:54:41.7680408Z","type":"gate_answered","data":{"choice":"confirm","gate":"alignment_confirm"}}
+{"ts":"2026-08-30T16:55:10.128455801Z","type":"alignment_verdicts","data":{"count":1}}
+{"ts":"2026-08-30T16:55:10.146496425Z","type":"plan_loaded","data":{"tasks":5,"waves":4}}
+{"ts":"2026-08-30T16:55:10.14654253Z","type":"phase","data":{"from":"plan","to":"execute"}}

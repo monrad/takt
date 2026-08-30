@@ -7,5 +7,12 @@
       "span": "lets work on #69"
     }
   ],
-  "confirmed": true
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "plan.md's five tasks implement exactly the spec.md #69 change end-to-end — Task 1 adds `Facts.PlanRounds` and the `decidePlan` cap branch mirroring `decideBrainstorm` (plan.index.json task 1 files: internal/decide/decide.go, decide_plan_cap_test.go), Task 2 fills `PlanRounds` in `gatherGateFacts` (facts.go), Task 3 tests all three cap answers on the plan gate, Task 4 edits both prompts' gate text, and Task 5 amends both design documents and runs `task check` (G8) — covering spec.md §§2-7 in full with no scope added beyond the spec (e.g. plan.md explicitly excludes #28 and a configurable cap, matching spec.md §8's out-of-scope list)."
+    }
+  ]
 }
