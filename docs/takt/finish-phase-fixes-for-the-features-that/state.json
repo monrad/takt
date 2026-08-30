@@ -1,0 +1,43 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "finish-phase-fixes-for-the-features-that",
+  "topic": "Finish-phase fixes for the features that just shipped: #71, #74, #66, #72 — one run, four small issues, all in internal/finish, internal/cli/archive.go, cmd_done.go, the two host prompts and the design doc.",
+  "phase": "brainstorm",
+  "created_at": "2026-08-30T18:54:31.082922042Z",
+  "branch": "monrad/phase_c",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "279e306242e272ac48248d13a67d27ee2cc55abd",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": null,
+  "gates": {
+    "plan": "pending",
+    "spec": "pending"
+  },
+  "tasks": [],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": null,
+  "goals_checked_sha": null,
+  "disposition": null
+}
