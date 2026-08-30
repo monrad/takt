@@ -40,9 +40,22 @@ waived-then-re-closed wave appears once. The one caller, `internal/cli/retro.go:
 dispatched-failed-waived-re-closed wave with its inputs derived through `BuildRetroInputs` and
 `BuildShipped` — not hand-written — and its close record carries the waived task at `rework` with
 `committed: true`, so a status filter reintroduced later fails it. The seven existing goldens pass
-`nil` closes and are byte-unchanged. Risk: the golden is a byte-for-byte document; deriving it
-through the builders rather than writing `WaveTimings` by hand is what keeps it honest and is
-required by G3.
+`nil` closes and are byte-unchanged.
+
+The fallback must match the *whole* dispatch key, and the tests have to be able to tell that from
+an implementation matching on the wave alone. `TestBuildShippedFallbackMatchesTheWholeDispatchKey`
+therefore surrounds the right record with distractors: a close record for the same wave but a
+different slice, one for the same wave and slice but a different attempt, and a `wave_dispatched`
+event carrying that same wrong attempt — none of which may supply the row's ids. It covers the
+legacy shape `timingKeyOf` already floors: an event or record written before slices were recorded
+carries no slice key, decodes to 0 and is floored to 1, so it must pair with a slice-1 counterpart
+rather than be read as a slice 0 that never existed. And it pins the fall-through rule the review
+asked to have stated: a close record that matches the key but whose `tasks` list is empty yields no
+ids, so the derivation proceeds to the `wave_dispatched` event. The chain is *first source that
+yields at least one id*, not *first source that exists*.
+
+Risk: the golden is a byte-for-byte document; deriving it through the builders rather than writing
+`WaveTimings` by hand is what keeps it honest and is required by G3.
 
 ### Task 2 — `BuildPR` renders `## Issues` (implement; G4)
 
@@ -50,8 +63,13 @@ A self-contained change to `pr.go` and its tests. The references come from the `
 `BuildPR` already receives (never the slug — `deriveSlug` destroys the `#`), in three forms tried
 as one ordered alternation: `owner/repo#N`, `https?://…/issues/N`, bare `#N` with boundary rules.
 Go's RE2 has no lookbehind, so the bare form's "not preceded by `/` or a word character" is checked
-against the byte before each candidate match rather than in the pattern — a named risk, covered by
-the `#71b`, `owner/repo#N` and `/issues/12` rows of the table test. De-duplication is by rendered
+against the byte before each candidate match rather than in the pattern — the sharpest risk in the
+task, and the one the second review round caught as under-tested. The valid `owner/repo#N` row
+cannot prove a bare tail is *rejected* when the cross-repository form fails to match, so the table
+carries leading-boundary negatives of its own: `abc#71` and `takt#71` (word-prefixed), `/#71`
+(slash-prefixed) and `owner/#71` (a malformed cross-repository token) are topics that must yield no
+reference at all, alongside the trailing-boundary negative `#71b` and the bare `/issues/12`
+fragment. An implementation that accepts any of them fails the table. De-duplication is by rendered
 token in topic order; the keyword repeats per reference (`Closes #66, closes #71, …`) because
 GitHub links only the first issue of a bare comma list — the test asserts keyword count equals
 reference count, which is the assertion that fails if that regresses. No section at all when the
