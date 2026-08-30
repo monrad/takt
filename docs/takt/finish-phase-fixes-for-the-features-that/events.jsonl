@@ -74,3 +74,6 @@
 {"ts":"2026-08-30T23:13:11.889476777Z","type":"verify","data":{"commands":41,"passed":true,"sha":"caac6fb4dde836d2a89767e5ad687aa1b64e5a1c"}}
 {"ts":"2026-08-30T23:16:51.479836556Z","type":"goal_check","data":{"achieved":9,"missed":0,"partial":0,"sha":"caac6fb4dde836d2a89767e5ad687aa1b64e5a1c","waived":0}}
 {"ts":"2026-08-30T23:18:11.853976868Z","type":"retro","data":{"hash":"sha256:726117f170dbcd3bb8704966e44d833aef8e6d98a3d0085bd56c59140ace362f"}}
+{"ts":"2026-08-30T23:18:11.915257917Z","type":"gate_opened","data":{"gate":"branch_finish"}}
+{"ts":"2026-08-30T23:21:22.073714819Z","type":"disposition","data":{"choice":"pr","reason":""}}
+{"ts":"2026-08-30T23:21:22.074623102Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
