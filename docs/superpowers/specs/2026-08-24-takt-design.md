@@ -335,7 +335,9 @@ tracked `logs/.gitignore` still protects clones.
   is inside the repo. Never `add -A`, never the user's unrelated dirty files (they are in the wave
   baseline and are excluded from scope verification).
 - **Commits.** `takt(<slug>): wave <n> — tasks 1, 2` after a successful close; `takt(<slug>): plan →
-  execute` at phase transitions; `takt(<slug>): archive`. `takt(<slug>): archive` is the run's last
+  execute` at phase transitions; `takt(<slug>): pr body` when `next` writes `finish/pr.md` for the
+  `push_pr` op, so the body is in the branch before the session pushes it (§7.5 step 4);
+  `takt(<slug>): archive`. `takt(<slug>): archive` is the run's last
   commit; the merge disposition is applied only after it, in the primary worktree (§7.5 step 5).
   Commits are made by takt with `git commit` in the cwd worktree; the user's git identity applies.
 - **Agents never commit.** That is what makes re-dispatch after a crash safe.
@@ -484,7 +486,9 @@ now (e.g. `{"merged": "<sha>"}`, `{"deleted": true}`), read fresh from git on ev
 remembered — and, whenever something git would not let takt do from this worktree, `cleanup`: the exact
 git commands takt could not run itself, for the session to run (§7.5 step 5). Both are present only
 when they have something to say: a `keep` archive carries neither; a `pr` archive carries the push as
-`cleanup` exactly when the remote-tracking ref is missing commits, so the prompt must treat both as
+`cleanup` when git says the branch holds commits the remote-tracking ref does not — and also when
+either git read fails, since a redundant suggestion costs less than a push that silently went
+missing (§7.5 step 5) — so the prompt must treat both as
 optional rather than expect an empty object and an empty list.
 
 A `cleanup` that deletes the run branch (`git branch -d|-D <branch>`) can only run once nothing has
@@ -812,7 +816,10 @@ A wave, end to end:
      `{verdict, findings}`; written to `reviews/wave-<n>/task-<id>.md`. `approve` → stays `done`.
      `rework` → the task returns to `pending` with the findings attached (row 16 re-dispatches once, then row 17 asks). `reject` →
      `failed` (`reason: review`). `error` → `ask review_error` (retry / skip this task's review with
-     reason / stop) — fail closed, human-resolvable.
+     reason / stop) — fail closed, human-resolvable. The *retry* option names each configured
+     reviewer backend's `backends.<name>.timeout` and its current deadline, so a review that timed
+     out says what to raise without the user reading the source; a chain whose entries have no
+     config key (`fake`, unknown names) leaves the literal `backends.<name>.timeout` instead.
    - **Commit.** If every task of the wave (or of the current slice, §7.4 chunking) is `done`: stage each
      task's `files` (and the bundle if in-repo), commit `takt(<slug>): wave <n> — tasks …`, clear
      `active_wave`. Otherwise leave the
@@ -867,7 +874,10 @@ slice, which keeps every commit verified.
    the session runs `git push -u origin <branch>` and `gh pr create --base <base> --title '<title>'
    --body-file <path>`, the title and body file taken from the op's `inputs.pr_title` and
    `inputs.pr_body_path` (the latter naming `finish/pr.md`), then `done --step push_pr --url <pr-url>`
-   (§5.1's no-op rule applies: the same URL again is a no-op, a different one replaces it). `keep`:
+   (§5.1's no-op rule applies: the same URL again is a no-op, a different one replaces it). `next`
+   commits that body as `takt(<slug>): pr body` when it writes it, *before* handing the op over, so
+   the branch the session pushes already carries the body the pull request is created from; the
+   commit is replay-safe, since re-deriving the same bytes stages nothing. `keep`:
    nothing further.
 5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
    before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
