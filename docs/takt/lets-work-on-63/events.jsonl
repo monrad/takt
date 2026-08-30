@@ -160,3 +160,8 @@
 {"ts":"2026-08-30T14:28:01.447797258Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":0,"rework":[],"sha":"f616a06ed396eb5bc299b7de154ea0a837398e45","slice":1,"wave":5}}
 {"ts":"2026-08-30T14:28:07.240574445Z","type":"wave_cleared","data":{"wave":5}}
 {"ts":"2026-08-30T14:28:07.244857191Z","type":"phase","data":{"from":"execute","to":"finish"}}
+{"ts":"2026-08-30T14:28:37.146265279Z","type":"verify","data":{"commands":70,"passed":true,"sha":"473c503284eef1ff5647d49069bcafcf0eb603f0"}}
+{"ts":"2026-08-30T14:33:19.823299721Z","type":"goals_invalid","data":{"problems":["G9: citation \"internal/cli/finish_test.go:1101-1160\" — line 1160 is past the end (1154 lines)"]}}
+{"ts":"2026-08-30T14:38:22.195824989Z","type":"goal_check","data":{"achieved":13,"missed":0,"partial":0,"sha":"473c503284eef1ff5647d49069bcafcf0eb603f0","waived":0}}
+{"ts":"2026-08-30T14:38:22.196313055Z","type":"goals_attempts_reset","data":{"reason":"recorded"}}
+{"ts":"2026-08-30T14:40:42.641067414Z","type":"retro","data":{"hash":"sha256:8c73ae79cccedf208c7b69dfeaf3866dbdf2b7b9ca015e43435a5c0a51d099cb"}}
