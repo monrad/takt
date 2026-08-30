@@ -79,20 +79,20 @@
     {
       "id": 3,
       "wave": 2,
-      "status": "pending",
+      "status": "waived",
       "files": [
         "internal/cli/cmd_answer_plan_test.go"
       ],
       "class": "test",
-      "attempt": 2,
+      "attempt": 3,
       "last_digest": {
         "task": 3,
-        "attempt": 2,
+        "attempt": 3,
         "status": "done",
-        "summary": "Strengthened the plan-gate cap accept test to assert the carried finding's severity/file/line/title/detail and to pin the post-accept dispatch to the alignment-auditor in clauses mode, and made snapshotGateState a plain read that fails on any error; extracted three helpers to keep gocognit under its limit.",
+        "summary": "Extracted `requireCappedPlanAsk` and called it from all four plan-cap tests, so each one now proves the initial `next` is a correctly scoped (`gate == \"plan\"`) and correctly counted (`attempts == 3`) capped ask before it answers.",
         "blockers": "none",
         "model": "opus",
-        "recorded_at": "2026-08-30T17:38:18.521277956Z"
+        "recorded_at": "2026-08-30T17:45:25.561496794Z"
       }
     },
     {
@@ -127,8 +127,55 @@
       "attempt": 0
     }
   ],
-  "active_wave": null,
-  "pending_gate": null,
+  "active_wave": {
+    "n": 2,
+    "slice": 1,
+    "attempt": 3,
+    "started_at": "2026-08-30T17:43:16.001175871Z",
+    "session_id": "e7d58452-778a-4996-8f76-7ee51117266d",
+    "tasks": [
+      3
+    ],
+    "baseline": []
+  },
+  "pending_gate": {
+    "id": "wave_failures",
+    "opened_at": "2026-08-30T17:50:13.599631232Z",
+    "payload": {
+      "op": "ask",
+      "narration": "wave 2 has failed or blocked tasks",
+      "gate": "wave_failures",
+      "question": "Wave 2: failed [], blocked [], rework exhausted [3], rework pending []. How do you want to proceed?",
+      "options": [
+        {
+          "choice": "retry",
+          "label": "Retry the failed tasks (Recommended)",
+          "description": "Re-dispatch them with the failure context appended (model escalates one tier)."
+        },
+        {
+          "choice": "waive",
+          "label": "Waive selected tasks",
+          "description": "`takt waive --task N --reason …` per task, then `takt next`."
+        },
+        {
+          "choice": "stop",
+          "label": "Stop",
+          "description": "End the turn with the wave open."
+        }
+      ],
+      "context": {
+        "blocked": [],
+        "exhausted": [
+          3
+        ],
+        "failed": [],
+        "rework": [],
+        "slug": "lets-work-on-69",
+        "wave": 2
+      },
+      "answer": "takt answer --gate wave_failures --choice \u003cchoice\u003e --slug lets-work-on-69"
+    }
+  },
   "verified_sha": null,
   "goals_checked_sha": null,
   "disposition": null

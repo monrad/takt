@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 3,
+  "status": "done",
+  "summary": "Extracted `requireCappedPlanAsk` and called it from all four plan-cap tests, so each one now proves the initial `next` is a correctly scoped (`gate == \"plan\"`) and correctly counted (`attempts == 3`) capped ask before it answers.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T17:45:25.561496794Z"
+}
