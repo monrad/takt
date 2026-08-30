@@ -1,8 +1,6 @@
-# Review: plan — rework
+# Review: plan — approve
 
-The decomposition and scopes match the spec, but two core parsing/key-selection requirements lack tests that would distinguish a correct implementation from a plausible incomplete one. Amend Tasks 1 and 2 before execution.
+The plan fully maps all four spec areas to coherent tasks with plausible file scopes, honest task classes, compatible dependencies, and verification that exercises the required fallback ordering, complete dispatch-key matching, timing de-duplication, issue-reference boundaries, generated-skill drift detection, stale-prose corrections, and whole-branch quality gates.
 
-- **major** plan.md:0 — Task 1 does not prove exact dispatch-key fallback matching: Task 1 requires BuildShipped to match close and dispatch records by the complete (wave, slice, attempt) key, including flooring legacy slice 0/missing values to 1. Its proposed tests cover only a generically “matching” record/event, while the existing slice-floor test checks rendered row coordinates, not fallback matching. An implementation matching by wave alone, ignoring attempt or slice, or failing to pair legacy slice 0 with slice 1 could pass every declared check. Add distractor close records and dispatch events that share only part of the key, plus a legacy slice-floor fallback case. Also clarify and test whether a matching close record with no task IDs proceeds to the dispatch fallback.
-- **major** plan.md:0 — Task 2 omits negative tests for the bare-reference prefix boundaries: Task 2 requires bare #N not to be preceded by either '/' or a word character, but the proposed negatives only cover the trailing boundary (#71b) and a URL-like fragment containing no '#'. The valid owner/repo#N case cannot prove that the parser rejects a bare tail when the cross-repository form does not match. An implementation accepting abc#71, takt#71, or /#71 would pass the declared suite. Add explicit word-prefixed and slash-prefixed negative cases, preferably including a malformed cross-repository token such as owner/#71.
 
 _copilot / gpt-5.6-sol_
