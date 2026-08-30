@@ -168,3 +168,4 @@
 {"ts":"2026-08-30T14:40:47.576022036Z","type":"gate_opened","data":{"gate":"branch_finish"}}
 {"ts":"2026-08-30T14:41:22.400882671Z","type":"disposition","data":{"choice":"pr","reason":""}}
 {"ts":"2026-08-30T14:41:22.40176228Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
+{"ts":"2026-08-30T14:44:43.878134767Z","type":"pr_pushed","data":{"url":"https://github.com/monrad/takt/pull/65"}}
