@@ -5,3 +5,4 @@
 {"ts":"2026-08-30T15:27:24.226528576Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-30T15:28:46.867815897Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
 {"ts":"2026-08-30T15:29:54.896269246Z","type":"goals_amended","data":{"count":8,"new":"sha256:de3cf62297d029e915ace8b5a9c3be3013bce4fbc0428c593b50ff19b35079a8","old":"sha256:fa8591dac9a42d90336110f147686092d5ecada083f82adc673d481ed449ee1c"}}
+{"ts":"2026-08-30T15:30:10.913398727Z","type":"gate_reviewed","data":{"findings":0,"gate":"spec","hash":"sha256:2c38a988063cd915c8670d456b88286f87b987cbf8debea4c5c0d0831c94680b","provider":"copilot","verdict":"approve"}}
