@@ -112,3 +112,6 @@
 {"ts":"2026-08-30T18:14:40.894450153Z","type":"verify","data":{"commands":44,"passed":true,"sha":"5b6b474628f95cd6d0f23d94597189075c77c352"}}
 {"ts":"2026-08-30T18:18:57.937606681Z","type":"goal_check","data":{"achieved":8,"missed":0,"partial":0,"sha":"5b6b474628f95cd6d0f23d94597189075c77c352","waived":0}}
 {"ts":"2026-08-30T18:19:51.682730357Z","type":"retro","data":{"hash":"sha256:9baa3164a896bb77615d48976a0be7f9f88ada48bd13e7ef68e1ef0ccb6043de"}}
+{"ts":"2026-08-30T18:19:51.728635773Z","type":"gate_opened","data":{"gate":"branch_finish"}}
+{"ts":"2026-08-30T18:20:10.505602322Z","type":"disposition","data":{"choice":"pr","reason":""}}
+{"ts":"2026-08-30T18:20:10.50670023Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
