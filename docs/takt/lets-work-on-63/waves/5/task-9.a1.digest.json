@@ -1,0 +1,9 @@
+{
+  "task": 9,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Updated the retro run-step clause identically in commands/takt.md and SKILL.md to name the skeleton copy, and added the full prescribed sentence as a new cross-host invariant in prompt_test.go; all verify commands (grep checks, go test ./... -race, golangci-lint, task hosts:check) pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T14:24:46.967143225Z"
+}

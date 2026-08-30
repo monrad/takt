@@ -203,24 +203,33 @@
     {
       "id": 9,
       "wave": 5,
-      "status": "pending",
+      "status": "done",
       "files": [
         "commands/takt.md",
         "hosts/copilot/skills/takt/SKILL.md",
         "internal/prompt/prompt_test.go"
       ],
       "class": "bounded",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 9,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Updated the retro run-step clause identically in commands/takt.md and SKILL.md to name the skeleton copy, and added the full prescribed sentence as a new cross-host invariant in prompt_test.go; all verify commands (grep checks, go test ./... -race, golangci-lint, task hosts:check) pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-30T14:24:46.967143225Z"
+      }
     }
   ],
   "active_wave": {
-    "n": 4,
+    "n": 5,
     "slice": 1,
-    "attempt": 2,
-    "started_at": "2026-08-30T13:57:50.735811368Z",
+    "attempt": 1,
+    "started_at": "2026-08-30T14:22:53.184176231Z",
     "session_id": "dcc38050-c2a1-44c6-a9d7-69b497b8c1e6",
     "tasks": [
-      7
+      9
     ],
     "baseline": []
   },
