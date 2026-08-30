@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T17:16:06.552729824Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/plan_rounds_facts_test.go",
+      "line": 56,
+      "title": "planRoundsIndexGarbage duplicates the existing indexGarbage constant",
+      "detail": "internal/cli/deadline_facts_test.go:289 already declares `const indexGarbage = `{\"schema\":1,`` at package scope in the same package (cli). plan_rounds_facts_test.go re-declares an identical literal under a new name (planRoundsIndexGarbage) instead of reusing indexGarbage, which was visible and reusable without qualification. Same value, same purpose (bytes plan.ParseIndex refuses), same package — this is the duplicated-constant case the consistency lens flags: a small drift risk if one is ever tweaked (e.g. to cover a different parse failure) without the other following.",
+      "task": 2
+    }
+  ]
+}

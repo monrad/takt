@@ -216,6 +216,7 @@ func gatherGateFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 		f.PlanGate = decide.GateStatus{
 			Satisfied: s.Satisfied, Verdict: s.Verdict, Blocking: s.Blocking, Reason: s.Reason,
 		}
+		f.PlanRounds = gate.Rounds(events, gate.Plan)
 	}
 	return nil
 }

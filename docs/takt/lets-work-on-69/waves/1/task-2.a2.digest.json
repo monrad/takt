@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Replaced the duplicated `planRoundsIndexGarbage` constant with the pre-existing package-scope `indexGarbage`; left all `docs/takt/**` bookkeeping untouched per the brief's Rules, and confirmed via mutation check that the guard test pins the fill's placement.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T17:21:07.669052387Z"
+}

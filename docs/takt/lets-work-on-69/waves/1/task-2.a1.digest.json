@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Facts.PlanRounds` is filled from `gate.Rounds(events, gate.Plan)` inside the guarded plan branch of `gatherGateFacts`, pinned by a mixed-events counting test and a four-case guard test that both fail under the obvious wrong implementations.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T17:13:38.891061569Z"
+}
