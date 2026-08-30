@@ -1,0 +1,1024 @@
+{
+  "slug": "lets-work-on-60-and-62",
+  "topic": "lets work on #60 and #62",
+  "tasks": 8,
+  "waves": 5,
+  "retries": [
+    {
+      "task": 4,
+      "attempts": 2
+    },
+    {
+      "task": 5,
+      "attempts": 2
+    }
+  ],
+  "failures": [
+    {
+      "task": 4,
+      "status": "waived",
+      "reason": "The deadline calculations are mostly wired correctly, but finish fact gathering violates the required error-propagation contract and can bypass malformed index or extras errors during healing. The working tree also contains changes outside the declared files."
+    }
+  ],
+  "review_findings": 40,
+  "gate_review_findings": 36,
+  "task_review_findings": 4,
+  "wave_timings": [
+    {
+      "wave": 0,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-29T11:36:19.511537504Z",
+      "closed_at": "2026-08-29T12:08:06.658800482Z",
+      "committed": true,
+      "committed_at": "2026-08-29T12:42:47.880165823Z"
+    },
+    {
+      "wave": 0,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-29T11:36:19.511537504Z",
+      "closed_at": "2026-08-29T12:42:47.880193411Z",
+      "committed": true,
+      "committed_at": "2026-08-29T12:42:47.880165823Z"
+    },
+    {
+      "wave": 1,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-29T12:43:03.754502421Z",
+      "closed_at": "2026-08-29T13:09:01.562235967Z",
+      "committed": true,
+      "committed_at": "2026-08-29T13:09:01.562194093Z"
+    },
+    {
+      "wave": 2,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-29T13:09:10.339710106Z",
+      "closed_at": "2026-08-29T13:34:33.617334732Z",
+      "committed": false
+    },
+    {
+      "wave": 2,
+      "slice": 1,
+      "attempt": 2,
+      "dispatched_at": "2026-08-29T13:34:40.874537906Z",
+      "closed_at": "2026-08-30T13:32:58.465382846Z",
+      "committed": true,
+      "committed_at": "2026-08-30T13:34:53.369601259Z"
+    },
+    {
+      "wave": 2,
+      "slice": 1,
+      "attempt": 2,
+      "dispatched_at": "2026-08-29T13:34:40.874537906Z",
+      "closed_at": "2026-08-30T13:34:53.369640007Z",
+      "committed": true,
+      "committed_at": "2026-08-30T13:34:53.369601259Z"
+    },
+    {
+      "wave": 3,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-30T13:35:03.728287833Z",
+      "closed_at": "2026-08-30T13:53:06.323470094Z",
+      "committed": false
+    },
+    {
+      "wave": 3,
+      "slice": 1,
+      "attempt": 2,
+      "dispatched_at": "2026-08-30T13:54:24.484462258Z",
+      "closed_at": "2026-08-30T14:05:25.399274446Z",
+      "committed": true,
+      "committed_at": "2026-08-30T14:05:25.399242683Z"
+    },
+    {
+      "wave": 4,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-30T14:05:33.262812973Z",
+      "closed_at": "2026-08-30T14:20:05.002885216Z",
+      "committed": true,
+      "committed_at": "2026-08-30T14:20:05.002834446Z"
+    }
+  ],
+  "verify": {
+    "sha": "55fcddd61dfe185ef96877963c1fd45b5cf464b2",
+    "passed": true,
+    "no_commands": false,
+    "commands": [
+      "grep -Eq 'defaultBackendTimeout += 15 \\* time\\.Minute' internal/config/config.go",
+      "grep -q '15 \\* time.Minute' internal/backend/run.go",
+      "grep -q 'func resolveTimeout' internal/backend/run.go",
+      "grep -q 'TAKT_FAKE_REVIEW_TIMEOUT_FILE' internal/backend/fake.go",
+      "grep -q 'func (b Backends) ReviewBudgetTimeout' internal/config/config.go",
+      "grep -q 'nonesuch' internal/config/config_test.go",
+      "grep -q 'TestBackendFallbackMatchesTheShippedDefault' internal/cli/backend_timeout_test.go",
+      "grep -q 'TAKT_FAKE_REVIEW_SLEEP' internal/backend/fake.go",
+      "grep -q 'Deadline()' internal/backend/fake.go",
+      "go test -race -count=1 ./internal/config/... ./internal/backend/...",
+      "go test -race -count=1 -run TestBackendFallback ./internal/cli/",
+      "golangci-lint run ./internal/config/... ./internal/backend/... ./internal/cli/...",
+      "grep -q 'func Close(b Budget) time.Duration' internal/deadline/deadline.go",
+      "grep -q 'func Session(' internal/deadline/deadline.go",
+      "grep -q 'Grace' internal/deadline/deadline.go",
+      "grep -q 'TestSessionStrictlyContainsEveryInner' internal/deadline/deadline_test.go",
+      "grep -q 'TestCloseBudgetsTheWave' internal/deadline/deadline_test.go",
+      "grep -q 'func Grace\\|Grace =' internal/deadline/deadline.go",
+      "grep -q 'MaxDuration' internal/deadline/deadline.go",
+      "grep -q 'TestSaturatesInsteadOfWrapping' internal/deadline/deadline_test.go",
+      "grep -q 'TestMonotonicity' internal/deadline/deadline_test.go",
+      "go test -race -count=1 ./internal/deadline/...",
+      "golangci-lint run ./internal/deadline/...",
+      "grep -c 'closeWaveTimeout' internal/cli/cmd_close_wave.go | grep -qx 0",
+      "grep -q 'deadline.Bootstrap' internal/cli/cmd_close_wave.go",
+      "grep -q 'deadline.Close' internal/cli/cmd_close_wave.go",
+      "grep -q 'deadline.Verify' internal/cli/cmd_verify.go",
+      "grep -c 'verifyMargin' internal/cli/cmd_verify.go | grep -qx 0",
+      "grep -q 'deadline.GateReview' internal/cli/cmd_review.go",
+      "grep -q 'TestCloseWaveRefusesWhenTheIndexCannotBeRead' internal/cli/close_budget_test.go",
+      "grep -q 'TestCloseBudgetCountsTheWave' internal/cli/close_budget_test.go",
+      "grep -c 'cli.reviewGrace' internal/backend/live_test.go | grep -qx 0",
+      "grep -q 'TestLandedCloseReplaysWithoutTheIndex' internal/cli/close_budget_test.go",
+      "go test -race -count=1 -run 'TestClose|TestVerify|TestReview' ./internal/cli/",
+      "golangci-lint run ./internal/cli/...",
+      "grep -c 'reviewTimeoutS' internal/decide/decide.go | grep -qx 0",
+      "grep -c 'closeTimeoutS' internal/decide/decide.go | grep -qx 0",
+      "grep -c 'verifyTimeoutS' internal/decide/finish.go | grep -qx 0",
+      "grep -q 'deadline.Session' internal/decide/decide.go",
+      "grep -q 'BackendTimeout' internal/cli/facts.go",
+      "grep -q 'UnionCommands' internal/cli/finish_facts.go",
+      "grep -q 'TestExecTimeoutsStrictlyContainTheBinaryCaps' internal/decide/decide_test.go",
+      "grep -q 'closeBudget' internal/cli/deadline_facts_test.go",
+      "grep -q 'TestGatheredFactsMatchTheBinaryBudget' internal/cli/deadline_facts_test.go",
+      "grep -q 'TestGatheredFinishFactsCountTheVerifyUnion' internal/cli/deadline_facts_test.go",
+      "grep -q 'TestGatherFinishFactsPropagatesAnIndexReadError' internal/cli/deadline_facts_test.go",
+      "go test -race -count=1 ./internal/decide/...",
+      "go test -race -count=1 -run 'TestGathered|TestGatherFinishFacts' ./internal/cli/",
+      "golangci-lint run ./internal/decide/... ./internal/cli/...",
+      "grep -q 'ReviewerBackends' internal/decide/decide.go",
+      "grep -q 'ReviewerBackends' internal/cli/facts.go",
+      "grep -q 'backends.' internal/decide/questions.go",
+      "grep -q 'TestReviewErrorNamesTheBackendTimeouts' internal/decide/decide_test.go",
+      "grep -q 'TestGatherFactsFillsReviewerBackendsInPreferenceOrder' internal/cli/reviewer_facts_test.go",
+      "grep -q 'nonesuch' internal/cli/reviewer_facts_test.go",
+      "grep -q 'TestReviewErrorRendersIdenticallyAfterAContextRoundTrip' internal/decide/decide_test.go",
+      "go test -race -count=1 -run TestGatherFactsFillsReviewerBackends ./internal/cli/",
+      "grep -q '\"pr body\"' internal/cli/cmd_next.go",
+      "grep -q 'TestPushPRLeavesTheBodyInHead' internal/cli/finish_test.go",
+      "grep -q 'preparePushPR(context' internal/cli/brief_stable_test.go",
+      "go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/",
+      "grep -q 'case dispositionPR' internal/cli/archive.go",
+      "grep -q 'git push -u origin' internal/cli/archive.go",
+      "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
+      "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
+      "grep -q 'commit-tree' internal/cli/archive_test.go",
+      "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
+      "grep -q 'TestArchivedPRPushIsOfferedWhenTheAncestryReadFails' internal/cli/archive_internal_test.go",
+      "go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/",
+      "grep -c '\"timeout\": \"5m\"' README.md | grep -qx 0",
+      "grep -q '\"timeout\": \"15m\"' README.md",
+      "grep -c '\"timeout\": \"5m\"' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "grep -q 'internal/deadline' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "grep -c 'ask git for nothing at this step' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "grep -c 'archive asks git for nothing' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "grep -q 'holds commits the remote-tracking ref does not' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "task check"
+    ],
+    "results": [
+      {
+        "command": "grep -Eq 'defaultBackendTimeout += 15 \\* time\\.Minute' internal/config/config.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q '15 \\* time.Minute' internal/backend/run.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'func resolveTimeout' internal/backend/run.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TAKT_FAKE_REVIEW_TIMEOUT_FILE' internal/backend/fake.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'func (b Backends) ReviewBudgetTimeout' internal/config/config.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'nonesuch' internal/config/config_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestBackendFallbackMatchesTheShippedDefault' internal/cli/backend_timeout_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TAKT_FAKE_REVIEW_SLEEP' internal/backend/fake.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'Deadline()' internal/backend/fake.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/config/... ./internal/backend/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/config\t1.010s\nok  \tgithub.com/monrad/takt/internal/backend\t1.312s",
+        "elapsed_ms": 1491
+      },
+      {
+        "command": "go test -race -count=1 -run TestBackendFallback ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.011s",
+        "elapsed_ms": 1240
+      },
+      {
+        "command": "golangci-lint run ./internal/config/... ./internal/backend/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+        "elapsed_ms": 390
+      },
+      {
+        "command": "grep -q 'func Close(b Budget) time.Duration' internal/deadline/deadline.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'func Session(' internal/deadline/deadline.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'Grace' internal/deadline/deadline.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestSessionStrictlyContainsEveryInner' internal/deadline/deadline_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestCloseBudgetsTheWave' internal/deadline/deadline_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'func Grace\\|Grace =' internal/deadline/deadline.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'MaxDuration' internal/deadline/deadline.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestSaturatesInsteadOfWrapping' internal/deadline/deadline_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestMonotonicity' internal/deadline/deadline_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/deadline/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/deadline\t1.010s",
+        "elapsed_ms": 1164
+      },
+      {
+        "command": "golangci-lint run ./internal/deadline/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Path: \\\"_test\\\\\\\\.go\\\", Linters: \\\"bodyclose, dupl, errcheck, funlen, goconst, gosec, noctx, wrapcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 360
+      },
+      {
+        "command": "grep -c 'closeWaveTimeout' internal/cli/cmd_close_wave.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q 'deadline.Bootstrap' internal/cli/cmd_close_wave.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'deadline.Close' internal/cli/cmd_close_wave.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'deadline.Verify' internal/cli/cmd_verify.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'verifyMargin' internal/cli/cmd_verify.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'deadline.GateReview' internal/cli/cmd_review.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestCloseWaveRefusesWhenTheIndexCannotBeRead' internal/cli/close_budget_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestCloseBudgetCountsTheWave' internal/cli/close_budget_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'cli.reviewGrace' internal/backend/live_test.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestLandedCloseReplaysWithoutTheIndex' internal/cli/close_budget_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestClose|TestVerify|TestReview' ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.428s",
+        "elapsed_ms": 1650
+      },
+      {
+        "command": "golangci-lint run ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+        "elapsed_ms": 378
+      },
+      {
+        "command": "grep -c 'reviewTimeoutS' internal/decide/decide.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -c 'closeTimeoutS' internal/decide/decide.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -c 'verifyTimeoutS' internal/decide/finish.go | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'deadline.Session' internal/decide/decide.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'BackendTimeout' internal/cli/facts.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'UnionCommands' internal/cli/finish_facts.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestExecTimeoutsStrictlyContainTheBinaryCaps' internal/decide/decide_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'closeBudget' internal/cli/deadline_facts_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestGatheredFactsMatchTheBinaryBudget' internal/cli/deadline_facts_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestGatheredFinishFactsCountTheVerifyUnion' internal/cli/deadline_facts_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestGatherFinishFactsPropagatesAnIndexReadError' internal/cli/deadline_facts_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 ./internal/decide/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/decide\t1.011s",
+        "elapsed_ms": 1172
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestGathered|TestGatherFinishFacts' ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.066s",
+        "elapsed_ms": 1289
+      },
+      {
+        "command": "golangci-lint run ./internal/decide/... ./internal/cli/...",
+        "exit": 0,
+        "passed": true,
+        "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+        "elapsed_ms": 378
+      },
+      {
+        "command": "grep -q 'ReviewerBackends' internal/decide/decide.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'ReviewerBackends' internal/cli/facts.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'backends.' internal/decide/questions.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestReviewErrorNamesTheBackendTimeouts' internal/decide/decide_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestGatherFactsFillsReviewerBackendsInPreferenceOrder' internal/cli/reviewer_facts_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'nonesuch' internal/cli/reviewer_facts_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestReviewErrorRendersIdenticallyAfterAContextRoundTrip' internal/decide/decide_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 -run TestGatherFactsFillsReviewerBackends ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.027s",
+        "elapsed_ms": 1251
+      },
+      {
+        "command": "grep -q '\"pr body\"' internal/cli/cmd_next.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 7
+      },
+      {
+        "command": "grep -q 'TestPushPRLeavesTheBodyInHead' internal/cli/finish_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'preparePushPR(context' internal/cli/brief_stable_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.496s",
+        "elapsed_ms": 1722
+      },
+      {
+        "command": "grep -q 'case dispositionPR' internal/cli/archive.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q 'git push -u origin' internal/cli/archive.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'commit-tree' internal/cli/archive_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'TestArchivedPRPushIsOfferedWhenTheAncestryReadFails' internal/cli/archive_internal_test.go",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/",
+        "exit": 0,
+        "passed": true,
+        "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.625s",
+        "elapsed_ms": 1848
+      },
+      {
+        "command": "grep -c '\"timeout\": \"5m\"' README.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 4
+      },
+      {
+        "command": "grep -q '\"timeout\": \"15m\"' README.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c '\"timeout\": \"5m\"' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'internal/deadline' docs/superpowers/specs/2026-08-24-takt-design.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'ask git for nothing at this step' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -c 'archive asks git for nothing' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "grep -q 'holds commits the remote-tracking ref does not' docs/superpowers/specs/2026-08-24-takt-design.md",
+        "exit": 0,
+        "passed": true,
+        "tail": "",
+        "elapsed_ms": 3
+      },
+      {
+        "command": "task check",
+        "exit": 0,
+        "passed": true,
+        "tail": "task: [build] go build ./...\ntask: [build] go build -ldflags \"-X github.com/monrad/takt/internal/version.Version=0.1.0\" -o takt ./cmd/takt\ntask: [test] go test ./... -race -count=1\n?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t1.311s\nok  \tgithub.com/monrad/takt/internal/brief\t1.011s\nok  \tgithub.com/monrad/takt/internal/bundle\t1.030s\nok  \tgithub.com/monrad/takt/internal/cli\t7.566s\nok  \tgithub.com/monrad/takt/internal/config\t1.012s\nok  \tgithub.com/monrad/takt/internal/deadline\t1.017s\nok  \tgithub.com/monrad/takt/internal/decide\t1.019s\nok  \tgithub.com/monrad/takt/internal/doctor\t1.028s\nok  \tgithub.com/monrad/takt/internal/finish\t1.016s\nok  \tgithub.com/monrad/takt/internal/gate\t1.024s\nok  \tgithub.com/monrad/takt/internal/gitx\t6.554s\nok  \tgithub.com/monrad/takt/internal/goals\t1.011s\nok  \tgithub.com/monrad/takt/internal/hosts\t1.010s\nok  \tgithub.com/monrad/takt/internal/op\t1.016s\nok  \tgithub.com/monrad/takt/internal/plan\t1.028s\nok  \tgithub.com/monrad/takt/internal/prompt\t1.020s\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t1.018s\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t1.024s\nok  \tgithub.com/monrad/takt/internal/version\t1.013s\nok  \tgithub.com/monrad/takt/internal/wave\t1.530s\ntask: [lint] golangci-lint run ./...\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.\ntask: [hosts:check] go run ./internal/tools/hostgen --check",
+        "elapsed_ms": 8591
+      }
+    ],
+    "at": "2026-08-30T14:30:40.560292806Z"
+  },
+  "goals": {
+    "sha": "55fcddd61dfe185ef96877963c1fd45b5cf464b2",
+    "verdicts": [
+      {
+        "id": "G1",
+        "verdict": "achieved",
+        "evidence": "internal/config/config.go defines defaultBackendTimeout = 15*time.Minute and applies it to both Copilot and Claude in Defaults(); internal/cli/backend_timeout_test.go's TestBackendFallbackMatchesTheShippedDefault drives a Timeout-less ReviewRequest through the fake reviewer and asserts the deadline it actually ran under against config.Defaults().Backends.Copilot.Timeout (and asserts Claude's equals Copilot's, so the two cannot drift). `go test -race -count=1 ./internal/config/... ./internal/backend/...` and `go test -race -count=1 -run TestBackendFallback ./internal/cli/` both exit 0.",
+        "citations": [
+          "internal/config/config.go:192",
+          "internal/config/config.go:212-213",
+          "internal/cli/backend_timeout_test.go:27-58"
+        ]
+      },
+      {
+        "id": "G2",
+        "verdict": "achieved",
+        "evidence": "grep for closeWaveTimeout|reviewTimeoutS|closeTimeoutS|verifyTimeoutS across internal/ (including tests) finds only a comment in decide_test.go, no definitions. internal/deadline/deadline.go defines Close/Verify/GateReview/Session and the Grace constant. The four call sites use it: cmd_close_wave.go calls deadline.Close, cmd_verify.go calls deadline.Verify, cmd_review.go calls deadline.GateReview, decide.go calls deadline.Session/deadline.GateReview/deadline.Close.",
+        "citations": [
+          "internal/deadline/deadline.go:72",
+          "internal/deadline/deadline.go:104-128",
+          "internal/cli/cmd_close_wave.go:100",
+          "internal/cli/cmd_verify.go:109",
+          "internal/cli/cmd_review.go:173",
+          "internal/decide/decide.go:311-316"
+        ]
+      },
+      {
+        "id": "G3",
+        "verdict": "achieved",
+        "evidence": "internal/deadline/deadline.go implements one saturation domain (addDur/mulDur clamp negatives and saturate at MaxDuration) applied uniformly to Close/Verify/GateReview/Session; Close enforces Floor always, sums verifyTerm (undivided by MaxParallel) and reviewTerm (divided by MaxParallel, so Close is non-increasing in it), matching the stated formulas. Tests TestSessionStrictlyContainsEveryInner, TestCloseBudgetsTheWave, TestSaturatesInsteadOfWrapping, TestMonotonicity all exist and `go test -race -count=1 ./internal/deadline/...` exits 0.",
+        "citations": [
+          "internal/deadline/deadline.go:91-166",
+          "internal/deadline/deadline_test.go:63",
+          "internal/deadline/deadline_test.go:103",
+          "internal/deadline/deadline_test.go:288",
+          "internal/deadline/deadline_test.go:371"
+        ]
+      },
+      {
+        "id": "G4",
+        "verdict": "achieved",
+        "evidence": "internal/deadline/deadline.go's verifyTerm multiplies VerifyTimeout by VerifyCommands undivided by MaxParallel (serial), and reviewTerm multiplies BackendTimeout by 2 (blind + scoped pass) and by ceil(ReviewTasks/MaxParallel) (concurrent), matching the declared shapes exactly. internal/decide/decide_test.go's TestExecTimeoutsStrictlyContainTheBinaryCaps asserts the emitted exec op's TimeoutS for spec/plan review and close-wave each strictly exceeds the binary's own cap (deadline.GateReview/closeCap). `go test -race -count=1 ./internal/decide/...` exits 0.",
+        "citations": [
+          "internal/deadline/deadline.go:130-141",
+          "internal/decide/decide_test.go:108-144"
+        ]
+      },
+      {
+        "id": "G5",
+        "verdict": "achieved",
+        "evidence": "internal/decide/questions.go's reviewErrorRetryText/backendDeadlines names backends.\u003cname\u003e.timeout and its current deadline per configured backend with a key, skips entries lacking one, and falls back to the literal backendKeyPlaceholder ('backends.\u003cname\u003e.timeout') when nothing is named. internal/decide/decide_test.go's TestReviewErrorNamesTheBackendTimeouts covers a fully-configured set, a set with a keyless entry skipped, and an empty chain. internal/cli/facts.go's comment near gatherFacts states no health probe is made. `go test -race -count=1 -run 'TestReviewErrorNamesTheBackendTimeouts|TestGatherFactsFillsReviewerBackends' ./internal/decide/... ./internal/cli/...` exits 0.",
+        "citations": [
+          "internal/decide/questions.go:339-359",
+          "internal/decide/decide_test.go:1182-1224",
+          "internal/cli/facts.go:123-125"
+        ]
+      },
+      {
+        "id": "G6",
+        "verdict": "achieved",
+        "evidence": "internal/cli/finish_test.go's TestPushPRLeavesTheBodyInHead drives next to the push_pr op, asserts docs/takt/demo/finish/pr.md is present in `git ls-tree HEAD`, asserts the commit subject is 'takt(demo): pr body', then replays next and asserts HEAD's sha is unchanged. `go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/` exits 0.",
+        "citations": [
+          "internal/cli/finish_test.go:798-813"
+        ]
+      },
+      {
+        "id": "G7",
+        "verdict": "achieved",
+        "evidence": "internal/cli/archive.go's prCleanup: CommitExists error or IsAncestor error both fall back to offering the plain push (never returning an error, so the archived stop never fails); missing tracking ref returns the -u form; ancestor-true returns nil (no cleanup); otherwise returns the plain push. internal/cli/archive_test.go's TestArchivedPROffersThePushUntilItIsDone exercises all four states in sequence (no tracking ref, fully pushed, commits the remote lacks, and a diverged branch) including running the printed command; internal/cli/archive_internal_test.go's TestArchivedPRPushIsOfferedWhenGitCannotAnswer and TestArchivedPRPushIsOfferedWhenTheAncestryReadFails inject failures on each of the two git reads and assert no error and the push is still offered. `go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/` exits 0.",
+        "citations": [
+          "internal/cli/archive.go:235-254",
+          "internal/cli/archive_test.go:667-732",
+          "internal/cli/archive_internal_test.go:46-77"
+        ]
+      },
+      {
+        "id": "G8",
+        "verdict": "achieved",
+        "evidence": "Re-verified all four claimed fixes against the file as it now stands and against the code, not just the commit message. (a) §4.7's Commits bullet now lists `takt(\u003cslug\u003e): pr body` alongside the wave/plan→execute/archive commits, matching cmd_next.go's preparePushPR which calls commitBundle(..., \"pr body\") before returning the op. (b) §7.5 step 4 now states 'next commits that body as takt(\u003cslug\u003e): pr body ... before handing the op over', matching preparePushPR committing at lines 1063-1068 prior to filling inputs and returning at line 1072-1073 (the emit/handoff happens later in cmd_next.go). (c) §5.2 no longer says the push is offered 'exactly when the remote-tracking ref is missing commits' alone; it now reads '...when git says the branch holds commits the remote-tracking ref does not — and also when either git read fails...', which genuinely adds the failed-read case rather than restating the old text, and matches archive.go's prCleanup returning the push on both CommitExists and IsAncestor errors. (d) §7.4's review_error line now states the retry option names backends.\u003cname\u003e.timeout and its current deadline, with the literal-key fallback for keyless chains, exactly matching questions.go's reviewErrorRetryText/backendDeadlines/backendKeyPlaceholder. Also re-checked the original G8 evidence pointers: no '\"timeout\": \"5m\"' remains in README.md or the design doc (both show \"15m\"), §7.5 step 5 describes the pr remote-tracking check rather than 'asks git for nothing', and §13's Timeouts-everywhere bullet states internal/deadline derives each deadline from config and plan. Found no other doc/code contradiction in the sections touched by this run.",
+        "citations": [
+          "docs/superpowers/specs/2026-08-24-takt-design.md:337-342",
+          "docs/superpowers/specs/2026-08-24-takt-design.md:484-492",
+          "docs/superpowers/specs/2026-08-24-takt-design.md:814-822",
+          "docs/superpowers/specs/2026-08-24-takt-design.md:873-881",
+          "docs/superpowers/specs/2026-08-24-takt-design.md:1199-1205",
+          "internal/cli/cmd_next.go:1043-1073",
+          "internal/cli/archive.go:235-254",
+          "internal/decide/questions.go:325-359"
+        ]
+      },
+      {
+        "id": "G9",
+        "verdict": "achieved",
+        "evidence": "Ran `task check` (build + `go test ./... -race -count=1` + `golangci-lint run ./...` + `hosts:check`) myself in the repo root: build succeeded, every package's tests reported ok, golangci-lint reported '0 issues.', and hostgen --check produced no diff output. Captured exit status of the whole `task check` invocation was 0.",
+        "citations": []
+      }
+    ],
+    "at": "2026-08-30T14:35:17.180722156Z"
+  },
+  "follow_ups": [
+    {
+      "gate": "plan",
+      "severity": "major",
+      "title": "Task 1 tests the fake seam, not the real runCLI fallback",
+      "detail": "Task 1’s cross-package test drives fakeReviewer.Review, which newly calls resolveTimeout itself. It can pass even if runCLI—the production path named by A1—does not call resolveTimeout or applies a different unset-timeout fallback. The grep checks only that resolveTimeout exists. Add verification that exercises or otherwise directly pins runCLI’s use of the shared resolver; otherwise G1’s no-drift evidence is indirect and defeatable.",
+      "source": "override",
+      "ts": "2026-08-29T11:27:53.51200711Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "minor",
+      "title": "Task 1 disagrees about the explicit-timeout cancellation row",
+      "detail": "The plan.md Task 1 section requires a second row with a short explicit Timeout and longer fake sleep, but plan.index.json Task 1 specifies only the unset-timeout fallback test and its verify selector does not clearly require the cancellation row. Either include the row explicitly in the executable task or remove it from plan.md.",
+      "source": "override",
+      "ts": "2026-08-29T11:27:53.512008015Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "minor",
+      "title": "Boundary tests weaken a representable strict-containment case",
+      "detail": "Task 2 classifies MaxDuration-SessionMargin and MaxDuration-Grace as saturation points where only non-strict bounds are asserted. At exactly those inputs, adding the margin produces representable MaxDuration and is still strictly greater than the input. Assert the strict relation at equality, reserving the non-strict-only rule for inputs above the threshold.",
+      "source": "override",
+      "ts": "2026-08-29T11:27:53.51200805Z"
+    },
+    {
+      "severity": "blocking",
+      "file": "commands/takt.md",
+      "line": 45,
+      "wave": 0,
+      "title": "Prompt invariant \"never push except push_pr\" is now false: archived pr cleanup pushes too",
+      "detail": "This wave's archive.go change (prCleanup, archive.go:179-198) makes an `archived` stop's `cleanup` list carry a literal `git push origin \u003cbranch\u003e` / `git push -u origin \u003cbranch\u003e` command for the pr disposition — a second place a takt op instructs a push, not covered by this line's sole named exception `(push_pr)`. The op-table's `stop` bullet (commands/takt.md:33) already generically tells the agent to run confirmed cleanup commands, so this line now contradicts it inside the same file: an LLM strictly honouring the Invariants section's 'never push except push_pr' could refuse the very cleanup push task 7 exists to hand back. The identical stale sentence is duplicated in hosts/copilot/skills/takt/SKILL.md:46 (same text, not part of the crossHostInvariants test set, so it won't be caught by TestPromptInvariantsReadTheSameOnEveryHost either). Neither file is mentioned anywhere in this run's own docs/takt/lets-work-on-60-and-62/plan.md task 8, which only targets README.md and the design spec — so this gap is not already tracked to be fixed by a later task in this run.",
+      "source": "internal",
+      "ts": "2026-08-29T12:02:45.045201947Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/backend/fake.go",
+      "line": 45,
+      "wave": 0,
+      "task": 1,
+      "title": "recordReviewDeadline's failure path is never exercised",
+      "detail": "The new block `if p := f.getenv(\"TAKT_FAKE_REVIEW_TIMEOUT_FILE\"); p != \"\" { if err := recordReviewDeadline(ctx, p); err != nil { return errorResult(...) } }` (fake.go:45-49) has no test that makes the write fail (e.g. a path in a nonexistent directory), so the errorResult branch this new code adds is untested. TestBackendFallbackMatchesTheShippedDefault only exercises the success path via a valid t.TempDir() file.",
+      "source": "internal",
+      "ts": "2026-08-29T12:08:06.656143429Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/brief_stable_test.go",
+      "line": 188,
+      "wave": 0,
+      "task": 6,
+      "title": "Added assertion re-invokes commitBundle rather than checking preparePushPR's own call",
+      "detail": "Lines 188-191 call `commitBundle(context.Background(), r.ws, r.bdir, r.slug, \"pr body\")` a second, separate time to assert `committed==false`. Since `r.ws` is the same zero-value workspace (Dir.InRepo false) that preparePushPR's own internal commitBundle call at line 171 already ran through without error, this second call is a fresh, independent invocation rather than an observation of what preparePushPR actually did — it documents commitBundle's no-op behaviour in isolation more than it verifies the integration point, though it does satisfy the brief's explicit request for 'one assertion making that explicit'.",
+      "source": "internal",
+      "ts": "2026-08-29T12:08:06.657020915Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1066,
+      "wave": 0,
+      "task": 6,
+      "title": "preparePushPR's new commitBundle error path is untested",
+      "detail": "The new `if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\"); err != nil { return err }` propagates a commit failure exactly like the pre-existing read/write failures preparePushPR already returns, but no test forces commitBundle to fail here (e.g. a broken repo/lock) to confirm the error surfaces through preparePushPR and ultimately fails `run` the same way assertPreparePushPRRefuses covers for the spec/goals reads. The codebase already has a pattern for simulating git-commit failures (internal/cli/archive_test.go's TestArchiveCommitIsRetriedAfterASoftReset) that could have been reused here.",
+      "source": "internal",
+      "ts": "2026-08-29T12:08:06.657021017Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/archive_test.go",
+      "line": 696,
+      "wave": 0,
+      "task": 7,
+      "title": "Cleanup-empty checkpoints skip op/reason assertions",
+      "detail": "In TestArchivedPROffersThePushUntilItIsDone (also at line 710), the checks `len(got) != 0` / `len(again) != 0` read `o[\"cleanup\"]` without first asserting `o[\"op\"] == \"stop\"` and `o[\"reason\"] == stopArchived` (as the earlier and later checkpoints in the same test do, e.g. lines 673-674, 683-684, 722-723). cleanupOf silently returns an empty slice when the \"cleanup\" key is absent or of the wrong shape, so if `next` regressed to returning a different op entirely at these points, the 'nothing offered' assertions would pass anyway, masking the regression in exactly the rows this test exists to pin (G7's zero-cleanup cases).",
+      "source": "internal",
+      "ts": "2026-08-29T12:42:47.857600296Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 121,
+      "wave": 1,
+      "task": 3,
+      "title": "closeBudget's nil-ActiveWave guard is untested and unreachable",
+      "detail": "closeBudget's `if st.ActiveWave == nil { return b }` branch (lines 121-123) has no test in close_budget_test.go. It's also unreachable in production: closeBudget is only called from closeWaveBudgeted, which cmdCloseWave only reaches after already checking tgt.st.ActiveWave != nil. Low risk since it's dead code on the real call path, but as written it's a new branch a regression in could go uncaught.",
+      "source": "internal",
+      "ts": "2026-08-29T13:09:01.537915978Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 126,
+      "wave": 1,
+      "task": 3,
+      "title": "The 'counted set' predicate is duplicated inline instead of shared",
+      "detail": "closeBudget's task filter `t.Wave != st.ActiveWave.N || t.Status != bundle.StatusPending` (line 126) is a verbatim copy of resolveTaskResults' filter `t.Wave != aw.N || t.Status != bundle.StatusPending` (line 280). Both doc comments explicitly assert the two sets must stay identical (closeBudget's comment: 'the set resolveTaskResults grades'), and task-4's cross-check integration test that would guard this invariant doesn't exist yet in this wave. With the predicate spelled out twice rather than factored into one helper (e.g. a shared `pendingWaveTasks(st)` iterator), a future edit to one loop's condition can silently desync the deadline's counted work from the work actually graded, with nothing but human review catching it until the task-4 test lands.",
+      "source": "internal",
+      "ts": "2026-08-29T13:09:01.537916166Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 462,
+      "wave": 2,
+      "title": "Design spec still shows the deleted fixed close-wave timeout as the canonical exec example",
+      "detail": "The `exec` example for `takt close-wave` still reads `\"timeout_s\": 1800` — the exact value of the now-deleted `closeTimeoutS` constant. This diff removes that constant and makes the close-wave exec op's timeout_s a computed value (`sessionSeconds(deadline.Close(deadline.Budget{...}))`, spec A2.2), which generally will not be 1800 (it scales with VerifyCommands/ReviewTasks/BackendTimeout/VerifyTimeout and is strictly greater than deadline.Close's own result). This is the master design reference under docs/superpowers/specs/ that the rubric names explicitly, and it now documents the pre-A2.2 fixed-timeout behaviour this wave's diff replaces. The spec/plan docs that guided this task (docs/takt/lets-work-on-60-and-62/plan.md and spec.md) do not list this file among the ones to update, so nothing else in the run addresses it.",
+      "source": "internal",
+      "ts": "2026-08-30T13:30:28.562940404Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 337,
+      "wave": 4,
+      "task": 8,
+      "title": "§4.7 commit-message catalog omits the new \"pr body\" commit",
+      "detail": "The \"Commits.\" bullet enumerates every message takt commits with (`wave \u003cn\u003e — tasks…`, `plan → execute`, `archive`) but not the `takt(\u003cslug\u003e): pr body` commit that `preparePushPR` (internal/cli/cmd_next.go) now makes when it writes `finish/pr.md`, before the session's `push_pr` runs `git push`. This is a branch-wide behavior change (run's own spec.md: \"next commits finish/pr.md in the commit the push carries\", goal G6, tested by TestPushPRLeavesTheBodyInHead) that this final docs wave did not fold into the invariant list it lives next to.",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.977719798Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 487,
+      "wave": 4,
+      "task": 8,
+      "title": "§5.2's \"exactly when\" wording for pr cleanup is looser than §7.5 step 5's own case list",
+      "detail": "§5.2 (lines 486-488) says a `pr` archive carries the push as `cleanup` \"exactly when the remote-tracking ref is missing commits.\" §7.5 step 5 (lines 892-897), added in the same diff and describing the same `prCleanup` predicate, adds a case §5.2 omits: \"a failed git read still offers the push\" — which matches `internal/cli/archive.go`'s `prCleanup` (both `CommitExists` and `IsAncestor` error paths return the push regardless of whether the ref is actually missing anything). So on a read failure the push can be offered even when the ref is not actually missing commits, which the §5.2 sentence's \"exactly when\" does not account for. §7.5's fuller statement is accurate; §5.2's summary overclaims precision. Low impact since §5.2 cross-references §7.5 step 5 for the mechanism, but the two sentences describe the same rule slightly differently within the same document.",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.97772009Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 814,
+      "wave": 4,
+      "task": 8,
+      "title": "review_error gate's dynamic retry text (backends.\u003cname\u003e.timeout) is undocumented",
+      "detail": "internal/decide/questions.go's questionReviewError now names the specific `backends.\u003cname\u003e.timeout` key (and its current deadline) in the retry option's description when the review errored, falling back to the literal placeholder key when no backend can be named — a branch change (run spec G5). Line 814 still describes the gate only as \"(retry / skip this task's review with reason / stop)\" with no mention of this. This matches the doc's existing terseness for other gates' option text, so it's a minor gap rather than a clear regression.",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.977720291Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 869,
+      "wave": 4,
+      "task": 8,
+      "title": "§7.5 step 4's `pr` disposition prose doesn't mention finish/pr.md is committed before the push",
+      "detail": "The paragraph describing `pr: run push_pr` says the body file path (`inputs.pr_body_path`, naming `finish/pr.md`) is handed to the session for `gh pr create --body-file`, but never says takt commits that file into the branch first (subject `pr body`) so the pushed branch already carries the PR body it was created from. A reader of this section would still believe the body is only written to disk, not committed — the exact behavior issue #62's first half changed, per the run's own spec.md and internal/cli/cmd_next.go's preparePushPR doc comment (\"Committing here... is what puts finish/pr.md in the branch before the session pushes it\").",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.97772041Z"
+    }
+  ],
+  "internal_review": {
+    "candidates": 26,
+    "confirmed": 22,
+    "false_positives": 4,
+    "unattributed": 2,
+    "by_lens": {
+      "consistency": {
+        "reported": 8,
+        "confirmed": 6
+      },
+      "correctness": {
+        "reported": 2,
+        "confirmed": 2
+      },
+      "docs": {
+        "reported": 8,
+        "confirmed": 6
+      },
+      "intent": {
+        "reported": 1,
+        "confirmed": 1
+      },
+      "simplicity": {
+        "reported": 1,
+        "confirmed": 1
+      },
+      "tests": {
+        "reported": 9,
+        "confirmed": 9
+      }
+    },
+    "scoped_passes": 0,
+    "scoped_changed_verdict": 0,
+    "overlap": 0,
+    "skipped": 0
+  }
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/op"
 )
 
@@ -31,6 +32,16 @@ const (
 	ctxAgent     = "agent"
 	ctxAttempts  = "attempts"
 	ctxProblems  = "problems"
+	ctxBackends  = "backends"
+)
+
+// The two keys of one entry of the review_error gate's `backends` context
+// list. Both values are pre-rendered strings, so the payload `takt next`
+// persists for that gate round-trips through JSON byte-identically and the
+// re-render reads back exactly what the first render wrote.
+const (
+	ctxBackendKey     = "key"
+	ctxBackendTimeout = "timeout"
 )
 
 // Gate artifact ids, spelled once because they travel in ask contexts and
@@ -147,6 +158,28 @@ type WaveFacts struct {
 	Recorded map[int]bool // task id → digest present for this attempt
 	Close    *CloseFacts  // nil until close-wave wrote the slice record
 	Internal InternalFacts
+
+	// VerifyCommands is how many verify commands the plan index holds
+	// across the active wave's pending tasks — the set close-wave grades,
+	// each command bounded by verify_timeout and run serially.
+	VerifyCommands int
+	// ReviewTasks is how many of the active wave's pending tasks get a
+	// backend review: all of them when review.tasks is on, none of them
+	// when it is off.
+	//
+	// Both counts are zero when the plan index cannot be read or parsed,
+	// because close-wave then fails on that index before it verifies or
+	// reviews anything — a budget for work the binary never reaches is not
+	// a containment, and the floor is the honest deadline for it.
+	ReviewTasks int
+}
+
+// ReviewerBackend is one entry of the configured reviewer chain that has a
+// real config key: the name as backends.reviewer spells it, and the deadline
+// backends.<name>.timeout currently holds.
+type ReviewerBackend struct {
+	Name    string
+	Timeout time.Duration
 }
 
 // Facts is everything Decide needs beyond the state.
@@ -157,6 +190,19 @@ type Facts struct {
 	Recover        bool
 	LockTTL        time.Duration
 	WaveStaleAfter time.Duration
+	// BackendTimeout is the deadline one backend review may take
+	// (backends.<name>.timeout, worst case across the reviewer chain).
+	BackendTimeout time.Duration
+	// VerifyTimeout is the deadline one verify command may take
+	// (config.verify_timeout); it is per command, never per run.
+	VerifyTimeout time.Duration
+	// ReviewerBackends are the configured reviewer chain entries that have a
+	// real config key, in preference order — what the review_error gate names
+	// as the deadline to raise (spec A3). There is no health probe:
+	// gatherFacts must not shell out, so it cannot know which backend would
+	// actually run, and this names every candidate rather than the one that
+	// would.
+	ReviewerBackends []ReviewerBackend
 
 	HasSpec       bool
 	HasGoals      bool
@@ -261,10 +307,14 @@ func run(step, narration string, inputs map[string]any) Decision {
 		Done: fmt.Sprintf("takt done --step %s --slug %v", step, inputs["slug"])}}
 }
 
-const (
-	reviewTimeoutS = 900
-	closeTimeoutS  = 1800
-)
+// sessionSeconds is the timeout an exec op carries for a command the binary
+// caps at inner: [deadline.Session] of that cap, in whole seconds. It is
+// strictly longer than inner everywhere below saturation, so the binary
+// reports its own timeout as a result instead of being cut off by the
+// session that asked for the work.
+func sessionSeconds(inner time.Duration) int {
+	return int(deadline.Session(inner).Seconds())
+}
 
 func decideBrainstorm(st *bundle.State, f Facts) Decision {
 	in := map[string]any{ctxSlug: st.Slug, "topic": st.Topic}
@@ -293,7 +343,8 @@ func decideBrainstorm(st *bundle.State, f Facts) Decision {
 				ctxSlug: st.Slug, ctxGate: specGate, ctxAttempts: f.SpecRounds,
 			})
 		}
-		return exec("review the spec", "takt review spec --slug "+st.Slug, reviewTimeoutS)
+		return exec("review the spec", "takt review spec --slug "+st.Slug,
+			sessionSeconds(deadline.GateReview(f.BackendTimeout)))
 	}
 	return Decision{Action: ActTransition, Phase: bundle.PhasePlan}
 }
@@ -326,7 +377,8 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 				},
 			)
 		}
-		return exec("review the plan", "takt review plan --slug "+st.Slug, reviewTimeoutS)
+		return exec("review the plan", "takt review plan --slug "+st.Slug,
+			sessionSeconds(deadline.GateReview(f.BackendTimeout)))
 	}
 	if st.Config.Alignment {
 		switch {
@@ -402,6 +454,25 @@ func decideExecute(st *bundle.State, f Facts) (Decision, error) {
 	return Decision{Action: ActTransition, Phase: bundle.PhaseFinish}, nil
 }
 
+// backendsContext renders the reviewer chain for the review_error gate: one
+// entry per backend with a config key, in preference order, each carrying
+// the key the user would raise and the deadline it holds today.
+//
+// The list is []any of map[string]any — the shape JSON decoding produces —
+// so the first render and every re-render of the persisted gate payload see
+// the same types, and the durations are rendered here rather than in the
+// question so that payload is stable bytes.
+func backendsContext(bs []ReviewerBackend) []any {
+	out := make([]any, 0, len(bs))
+	for _, b := range bs {
+		out = append(out, map[string]any{
+			ctxBackendKey:     "backends." + b.Name + ".timeout",
+			ctxBackendTimeout: b.Timeout.String(),
+		})
+	}
+	return out
+}
+
 func lowestWave(st *bundle.State, ids []int) int {
 	w := -1
 	for _, id := range ids {
@@ -442,7 +513,13 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 		return exec(
 			fmt.Sprintf("closing wave %d: verify + review %d tasks", aw.N, len(aw.Tasks)),
 			"takt close-wave --slug "+st.Slug,
-			closeTimeoutS,
+			sessionSeconds(deadline.Close(deadline.Budget{
+				VerifyTimeout:  f.VerifyTimeout,
+				VerifyCommands: f.Wave.VerifyCommands,
+				BackendTimeout: f.BackendTimeout,
+				ReviewTasks:    f.Wave.ReviewTasks,
+				MaxParallel:    st.Config.MaxParallel,
+			})),
 		)
 	}
 	if c.Committed {
@@ -460,6 +537,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 				// (cli.sliceOf) — so that is the file to point the user at.
 				"error": "see waves/" + strconv.Itoa(aw.N) +
 					"/close.s" + strconv.Itoa(max(1, aw.Slice)) + ".json",
+				ctxBackends: backendsContext(f.ReviewerBackends),
 			},
 		)
 	}

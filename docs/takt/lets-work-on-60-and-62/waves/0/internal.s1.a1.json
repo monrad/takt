@@ -1,0 +1,218 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:02:45.044501842Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "README.md",
+      "line": 151,
+      "title": "Shipped config example still shows the old 5m backend timeout",
+      "detail": "README.md:151-152 and docs/superpowers/specs/2026-08-24-takt-design.md:1133-1134 both show `\"timeout\": \"5m\"` for copilot and claude in the shipped-defaults JSON example, but internal/config/config.go's `defaultBackendTimeout` is raised to `15 * time.Minute` in this diff (config.go:189 area, was 573 pre-diff). Both docs now describe a default that no longer matches `config.Defaults()`. This is already tracked: docs/takt/lets-work-on-60-and-62/plan.md task 8 (lines 255-256) names these exact two locations for a follow-up docs task later in this run, so no action is owed within wave 0 — flagged here for completeness.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "commands/takt.md",
+      "line": 45,
+      "title": "Prompt invariant \"never push except push_pr\" is now false: archived pr cleanup pushes too",
+      "detail": "This wave's archive.go change (prCleanup, archive.go:179-198) makes an `archived` stop's `cleanup` list carry a literal `git push origin \u003cbranch\u003e` / `git push -u origin \u003cbranch\u003e` command for the pr disposition — a second place a takt op instructs a push, not covered by this line's sole named exception `(push_pr)`. The op-table's `stop` bullet (commands/takt.md:33) already generically tells the agent to run confirmed cleanup commands, so this line now contradicts it inside the same file: an LLM strictly honouring the Invariants section's 'never push except push_pr' could refuse the very cleanup push task 7 exists to hand back. The identical stale sentence is duplicated in hosts/copilot/skills/takt/SKILL.md:46 (same text, not part of the crossHostInvariants test set, so it won't be caught by TestPromptInvariantsReadTheSameOnEveryHost either). Neither file is mentioned anywhere in this run's own docs/takt/lets-work-on-60-and-62/plan.md task 8, which only targets README.md and the design spec — so this gap is not already tracked to be fixed by a later task in this run.",
+      "id": "c2",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 886,
+      "title": "Design spec still says \"pr and keep ask git for nothing at this step\"",
+      "detail": "Section 7.5 step 5 states '`pr` and `keep` ask git for nothing at this step,' and §5.2 repeats the claim at line 481-482 ('a `keep` or a `pr` archive asks git for nothing and carries neither [context nor cleanup]'). Task 7's new `prCleanup`/`dispositionPR` case in archive.go directly contradicts both sentences (pr now asks CommitExists/IsAncestor and can return a push in `cleanup`) — archive.go's own applyDisposition doc comment was rewritten to say so, but this canonical design doc was not. This is already tracked: docs/takt/lets-work-on-60-and-62/plan.md (task 8, lines 257-262 of plan.md) names both this exact line and §5.2's :480-481 for correction in a later wave, so no action is owed within wave 0 — flagged here only for completeness/visibility while the spec is checked.",
+      "id": "c3",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/backend/fake.go",
+      "line": 45,
+      "title": "recordReviewDeadline's failure path is never exercised",
+      "detail": "The new block `if p := f.getenv(\"TAKT_FAKE_REVIEW_TIMEOUT_FILE\"); p != \"\" { if err := recordReviewDeadline(ctx, p); err != nil { return errorResult(...) } }` (fake.go:45-49) has no test that makes the write fail (e.g. a path in a nonexistent directory), so the errorResult branch this new code adds is untested. TestBackendFallbackMatchesTheShippedDefault only exercises the success path via a valid t.TempDir() file.",
+      "id": "c4",
+      "task": 1,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/archive_internal_test.go",
+      "line": 1,
+      "title": "New internal test file omits the established testpackage nolint directive",
+      "detail": "archive_internal_test.go is `package cli` — an internal test, as its own top comment says (\"like slug_test.go\") — but every other internal (package cli) test file in this package carries `//nolint:testpackage // tests an unexported helper` immediately above the package clause: internal/cli/slug_test.go:1, internal/cli/revision_test.go:1, internal/cli/brief_stable_test.go, internal/cli/cmd_review_test.go, internal/cli/cmd_review_cache_test.go, internal/cli/cmd_record_test.go, and internal/bundle/state_test.go/write_test.go. .golangci.yml enables the `testpackage` linter and only exempts `_test\\.go` files from bodyclose/dupl/errcheck/funlen/goconst/gosec/noctx/wrapcheck (line 463-472) — testpackage is not in that exempt list. Without the directive, `golangci-lint run` will flag this new file exactly where every sibling internal test file in the package is consistently suppressed.",
+      "id": "c5",
+      "task": 7,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/archive_test.go",
+      "line": 696,
+      "title": "Cleanup-empty checkpoints skip op/reason assertions",
+      "detail": "In TestArchivedPROffersThePushUntilItIsDone (also at line 710), the checks `len(got) != 0` / `len(again) != 0` read `o[\"cleanup\"]` without first asserting `o[\"op\"] == \"stop\"` and `o[\"reason\"] == stopArchived` (as the earlier and later checkpoints in the same test do, e.g. lines 673-674, 683-684, 722-723). cleanupOf silently returns an empty slice when the \"cleanup\" key is absent or of the wrong shape, so if `next` regressed to returning a different op entirely at these points, the 'nothing offered' assertions would pass anyway, masking the regression in exactly the rows this test exists to pin (G7's zero-cleanup cases).",
+      "id": "c6",
+      "task": 7,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/brief_stable_test.go",
+      "line": 188,
+      "title": "Added assertion re-invokes commitBundle rather than checking preparePushPR's own call",
+      "detail": "Lines 188-191 call `commitBundle(context.Background(), r.ws, r.bdir, r.slug, \"pr body\")` a second, separate time to assert `committed==false`. Since `r.ws` is the same zero-value workspace (Dir.InRepo false) that preparePushPR's own internal commitBundle call at line 171 already ran through without error, this second call is a fresh, independent invocation rather than an observation of what preparePushPR actually did — it documents commitBundle's no-op behaviour in isolation more than it verifies the integration point, though it does satisfy the brief's explicit request for 'one assertion making that explicit'.",
+      "id": "c7",
+      "task": 6,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 1066,
+      "title": "preparePushPR's new commitBundle error path is untested",
+      "detail": "The new `if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\"); err != nil { return err }` propagates a commit failure exactly like the pre-existing read/write failures preparePushPR already returns, but no test forces commitBundle to fail here (e.g. a broken repo/lock) to confirm the error surfaces through preparePushPR and ultimately fails `run` the same way assertPreparePushPRRefuses covers for the spec/goals reads. The codebase already has a pattern for simulating git-commit failures (internal/cli/archive_test.go's TestArchiveCommitIsRetriedAfterASoftReset) that could have been reused here.",
+      "id": "c8",
+      "task": 6,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/deadline/deadline.go",
+      "line": 72,
+      "title": "New Grace/verifyMargin constants duplicate cmd_review.go/cmd_verify.go's existing ones, un-unified for now",
+      "detail": "deadline.go:72 adds `Grace = 30 * time.Second` — task 2's own brief describes this as \"cmd_review.go's reviewGrace moves here (value unchanged)\" — and deadline.go:76 adds an unexported `verifyMargin = 30 * time.Second`. Neither call site is repointed at the new package in this wave: internal/cli/cmd_review.go:82 still declares its own `reviewGrace = 30 * time.Second` (used at cmd_review.go:176), internal/cli/cmd_verify.go:15 still declares its own `verifyMargin = 30 * time.Second` (used at cmd_verify.go:111), and internal/cli/cmd_close_wave.go:30's fixed `closeWaveTimeout = 30 * time.Minute` is untouched even though deadline_test.go's own worked example (TestCloseBudgetsTheWave, 'eight tasks... exceeds today's fixed 30m') proves a realistic 8-task wave already needs 192m. This is evidently staged for a later task (the plan's alignment-verdicts.md describes call-site rewiring as a separate step), so it is not this wave's own tasks failing to do their job, but it does leave two independent, untested-for-drift 30s constants (and a stale 30m cap) coexisting in the tree in the meantime — unlike task 1's defaultTimeout/defaultBackendTimeout pair, which does get an explicit equality test (internal/cli/backend_timeout_test.go).",
+      "id": "c9",
+      "task": 2,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "README.md:151-152 does show \"timeout\": \"5m\" while internal/config/config.go now sets defaultBackendTimeout = 15 * time.Minute (config.go:192) — the factual claim is true, but it is an existing, tracked gap: docs/takt/lets-work-on-60-and-62/plan.md:255-256 explicitly names 'README.md:151-152' and the design doc's ':1133-1134' for correction by task 8, later in this same run. The candidate itself concedes 'no action is owed within wave 0.' Existing mitigation found.",
+      "citations": [
+        "README.md:151",
+        "docs/takt/lets-work-on-60-and-62/plan.md:255"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "commands/takt.md:45 reads 'Never commit or push except where an op says so (`push_pr`); ... never delete or check out branches — the `archived` stop lists what is left for you as `cleanup`.' archive.go's new prCleanup (internal/cli/archive.go:235-254) now returns cleanup entries 'git push origin \u003cbranch\u003e' / 'git push -u origin \u003cbranch\u003e' for the pr disposition's archived stop, and the op table's own stop bullet (commands/takt.md:33) instructs the agent to 'show those git commands to the user and ask before running any of them' — i.e. run a push that is not push_pr. The identical stale sentence is duplicated verbatim in hosts/copilot/skills/takt/SKILL.md:46. Grepping docs/takt/lets-work-on-60-and-62/plan.md for 'takt.md' or 'SKILL.md' returns no hits, so unlike c1/c3 this gap is not tracked by any later task in this run's own plan. The crossHostInvariants anchor list in internal/prompt/prompt_test.go:84-95 anchors only 'never run `git add -A`' from that bullet, not the push clause, so TestPromptInvariantsReadTheSameOnEveryHost would not catch this even if the two host files were made to disagree.",
+      "citations": [
+        "commands/takt.md:45",
+        "commands/takt.md:33",
+        "internal/cli/archive.go:235",
+        "internal/prompt/prompt_test.go:89"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "false_positive",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:886 does say '`pr` and `keep` ask git for nothing at this step,' and :481 repeats 'a `keep` or a `pr` archive asks git for nothing and carries neither' — both now contradicted by prCleanup's git reads (archive.go:237,246). But this is the same tracked gap as c1: plan.md:257-262 explicitly names both this exact §7.5 line and the §5.2 sentence at :480-481 for task 8's later correction. Existing mitigation found; no action owed within wave 0.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:886",
+        "docs/takt/lets-work-on-60-and-62/plan.md:257"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "internal/backend/fake.go:45-49 adds `if p := f.getenv(\"TAKT_FAKE_REVIEW_TIMEOUT_FILE\"); p != \"\" { if err := recordReviewDeadline(ctx, p); err != nil { return errorResult(...) } }`. The only test that sets TAKT_FAKE_REVIEW_TIMEOUT_FILE is internal/cli/backend_timeout_test.go, which uses `filepath.Join(t.TempDir(), \"review-deadline\")` — a writable path — so os.WriteFile inside recordReviewDeadline (fake.go:107-113) never fails and the errorResult branch is never exercised. No other test sets this env var (grep across the repo confirms a single usage) and plan.md/alignment-verdicts.md name no deferral of this coverage. No existing mitigation found.",
+      "citations": [
+        "internal/backend/fake.go:45",
+        "internal/cli/backend_timeout_test.go:31"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "false_positive",
+      "evidence": "archive_internal_test.go:1 is indeed `package cli` with no `//nolint:testpackage` directive, unlike slug_test.go:1 and the other internal test files. But golangci-lint's testpackage linter (github.com/maratori/testpackage@v1.1.2, pkg/testpackage/testpackage.go:13-17,61) defaults `skip-regexp` to `(export|internal)_test\\.go` and applies it with `regexp.MatchString` (substring match) against the filename; `archive_internal_test.go` contains the substring `internal_test.go` and is therefore skipped by the linter's own file filter before `processTestFile` ever runs, regardless of any nolint comment. .golangci.yml has no `testpackage:` settings block overriding skip-regexp, so the default applies. `golangci-lint run` will NOT flag this file, refuting the candidate's central testable claim.",
+      "citations": [
+        "internal/cli/archive_internal_test.go:1",
+        "/home/mmk/go/pkg/mod/github.com/maratori/testpackage@v1.1.2/pkg/testpackage/testpackage.go:16",
+        "/home/mmk/go/pkg/mod/github.com/maratori/testpackage@v1.1.2/pkg/testpackage/testpackage.go:61"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/archive_test.go:696 `if got := cleanupOf(t, o); len(got) != 0 {` and :710 `if again := cleanupOf(t, d.nextOp()); len(again) != 0 {` check only cleanup emptiness, with no preceding `o[\"op\"] == \"stop\"` / `o[\"reason\"] == stopArchived` assertion — unlike the checkpoints at :673-674, :682-684 and :721-723 in the same test, which do check op/reason before reading cleanup. cleanupOf (archive_test.go:645-656 in this file, corresponding to diff lines defining it) does `raw, _ := o[\"cleanup\"].([]any)` and returns an empty slice when the key is absent or of the wrong shape, so a regression that changed `next`'s returned op entirely (to something without a `cleanup` key) would still pass these two 'nothing offered' assertions.",
+      "citations": [
+        "internal/cli/archive_test.go:696",
+        "internal/cli/archive_test.go:710"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/brief_stable_test.go:188-191 calls `commitBundle(context.Background(), r.ws, r.bdir, r.slug, \"pr body\")` as a fresh, second invocation to assert `committed==false`, rather than observing the outcome of the commitBundle call preparePushPR itself already made internally at cmd_next.go:1066. Since `r.ws` is the zero-value `\u0026workspace{}` fixture (Dir.InRepo false, per the comment at brief_stable_test.go:162-166), this second call exercises the same no-op code path independently rather than inspecting what preparePushPR's own call actually did.",
+      "citations": [
+        "internal/cli/brief_stable_test.go:188",
+        "internal/cli/cmd_next.go:1066"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/cmd_next.go:1066 `if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\"); err != nil { return err }` has no test forcing this specific commitBundle call to fail. assertPreparePushPRRefuses (brief_stable_test.go:198-212) and TestPreparePushPRStopsOnAnyUnreadableInput (brief_stable_test.go:228-253) only break spec.md/goals.md/finish/goals.json reads, never the commit step. The repo does have an existing '.git/index.lock' failure-injection pattern (archive_test.go:531,544 and cmd_review_failure_test.go:183,190) that could have been reused for this new call site, but it was not.",
+      "citations": [
+        "internal/cli/cmd_next.go:1066",
+        "internal/cli/brief_stable_test.go:198"
+      ]
+    },
+    {
+      "id": "c9",
+      "verdict": "false_positive",
+      "evidence": "internal/deadline/deadline.go:72 `const Grace = 30 * time.Second` and :76 `const verifyMargin = 30 * time.Second` do duplicate internal/cli/cmd_review.go:82's `reviewGrace` and internal/cli/cmd_verify.go:15's `verifyMargin` without an equality test, and cmd_close_wave.go:30's `closeWaveTimeout = 30 * time.Minute` is untouched. But this is explicitly staged: docs/takt/lets-work-on-60-and-62/briefs/alignment-verdicts.md:470-487 describes task 3 ('Binary-side call sites derive their caps') as the step that retargets cmd_close_wave.go, cmd_verify.go and cmd_review.go onto internal/deadline and deletes reviewGrace/verifyMargin, with its own verify greps (alignment-verdicts.md:725,729,733) checking for their removal. This wave (task 2) intentionally introduces only the package; task 3 is the tracked, separate follow-up that resolves the duplication — an existing mitigation.",
+      "citations": [
+        "internal/deadline/deadline.go:72",
+        "docs/takt/lets-work-on-60-and-62/briefs/alignment-verdicts.md:470"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c2",
+    "c4",
+    "c6",
+    "c7",
+    "c8"
+  ]
+}

@@ -1,0 +1,260 @@
+{
+  "schema": 1,
+  "spec_hash": "sha256:c63cdae567fe45c0fda8482502067aa2abea935defb6112b4cc24de23eb817c4",
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Raise the shipped backend review deadline to 15m and pin the mirrored fallback",
+      "description": "Spec A1. internal/config/config.go:141: defaultBackendTimeout 5m -\u003e 15m (it feeds both Backends.Copilot.Timeout and Backends.Claude.Timeout in Defaults(); per-backend config override is untouched). internal/backend/run.go:19: defaultTimeout 5m -\u003e 15m, kept as a mirrored constant in the house style (the package imports no takt package, per its waitDelay comment). Extract the fallback into a helper `resolveTimeout(d time.Duration) time.Duration` (returns defaultTimeout when d \u003c= 0) used by runCLI, behaviour unchanged. internal/backend/fake.go: fakeReviewer.Review resolves `d := resolveTimeout(req.Timeout)`, applies it to its context (context.WithTimeout around fakeDelay and the rest, so the recorded value is the deadline actually honoured), and, when the new env var TAKT_FAKE_REVIEW_TIMEOUT_FILE names a file, writes there the time REMAINING on that work context — deadline, ok := ctx.Deadline(); time.Until(deadline) — not the value it resolved (failure -\u003e errorResult, exactly recordReviewCall's contract). Recording the remaining time on the context the work actually runs under is what makes the test evidence: an implementation that resolves the 15m fallback but builds its context only for explicit timeouts records no deadline and fails. Do NOT change the TAKT_FAKE_REVIEW_CALLS line format — oploop_test.go parses it with strings.Cut. internal/config/config.go also gains two accessors with doc comments: `func (b Backends) Timeout(name string) (Duration, bool)` — the per-name config key, true only for \"copilot\"/\"claude\"; false for \"fake\" AND for any unknown name (A3's skip rule names both explicitly) — and `func (b Backends) ReviewBudgetTimeout() Duration` — the largest Timeout among the b.Reviewer entries for which Timeout(name) reports true; when none qualifies, the larger of Copilot.Timeout and Claude.Timeout. Tests: internal/config/config_test.go TestDefaults asserts time.Duration(d.Backends.Copilot.Timeout) == 15*time.Minute and the same for Claude; table tests for both accessors with EXPLICIT rows Timeout(\"copilot\") ok, Timeout(\"claude\") ok, Timeout(\"fake\") not ok, Timeout(\"nonesuch\") not ok (the unknown name is a direct row, not inferred from the fake row), and ReviewBudgetTimeout over: chain [copilot claude] with distinct timeouts -\u003e the larger; chain [claude] -\u003e claude's; chain [fake nonesuch copilot] -\u003e copilot's (keyless entries skipped); chain [fake] and the empty chain -\u003e the larger shipped field. New file internal/cli/backend_timeout_test.go (package cli_test): TestBackendFallbackMatchesTheShippedDefault — build the fake via backend.Registry with a getenv stub returning a t.TempDir() file for TAKT_FAKE_REVIEW_TIMEOUT_FILE, call Review(ctx, backend.ReviewRequest{}) (no Timeout), take before := time.Now() immediately before Review and after := time.Now() immediately after, parse the recorded remaining duration rem, and assert want-after.Sub(before) \u003c= rem \u003c= want where want = time.Duration(config.Defaults().Backends.Copilot.Timeout) — the observed remaining time is bounded by the real elapsed call, not by a slack constant, so a fallback that differs from the shipped default by even a second fails. A loose tolerance (30s against a 15m value) would let a distinct fallback pass and would not prove G1's no-drift requirement at all and time.Duration(config.Defaults().Backends.Claude.Timeout) — the equality that keeps the two constants from drifting (G1). Lint: godot, t.Parallel(), no magic numbers.",
+      "files": [
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/backend/run.go",
+        "internal/backend/fake.go",
+        "internal/cli/backend_timeout_test.go"
+      ],
+      "verify": [
+        "grep -Eq 'defaultBackendTimeout += 15 \\* time\\.Minute' internal/config/config.go",
+        "grep -q '15 \\* time.Minute' internal/backend/run.go",
+        "grep -q 'func resolveTimeout' internal/backend/run.go",
+        "grep -q 'TAKT_FAKE_REVIEW_TIMEOUT_FILE' internal/backend/fake.go",
+        "grep -q 'func (b Backends) ReviewBudgetTimeout' internal/config/config.go",
+        "grep -q 'nonesuch' internal/config/config_test.go",
+        "grep -q 'TestBackendFallbackMatchesTheShippedDefault' internal/cli/backend_timeout_test.go",
+        "grep -q 'TAKT_FAKE_REVIEW_SLEEP' internal/backend/fake.go",
+        "grep -q 'Deadline()' internal/backend/fake.go",
+        "go test -race -count=1 ./internal/config/... ./internal/backend/...",
+        "go test -race -count=1 -run TestBackendFallback ./internal/cli/",
+        "golangci-lint run ./internal/config/... ./internal/backend/... ./internal/cli/..."
+      ],
+      "depends_on": [],
+      "goals": [
+        "G1"
+      ],
+      "class": "implement",
+      "wave": 0
+    },
+    {
+      "id": 2,
+      "title": "New package internal/deadline: derived budgets with the containment invariants as table tests",
+      "description": "Spec A2.1 and A2.3. New files internal/deadline/deadline.go and deadline_test.go; standard library only, importing no takt package (what lets both internal/decide and internal/cli use it). API exactly: `type Budget struct { VerifyTimeout time.Duration; VerifyCommands int; BackendTimeout time.Duration; ReviewTasks int; MaxParallel int }`; `func Close(b Budget) time.Duration` = max(Floor, b.VerifyTimeout*VerifyCommands + 2*BackendTimeout*ceil(ReviewTasks/MaxParallel) + Overhead) with MaxParallel \u003c 1 treated as 1 and ReviewTasks 0 zeroing the review term; the ceil is computed overflow-safely as rounds := ReviewTasks/MaxParallel; if ReviewTasks%MaxParallel != 0 { rounds++ } — NEVER the common (ReviewTasks + MaxParallel - 1) / MaxParallel, whose numerator overflows int for large ReviewTasks and yields a negative round count, which would violate Close's lower bounds and its monotonicity while every duration-saturation row still passed (the saturation helpers guard durations, not this int) — verify is per command and serial across tasks (wave/verify.go:28-34, cmd_close_wave.go:215-227) so it is NOT divided by MaxParallel; reviews fan out to MaxParallel goroutines (cmd_close_wave.go:672-680) so they are; the 2x is the blind pass plus a possible scopedTaskReview second pass. `func Verify(per time.Duration, cmds int) time.Duration` = per*cmds + a 30s unexported margin (the arithmetic cmd_verify.go:111 owns today). `func GateReview(backend time.Duration) time.Duration` = backend + Grace. `func Session(inner time.Duration) time.Duration` = inner + SessionMargin, strictly greater for every inner in [0, MaxDuration-SessionMargin) and saturating at MaxDuration at or above it. Exported constants with doc comments: Overhead = 2m (scope, git, result serialization, process start), SessionMargin = 5m, Floor = 10m, Bootstrap = 2m (openTarget's budget in cmd_close_wave), and Grace = 30s — cmd_review.go's reviewGrace moves here (value unchanged) so decide and the binary share one grace and the containment relation is a property of this one package. Every arithmetic step saturates rather than wraps (spec A2.1): unexported addDur/mulDur helpers return MaxDuration = time.Duration(math.MaxInt64) when a sum or product would exceed it, and every negative duration or count is clamped to zero before use — a time.Duration is an int64 of nanoseconds, so plain + and * would wrap negative near the maximum and make Session(x) \u003e x and Close's lower bounds false exactly where they are asserted. The domain rule is ONE rule applied to every function alike (spec A2.1), never a per-function exemption: for each of Session, GateReview, Verify and Close, with w the work term it adds (SessionMargin, Grace, its margin, Overhead) — below saturation the strict bounds hold (Session(x) \u003e x, GateReview(bt) \u003e bt); at or above MaxDuration-w the function returns exactly MaxDuration, where strict containment is unrepresentable rather than unmet and only the non-strict form is claimed. Asserting GateReview(bt) \u003e bt at bt == MaxDuration would be impossible; the tests must not. Deliberately NO ceiling on Close: every inner unit is separately bounded, the sum is tight by construction, and its job is a backstop against a hang (design section 12). Tests (table tests, t.Parallel()): TestSessionStrictlyContainsEveryInner — Session(x) \u003e x over a table including 0 and large values; TestCloseBudgetsTheWave — the zero-value Budget floors at Floor; a one-task no-work wave floors; Close(b) \u003e= b.VerifyTimeout*VerifyCommands always and \u003e= 2*BackendTimeout when ReviewTasks \u003e= 1; the worked example VerifyTimeout=10m, VerifyCommands=16 (8 tasks x 2 commands), BackendTimeout=15m, ReviewTasks=8, MaxParallel=8 exceeds 30m (today's closeWaveTimeout); ceil is pinned (ReviewTasks=9, MaxParallel=8 -\u003e 2 rounds) and pinned again at the int boundary (ReviewTasks = math.MaxInt, MaxParallel = 8: the round count stays positive, Close saturates at MaxDuration and its lower bounds and monotonicity still hold — the row that fails on the (n+d-1)/d form); MaxParallel 0 behaves as 1; TestVerifyAndGateReviewBounds — Verify(per,n) \u003e= per*n; GateReview(bt) \u003e bt for bt below saturation; TestSaturatesInsteadOfWrapping — one boundary row per function: Session(MaxDuration), Session(MaxDuration-SessionMargin), GateReview(MaxDuration), GateReview(MaxDuration-Grace), Verify with a saturating per*cmds product, a Budget whose VerifyTimeout*VerifyCommands overflows and one whose review term overflows — each returns exactly MaxDuration, never a negative or wrapped duration, and only the NON-STRICT bounds are asserted at those points (the strict \u003e rows live in the below-saturation tests); negative VerifyTimeout/BackendTimeout and negative counts clamp to zero and floor at Floor; TestMonotonicity — Close, Verify and GateReview non-decreasing in every work input (VerifyTimeout, VerifyCommands, BackendTimeout, ReviewTasks; per and cmds; GateReview's single backend argument) and Close non-increasing in MaxParallel (the sound reading of G3: more parallelism can only shrink the review term — document this in the test). Lint: godot, mnd (the constants are named).",
+      "files": [
+        "internal/deadline/deadline.go",
+        "internal/deadline/deadline_test.go"
+      ],
+      "verify": [
+        "grep -q 'func Close(b Budget) time.Duration' internal/deadline/deadline.go",
+        "grep -q 'func Session(' internal/deadline/deadline.go",
+        "grep -q 'Grace' internal/deadline/deadline.go",
+        "grep -q 'TestSessionStrictlyContainsEveryInner' internal/deadline/deadline_test.go",
+        "grep -q 'TestCloseBudgetsTheWave' internal/deadline/deadline_test.go",
+        "grep -q 'func Grace\\|Grace =' internal/deadline/deadline.go",
+        "grep -q 'MaxDuration' internal/deadline/deadline.go",
+        "grep -q 'TestSaturatesInsteadOfWrapping' internal/deadline/deadline_test.go",
+        "grep -q 'TestMonotonicity' internal/deadline/deadline_test.go",
+        "go test -race -count=1 ./internal/deadline/...",
+        "golangci-lint run ./internal/deadline/..."
+      ],
+      "depends_on": [],
+      "goals": [
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "class": "implement",
+      "wave": 0
+    },
+    {
+      "id": 3,
+      "title": "Binary-side call sites: close-wave, verify and gate review derive their caps from internal/deadline",
+      "description": "Spec A2.2, the internal/cli half. cmd_close_wave.go: delete closeWaveTimeout (line 30) and its comment; cmdCloseWave runs openTarget under a context bounded by deadline.Bootstrap, then — once state and the plan index are known — runs closeWave under a fresh context bounded by deadline.Close(budget). The budget comes from a new PURE helper `closeBudget(cfg config.Config, st *bundle.State, idx plan.Index) deadline.Budget`: VerifyTimeout = time.Duration(cfg.VerifyTimeout); VerifyCommands = sum of len(idx.Task(id).Verify) over the ACTIVE WAVE'S PENDING TASKS (every t in st.Tasks with t.Wave == st.ActiveWave.N and t.Status == bundle.StatusPending — the set resolveTaskResults grades, which can exceed aw.Tasks after a recovery; tasks missing from the index count 0); BackendTimeout = time.Duration(cfg.Backends.ReviewBudgetTimeout()) (task 1's accessor); ReviewTasks = that same task count when st.Config.Review.Tasks, else 0; MaxParallel = st.Config.MaxParallel. The index is read ONCE and the same parsed value is threaded on — never read, discarded, and re-read where a later read could see different bytes. But the landed-close fast path comes FIRST and must not gain a dependency on a readable index: closeWave today checks landedClose (cmd_close_wave.go:78-81) and returns before readIndex (line 82), so a close whose commit already landed replays as a no-op even if plan.index.json has since gone missing or malformed. Restructure accordingly: cmdCloseWave opens the target under deadline.Bootstrap and asks landedClose first; a landed close returns immediately, under Bootstrap, with no index read at all. Only when the close still has work to do is the index read, the budget built, and the remaining close run under deadline.Close(budget). A readIndex error on THAT path is PROPAGATED as the command's error, never swallowed into a zero Budget — failing open would floor the deadline at 10m while the close runs real work, the exact containment A2.2 exists to establish. Two test rows: an unreadable/unparsable index on the working path -\u003e non-zero exit naming the file with no close attempted; and a LANDED close still replaying as a no-op after plan.index.json is deleted, which pins the fast path against this change. Task 4's integration test compares this helper against the facts gatherFacts produces for the same bundle, so the counted set must stay exactly as stated. cmd_verify.go: runVerifyCommands' inline `per*len(cmds)+verifyMargin` (line 111) becomes deadline.Verify(per, len(cmds)); delete the local verifyMargin constant; keep the doc comment's rationale (not derived from the caller's git-budget context). cmd_review.go: line 176's `time.Duration(be.Timeout)+reviewGrace` becomes deadline.GateReview(time.Duration(be.Timeout)); delete the local reviewGrace constant and move the substance of its comment (takt's deadline must not fire before the backend's) to the call site; internal/backend/live_test.go:30's smokeGrace comment says it mirrors cli.reviewGrace; that constant is being deleted, so the comment becomes false and the file is in scope: update the reference to deadline.Grace (prose only, no behavioural change, the 30s value is unrelated and stays). New file internal/cli/close_budget_test.go (package cli, an internal test like slug_test.go): TestCloseBudgetCountsTheWave — a state with 8 pending wave-0 tasks and an index giving each 2 verify commands, review.tasks on, MaxParallel 8 -\u003e Budget{10m,16,15m,8,8} and deadline.Close of it \u003e 30*time.Minute; review.tasks off -\u003e ReviewTasks == 0; a task absent from the index contributes 0 commands; tasks of other waves and non-pending tasks are not counted. Existing close/verify/review tests must keep passing unchanged. Lint: godot, t.Parallel().",
+      "files": [
+        "internal/cli/cmd_close_wave.go",
+        "internal/cli/cmd_verify.go",
+        "internal/cli/cmd_review.go",
+        "internal/cli/close_budget_test.go",
+        "internal/backend/live_test.go"
+      ],
+      "verify": [
+        "grep -c 'closeWaveTimeout' internal/cli/cmd_close_wave.go | grep -qx 0",
+        "grep -q 'deadline.Bootstrap' internal/cli/cmd_close_wave.go",
+        "grep -q 'deadline.Close' internal/cli/cmd_close_wave.go",
+        "grep -q 'deadline.Verify' internal/cli/cmd_verify.go",
+        "grep -c 'verifyMargin' internal/cli/cmd_verify.go | grep -qx 0",
+        "grep -q 'deadline.GateReview' internal/cli/cmd_review.go",
+        "grep -q 'TestCloseWaveRefusesWhenTheIndexCannotBeRead' internal/cli/close_budget_test.go",
+        "grep -q 'TestCloseBudgetCountsTheWave' internal/cli/close_budget_test.go",
+        "grep -c 'cli.reviewGrace' internal/backend/live_test.go | grep -qx 0",
+        "grep -q 'TestLandedCloseReplaysWithoutTheIndex' internal/cli/close_budget_test.go",
+        "go test -race -count=1 -run 'TestClose|TestVerify|TestReview' ./internal/cli/",
+        "golangci-lint run ./internal/cli/..."
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "goals": [
+        "G2"
+      ],
+      "class": "implement",
+      "wave": 1
+    },
+    {
+      "id": 4,
+      "title": "Decide-side: exec timeouts become deadline.Session of the matching cap; gathered facts proven equal to the binary budget",
+      "description": "Spec A2.2, the internal/decide half, plus the CLI-to-decide seam the plan review flagged. Delete reviewTimeoutS and closeTimeoutS (decide.go:264-267) and verifyTimeoutS (finish.go:38). Each exec op emits int(deadline.Session(cap).Seconds()) — a small shared helper, e.g. `func sessionSeconds(inner time.Duration) int` — where cap is the binary's own cap for the same work: spec review (decide.go:296) and plan review (decide.go:329) use deadline.GateReview(f.BackendTimeout); close-wave (decide.go:442-446) uses deadline.Close(deadline.Budget{VerifyTimeout: f.VerifyTimeout, VerifyCommands: f.Wave.VerifyCommands, BackendTimeout: f.BackendTimeout, ReviewTasks: f.Wave.ReviewTasks, MaxParallel: st.Config.MaxParallel}); verify (finish.go:90) uses deadline.Verify(f.VerifyTimeout, f.Finish.VerifyCommands) — thread f (or the two values) into decideVerify. Facts plumbing, the established pattern for config-derived durations (LockTTL, WaveStaleAfter, decide.go:153): decide.Facts gains BackendTimeout and VerifyTimeout time.Duration; decide.WaveFacts gains VerifyCommands and ReviewTasks int; decide.FinishFacts gains VerifyCommands int — each with a doc comment saying what it counts. internal/cli/facts.go gatherFacts fills BackendTimeout = time.Duration(ws.Cfg.Backends.ReviewBudgetTimeout()) and VerifyTimeout = time.Duration(ws.Cfg.VerifyTimeout); gatherIndexFacts returns the PARSED index — nil only when the file is unreadable or ParseIndex fails, NOT when validation finds problems, matching readIndex's parse-only view (counting only a valid index would let the decide budget floor while the binary budgets real work, breaking containment) — and gatherWaveFacts takes it and counts, over the ACTIVE WAVE'S PENDING TASKS in state (t.Wave == aw.N \u0026\u0026 t.Status == bundle.StatusPending, the same set task 3's closeBudget counts), VerifyCommands = sum of len(idx.Task(id).Verify) and ReviewTasks = the task count when st.Config.Review.Tasks else 0 (0 for both when idx is nil). internal/cli/finish_facts.go gatherFinishFacts fills FinishFacts.VerifyCommands = len(finish.UnionCommands(idx, extra)) via readIndex and finish.ReadExtra, the same union verifyAtHead runs. A readIndex error is PROPAGATED (gatherFinishFacts already returns an error; gatherFacts fails with it) rather than mapped to 0 commands: emitting an exec op whose timeout_s was computed from Verify(per, 0) while the binary then verifies a real union is the same fail-open containment break as task 3's, and it gets its own error-path test row. NOTE the spec's mention of cmd_doctor.go:54 is a misread — that site builds doctor.Options, not decide.Facts; no doctor change. Tests, two layers. (1) internal/decide (t.Parallel()): TestExecTimeoutsStrictlyContainTheBinaryCaps — with facts carrying BackendTimeout 15m, VerifyTimeout 10m, counted commands/tasks and MaxParallel 8: the spec-review and plan-review exec ops' TimeoutS == int(deadline.Session(deadline.GateReview(15m)).Seconds()) and strictly exceeds int(deadline.GateReview(15m).Seconds()); the close exec's TimeoutS == Session(Close(budget)) seconds and strictly exceeds Close(budget) seconds; in finish_test.go the verify exec's TimeoutS == Session(Verify(per, n)) seconds and strictly exceeds Verify(per, n) seconds (extend the existing fixtures with the new facts fields). (2) NEW package-internal integration test internal/cli/deadline_facts_test.go (package cli, like slug_test.go): TestGatheredFactsMatchTheBinaryBudget — build ONE real bundle on disk (testutil-style repo; a committed bundle with spec.md/goals.md/plan.md, a plan.index.json whose tasks carry distinct verify lists, state via bundle.SaveState with phase execute and ActiveWave over wave 0, where the pending set includes a wave-0 pending task OUTSIDE aw.Tasks and one task id missing from the index, plus a non-pending and an other-wave task that must not count; workspace built directly with Cfg mixing non-default VerifyTimeout/MaxParallel and a reviewer chain), run the REAL gatherFacts, assert facts.Wave.VerifyCommands \u003e 0 and facts.Wave.ReviewTasks \u003e 0 (a fill that stays zero fails), and assert deadline.Budget{facts.VerifyTimeout, facts.Wave.VerifyCommands, facts.BackendTimeout, facts.Wave.ReviewTasks, st.Config.MaxParallel} == closeBudget(ws.Cfg, st, idx) field for field — the decide side and the binary side budget the same work, which is what makes Session's strict margin a real containment (G4); a sub-test flips Review.Tasks off and asserts both sides drop ReviewTasks to 0 together. TestGatheredFinishFactsCountTheVerifyUnion — the same bundle moved to phase finish (committed HEAD so gatherFinishFacts' git reads answer): facts.Finish.VerifyCommands equals len(finish.UnionCommands(idx, extra)) computed directly, and is \u003e 0. Lint: godot, t.Parallel().",
+      "files": [
+        "internal/decide/decide.go",
+        "internal/decide/finish.go",
+        "internal/decide/decide_test.go",
+        "internal/decide/finish_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/finish_facts.go",
+        "internal/cli/deadline_facts_test.go"
+      ],
+      "verify": [
+        "grep -c 'reviewTimeoutS' internal/decide/decide.go | grep -qx 0",
+        "grep -c 'closeTimeoutS' internal/decide/decide.go | grep -qx 0",
+        "grep -c 'verifyTimeoutS' internal/decide/finish.go | grep -qx 0",
+        "grep -q 'deadline.Session' internal/decide/decide.go",
+        "grep -q 'BackendTimeout' internal/cli/facts.go",
+        "grep -q 'UnionCommands' internal/cli/finish_facts.go",
+        "grep -q 'TestExecTimeoutsStrictlyContainTheBinaryCaps' internal/decide/decide_test.go",
+        "grep -q 'closeBudget' internal/cli/deadline_facts_test.go",
+        "grep -q 'TestGatheredFactsMatchTheBinaryBudget' internal/cli/deadline_facts_test.go",
+        "grep -q 'TestGatheredFinishFactsCountTheVerifyUnion' internal/cli/deadline_facts_test.go",
+        "grep -q 'TestGatherFinishFactsPropagatesAnIndexReadError' internal/cli/deadline_facts_test.go",
+        "go test -race -count=1 ./internal/decide/...",
+        "go test -race -count=1 -run 'TestGathered|TestGatherFinishFacts' ./internal/cli/",
+        "golangci-lint run ./internal/decide/... ./internal/cli/..."
+      ],
+      "depends_on": [
+        1,
+        2,
+        3
+      ],
+      "goals": [
+        "G2",
+        "G4"
+      ],
+      "class": "implement",
+      "wave": 2
+    },
+    {
+      "id": 5,
+      "title": "The review_error gate's retry option names backends.\u003cname\u003e.timeout and its deadline, from gathered facts",
+      "description": "Spec A3, including the fact-gathering seam the plan review flagged. internal/decide/decide.go: Facts gains `ReviewerBackends []ReviewerBackend` with `type ReviewerBackend struct { Name string; Timeout time.Duration }` (doc: the configured reviewer chain entries that have a real config key, in preference order; no health probe — gatherFacts must not shell out, so this names every candidate rather than the one that would run). internal/cli/facts.go gatherFacts fills it by iterating ws.Cfg.Backends.Reviewer IN ORDER through the Backends.Timeout(name) accessor (task 1): entries reporting no key (fake, unknown names) are SKIPPED, never rendered as a key that does not exist; configured durations are carried through unchanged. decideActiveWave's review_error ask (decide.go:451-464) adds a `\"backends\"` context entry built as []any{map[string]any{\"key\": \"backends.\" + b.Name + \".timeout\", \"timeout\": b.Timeout.String()}} — []any, matching the shape JSON decoding produces, so the first render and every re-render see the same type — pre-rendered strings so the persisted gate payload round-trips through JSON byte-identically (rerender). internal/decide/questions.go questionReviewError (line 321): read the entry tolerantly ([]any of map[string]any, the defensive-decoding style toInt uses) and grow ONLY the retry option's description: keep \"Re-run `takt close-wave`.\" and append that when the cause was a timeout, raising the named key in .takt.json is the fix — each backend's key with its current deadline, e.g. \"backends.copilot.timeout (now 15m0s)\"; when the list is empty or absent, fall back to the literal `backends.\u003cname\u003e.timeout` with no deadline. The narration, question text, option set (retry/skip/stop) and answer commands are unchanged — existing tests asserting them must keep passing. Tests, two layers. (1) internal/decide/decide_test.go (t.Parallel()): TestReviewErrorNamesTheBackendTimeouts — rendering for the three shapes G5 names: (a) Facts.ReviewerBackends [{copilot,15m},{claude,15m}] on a review-errored wave -\u003e the review_error ask whose retry description contains \"backends.copilot.timeout\", \"backends.claude.timeout\", \"15m\" and \".takt.json\" with narration/question/choices unchanged; (b) a one-entry list (what a chain with a keyless entry yields after the skip) -\u003e only that key rendered; (c) an empty list -\u003e the literal \"backends.\u003cname\u003e.timeout\" and no duration. (2) NEW package-internal integration test internal/cli/reviewer_facts_test.go (package cli): TestGatherFactsFillsReviewerBackendsInPreferenceOrder — a real bundle (minimal committed fixture; same style as deadline_facts_test.go but self-contained) whose workspace Cfg has Backends.Reviewer = [\"claude\", \"fake\", \"nonesuch\", \"copilot\"] with Claude.Timeout 9m and Copilot.Timeout 7m; run the REAL gatherFacts and assert facts.ReviewerBackends is EXACTLY [{claude, 9m}, {copilot, 7m}] — preference order preserved, configured durations preserved, fake and the unknown name skipped, nothing invented; then set facts.Wave.Close = \u0026decide.CloseFacts{ReviewErrors: []int{2}} on an execute-phase state whose active wave is fully recorded, call decide.Decide with those gathered facts, and assert the rendered gate is review_error and its retry description names backends.claude.timeout with 9m before backends.copilot.timeout with 7m and contains neither \"fake\" nor \"nonesuch\" — the chain-to-question seam end to end; a broken or empty fill fails here (G5). Lint: godot, t.Parallel(), goconst (reuse choiceRetry and the existing option constants). Question is called EXACTLY ONCE per gate, on the in-memory context: nextRun.ask persists the rendered op and re-emits that stored payload verbatim, and cmd_answer.go only unmarshals it — nothing re-invokes questionReviewError on a decoded context. There is therefore no both-shapes normaliser to write; the renderer ranges over []any and asserts each element to map[string]any, skipping what does not assert (defensive, not a second code path). Tests: one calls decide.Decide directly and asserts the first-render option text names each configured backend's key and deadline; one round-trips ONLY the Context map through json.Marshal/Unmarshal and calls Question again, asserting identical option text — the honest check that the constructed shape survives decoding, rather than a claim about a rerender path that does not exist.",
+      "files": [
+        "internal/decide/decide.go",
+        "internal/decide/questions.go",
+        "internal/decide/decide_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/reviewer_facts_test.go"
+      ],
+      "verify": [
+        "grep -q 'ReviewerBackends' internal/decide/decide.go",
+        "grep -q 'ReviewerBackends' internal/cli/facts.go",
+        "grep -q 'backends.' internal/decide/questions.go",
+        "grep -q 'TestReviewErrorNamesTheBackendTimeouts' internal/decide/decide_test.go",
+        "grep -q 'TestGatherFactsFillsReviewerBackendsInPreferenceOrder' internal/cli/reviewer_facts_test.go",
+        "grep -q 'nonesuch' internal/cli/reviewer_facts_test.go",
+        "grep -q 'TestReviewErrorRendersIdenticallyAfterAContextRoundTrip' internal/decide/decide_test.go",
+        "go test -race -count=1 ./internal/decide/...",
+        "go test -race -count=1 -run TestGatherFactsFillsReviewerBackends ./internal/cli/",
+        "golangci-lint run ./internal/decide/... ./internal/cli/..."
+      ],
+      "depends_on": [
+        4
+      ],
+      "goals": [
+        "G5"
+      ],
+      "class": "implement",
+      "wave": 3
+    },
+    {
+      "id": 6,
+      "title": "next commits finish/pr.md in the commit the push carries",
+      "description": "Spec B1, issue #62's first half. internal/cli/cmd_next.go: `run` (line 981) takes a ctx — its single call site is loop's `return r.run(*d.Op)` at line 269, already inside loop(ctx) — and passes it to preparePushPR, which, after finish.WritePR succeeds, calls `commitBundle(ctx, r.ws, r.bdir, r.slug, \"pr body\")` (a commit error is returned like any other preparePushPR error). The commit message \"pr body\" matches the existing short-phrase style (archive, goals amended, \u003cstep\u003e done). Replay-safe by construction and say so in the doc comment: the body is re-derived on every next that emits this op, and commitBundle stages the bundle then reports committed=false when HasStagedIn finds nothing — identical bytes make no commit; a body that genuinely changed (goals assessed in between) makes a correct second \"pr body\" commit. Test in internal/cli/finish_test.go using the existing drivers: TestPushPRLeavesTheBodyInHead — drive to the push_pr op (driveToPushPR or atPushPROp), assert testutil.Git(t, d.root, \"ls-tree\", \"HEAD\", \"--\", \"docs/takt/demo/finish/pr.md\") is non-empty (the body the PR is created from is in the branch being pushed) and the HEAD subject is \"takt(demo): pr body\"; record the HEAD sha, run `next` again (push_pr not yet done, so the same op is re-derived) and assert the sha is unchanged — the immediate replay adds no commit (G6). Existing push_pr tests (TestPushPRRunOp, TestPushPRDoneRecordsTheURL, TestPushPRBodyListsGoalVerdicts) must keep passing; TestPushPRDoneRecordsTheURL's \"push_pr done\" subject assertion is unaffected because that commit still follows this one. Lint: godot, t.Parallel(). internal/cli/brief_stable_test.go holds TWO direct callers of preparePushPR and is in scope: line 165 in TestPreparePushPRWritesTheBodyAndNamesIt and line 191 in assertPreparePushPRRefuses (the refusal helper). BOTH calls become r.preparePushPR(context.Background(), \u0026data, inputs); grep preparePushPR to confirm no third. Its prFixture builds ws: \u0026workspace{} — a zero workspace whose Dir.InRepo is false — so the new commitBundle call is the documented external-bundle no-op there ((\"\", false, nil)) and every existing assertion still holds unchanged; add one assertion making that explicit, so the fixture documents why a bundle outside a repository is not a commit. No other caller exists (grep preparePushPR).",
+      "files": [
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go",
+        "internal/cli/brief_stable_test.go"
+      ],
+      "verify": [
+        "grep -q '\"pr body\"' internal/cli/cmd_next.go",
+        "grep -q 'TestPushPRLeavesTheBodyInHead' internal/cli/finish_test.go",
+        "grep -q 'preparePushPR(context' internal/cli/brief_stable_test.go",
+        "go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/",
+        "golangci-lint run ./internal/cli/..."
+      ],
+      "depends_on": [],
+      "goals": [
+        "G6"
+      ],
+      "class": "bounded",
+      "wave": 0
+    },
+    {
+      "id": 7,
+      "title": "Archiving a pr run hands the push back as cleanup exactly when git says commits are missing remotely",
+      "description": "Spec B2, issue #62's second half, covering every row of B2's table including diverged histories and a failure of EITHER git read. internal/cli/archive.go applyDisposition (line 183) gains `case dispositionPR:` (the constant lives in cmd_done.go) delegating to a new helper, e.g. `prCleanup(ctx, ws, st) []string`, that follows the function's stated rule — every question is put to git, never to state: (1) `exists, err := ws.Repo.CommitExists(ctx, \"refs/remotes/origin/\"+st.Branch)`; err != nil -\u003e return [\"git push origin \" + st.Branch] (a failed read must NOT fail the archived stop: the archive already landed, the session confirms every cleanup with the user, and a redundant suggestion costs nothing next to the missing push this issue is about); !exists -\u003e [\"git push -u origin \" + st.Branch]; (2) exists: `anc, err := ws.Repo.IsAncestor(ctx, st.Branch, \"refs/remotes/origin/\"+st.Branch)`; err != nil -\u003e the plain push (the second read's failure falls back exactly like the first's); anc -\u003e nil (the remote-tracking ref already contains every local commit, so a replayed archived next stops offering a push the user already ran); !anc -\u003e the plain push — the condition is \"the branch holds commits the remote-tracking ref does not\", NOT \"strictly ahead\": a DIVERGED branch also fails the ancestor test and must still be offered the push (the local commits are genuinely absent remotely; a push git refuses as non-fast-forward tells the user something true). Both gitx helpers exist (git.go CommitExists:262, IsAncestor:277); no new gitx method, and no network in takt — the push stays a session command. Rewrite applyDisposition's doc comment (\"pr and keep ask for nothing\" is no longer true — keep asks for nothing; pr asks git one question) and keep the pr case error-free by construction (it returns cleanup only, never an error). The verify below requires a SECOND IsAncestor call site in archive.go (applyMerge holds the only one today), so an ahead-only implementation that never asks the ancestry question cannot pass. Tests. internal/cli/archive_test.go TestArchivedPROffersThePushUntilItIsDone (package cli_test, t.Parallel()) — finishedRun(t); answer branch_finish pr; next -\u003e push_pr op; done --step push_pr --url \u003cu\u003e; next -\u003e stop archived, and with NO remote configured cleanup == [\"git push -u origin takt/demo\"] (CommitExists answers false through git's ExitError); then create a bare repo in t.TempDir(), `git remote add origin \u003cbare\u003e`, `git push origin takt/demo` (updates the remote-tracking ref), next again -\u003e stop archived with NO cleanup; then testutil.Commit a file on the branch, next -\u003e cleanup == [\"git push origin takt/demo\"], run it verbatim through runShell, next -\u003e no cleanup again; FINALLY the diverged case, made by plumbing with no checkout: `T=$(git rev-parse HEAD^{tree})` then `git commit-tree $T -p HEAD~1 -m other` makes a sibling commit off HEAD~1, and `git update-ref refs/remotes/origin/takt/demo \u003cthat sha\u003e` points the remote-tracking ref at it — neither side now contains the other — and next -\u003e cleanup == [\"git push origin takt/demo\"] again. New file internal/cli/archive_internal_test.go (package cli, an internal test like slug_test.go), covering BOTH read failures separately: TestArchivedPRPushIsOfferedWhenGitCannotAnswer — open a fresh test repo with gitx.Open, build \u0026workspace{Repo: repo} and \u0026bundle.State{Branch: \"takt/x\", Disposition: \u0026bundle.Disposition{Choice: \"pr\", Applied: true}}, call applyDisposition with an ALREADY-CANCELLED context — Repo.Run fails with a non-ExitError, the only error kind CommitExists surfaces — and assert cleanup == [\"git push origin takt/x\"] and err == nil; TestArchivedPRPushIsOfferedWhenTheAncestryReadFails — in a repo with a commit, `git update-ref refs/remotes/origin/takt/x HEAD` creates the remote-tracking ref while NO local branch takt/x exists, so with a live context CommitExists answers true and IsAncestor's `git merge-base --is-ancestor takt/x refs/remotes/origin/takt/x` exits 128 (not the exit-1 answer), which IsAncestor reports as an error — assert cleanup == [\"git push origin takt/x\"] and err == nil: the second read's failure also degrades to the push and never fails the stop (G7's fourth row, both entry points). Lint: godot, t.Parallel(), goconst (the push command prefix may need a named constant).",
+      "files": [
+        "internal/cli/archive.go",
+        "internal/cli/archive_test.go",
+        "internal/cli/archive_internal_test.go"
+      ],
+      "verify": [
+        "grep -q 'case dispositionPR' internal/cli/archive.go",
+        "grep -q 'git push -u origin' internal/cli/archive.go",
+        "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
+        "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
+        "grep -q 'commit-tree' internal/cli/archive_test.go",
+        "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
+        "grep -q 'TestArchivedPRPushIsOfferedWhenTheAncestryReadFails' internal/cli/archive_internal_test.go",
+        "go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/",
+        "golangci-lint run ./internal/cli/..."
+      ],
+      "depends_on": [],
+      "goals": [
+        "G7"
+      ],
+      "class": "implement",
+      "wave": 0
+    },
+    {
+      "id": 8,
+      "title": "Documentation: 15m in both config examples, the derived-budget rule, the corrected pr-archive prose; whole-repo gate",
+      "description": "Spec A4 and B3, running last so its task check verifies the assembled branch (G9). README.md:151-152: both `\"timeout\": \"5m\"` -\u003e `\"15m\"`; no other README change. docs/superpowers/specs/2026-08-24-takt-design.md: (1) the section-12 config example lines 1133-1134 likewise -\u003e \"15m\"; (2) section 12's \"Timeouts everywhere takt waits\" bullet (lines 1178-1179) gains the derived-budget rule in one or two sentences: the deadlines that WRAP a backend call — close-wave, verify, gate review, and the session-side timeout_s on their exec ops — are derived from the run's config and plan by internal/deadline (verify budgeted per command and serial, reviews divided by max_parallel, Session strictly containing every binary cap), never fixed constants; (3) section 7.5 step 5, line 886: replace \"`pr` and `keep` ask git for nothing at this step.\" with: `keep` asks git for nothing; `pr` asks whether the branch holds commits the remote-tracking ref does not (no ref -\u003e `git push -u origin \u003cbranch\u003e`; the branch is an ancestor of the remote-tracking ref (fully pushed) -\u003e no cleanup; ahead or diverged, i.e. the branch holds commits the ref does not -\u003e `git push origin \u003cbranch\u003e`; a failed git read still offers the push) and hands the push back as `cleanup` — \"that commit is the run's last one\" is unaffected, the push being a cleanup command, not a commit; (4) the section-5.2 sentence at lines 480-481 (\"a `keep` or a `pr` archive asks git for nothing and carries neither\") is corrected to match: a `keep` archive carries neither; a `pr` archive carries the push as cleanup exactly when the remote-tracking ref is missing commits. Keep both documents' tone and line-wrapping style. The greps below are this task's own fail-before commands; `task check` (build + go test ./... -race -count=1 + lint + host parity) is G9's evidence on the finished branch.",
+      "files": [
+        "README.md",
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "verify": [
+        "grep -c '\"timeout\": \"5m\"' README.md | grep -qx 0",
+        "grep -q '\"timeout\": \"15m\"' README.md",
+        "grep -c '\"timeout\": \"5m\"' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "grep -q 'internal/deadline' docs/superpowers/specs/2026-08-24-takt-design.md",
+        "grep -c 'ask git for nothing at this step' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "grep -c 'archive asks git for nothing' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+        "grep -q 'holds commits the remote-tracking ref does not' docs/superpowers/specs/2026-08-24-takt-design.md",
+        "task check"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "goals": [
+        "G8",
+        "G9"
+      ],
+      "class": "docs",
+      "wave": 4
+    }
+  ]
+}

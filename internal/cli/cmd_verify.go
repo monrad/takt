@@ -7,12 +7,10 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/finish"
 	"github.com/monrad/takt/internal/wave"
 )
-
-// verifyMargin is added to n × verify_timeout to bound the whole run.
-const verifyMargin = 30 * time.Second
 
 // cmdVerify runs the union of the plan's verify commands at HEAD and
 // records the result (spec §7.5 step 1). A failing command is a normal
@@ -114,13 +112,13 @@ func verifyAtHead(ctx context.Context, tgt *runTarget) (*finish.VerifyRecord, er
 }
 
 // runVerifyCommands runs the union under its own deadline: verify_timeout
-// applies per command, so the whole run gets n × that plus a margin. It is
-// deliberately not derived from the caller's context, whose budget is the
-// git timeout — a two-minute git deadline must not kill a ten-minute test
-// suite.
+// applies per command, so the whole run gets what [deadline.Verify] sizes
+// for n of them. It is deliberately not derived from the caller's context,
+// whose budget is the git timeout — a two-minute git deadline must not kill
+// a ten-minute test suite.
 func runVerifyCommands(tgt *runTarget, cmds []string) []wave.VerifyResult {
 	per := time.Duration(tgt.ws.Cfg.VerifyTimeout)
-	runCtx, cancel := context.WithTimeout(context.Background(), per*time.Duration(len(cmds))+verifyMargin)
+	runCtx, cancel := context.WithTimeout(context.Background(), deadline.Verify(per, len(cmds)))
 	defer cancel()
 	return wave.RunVerify(runCtx, tgt.ws.Repo.Root, cmds, per)
 }

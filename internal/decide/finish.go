@@ -2,6 +2,7 @@ package decide
 
 import (
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/op"
 )
 
@@ -33,16 +34,23 @@ type FinishFacts struct {
 	MergeBlocked   string // reason when !MergeAllowed
 	DiscardAllowed bool
 	DiscardBlocked string // reason when !DiscardAllowed (the adopted-branch sentence, same as MergeBlocked)
-}
 
-const verifyTimeoutS = 900
+	// VerifyCommands is how many commands `takt verify` will run at HEAD:
+	// the union of the plan's per-task commands and the user's extras, the
+	// same union verifyAtHead assembles. Each is bounded by verify_timeout
+	// and they run one after another.
+	//
+	// Row 20 is its only reader, so the CLI counts it only while Verified is
+	// false; once HEAD is verified it stays zero and nothing asks.
+	VerifyCommands int
+}
 
 // decideFinish walks rows 20–26 in order; each step is a pure function of
 // the records on disk, so a crash anywhere re-derives the same op.
 func decideFinish(st *bundle.State, f Facts) Decision {
 	fin := f.Finish
 	if !fin.Verified {
-		return decideVerify(st, fin.Verify)
+		return decideVerify(st, f)
 	}
 	if st.Config.Goals && !fin.GoalsChecked {
 		// A record with nothing unmet is the goals-side twin of a passed
@@ -84,10 +92,12 @@ func decideFinish(st *bundle.State, f Facts) Decision {
 // repairs that before the loop runs; as defence in depth, verifying HEAD
 // again is the answer that can only be right, while `verification_failed`
 // with an empty failed list is the one that can only be wrong.
-func decideVerify(st *bundle.State, v VerifyFacts) Decision {
+func decideVerify(st *bundle.State, f Facts) Decision {
+	v := f.Finish.Verify
 	switch {
 	case !v.Present, v.Passed:
-		return exec("verifying at HEAD", "takt verify --slug "+st.Slug, verifyTimeoutS)
+		return exec("verifying at HEAD", "takt verify --slug "+st.Slug,
+			sessionSeconds(deadline.Verify(f.VerifyTimeout, f.Finish.VerifyCommands)))
 	case v.NoCommands:
 		return ask(gateNoVerification, map[string]any{ctxSlug: st.Slug})
 	default:

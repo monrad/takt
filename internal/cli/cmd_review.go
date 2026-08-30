@@ -15,6 +15,7 @@ import (
 	"github.com/monrad/takt/internal/backend"
 	"github.com/monrad/takt/internal/brief"
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/gate"
 )
 
@@ -75,12 +76,6 @@ func cachedReceipt(bdir, g, hash string) (*gate.Receipt, bool) {
 	return r, true
 }
 
-// reviewGrace is what a gate review is allowed on top of the backend's own
-// timeout, mirroring how closeWaveTimeout bounds the per-task reviews: takt's
-// deadline must not fire before the backend's, so a slow reviewer reports its
-// own timeout instead of being cut off by takt's.
-const reviewGrace = 30 * time.Second
-
 // reviewFlags parses `takt review spec|plan`'s positional gate and flags.
 func reviewFlags(env Env) (reviewOpts, int) {
 	fs := flag.NewFlagSet("review", flag.ContinueOnError)
@@ -106,10 +101,10 @@ func reviewFlags(env Env) (reviewOpts, int) {
 
 // runReview asks the configured reviewer for a verdict and records it.
 //
-// The reviewer runs under a deadline of its own — the backend's timeout plus
-// reviewGrace — not under the one commandContext hands out. That budget
-// bounds git (spec §13, two minutes by default, and a test or a caller may
-// shorten it to seconds), while a spec or plan review is routinely minutes
+// The reviewer runs under a deadline of its own — [deadline.GateReview] of
+// the backend's timeout — not under the one commandContext hands out. That
+// budget bounds git (spec §13, two minutes by default, and a test or a
+// caller may shorten it to seconds), while a spec or plan review is minutes
 // of backend work: running the reviewer under it killed healthy reviews with
 // "context deadline exceeded" (review I5). The git work after the verdict
 // takes a fresh commandContext for the same reason — the budget bounds each
@@ -173,7 +168,9 @@ func runReview(env Env, tgt *runTarget, g, hash string, present []string, force 
 			return fail(env.Stderr, exitError, err.Error(), "")
 		}
 	}
-	rctx, rcancel := context.WithTimeout(context.Background(), time.Duration(be.Timeout)+reviewGrace)
+	// takt's own deadline must not fire before the backend's, so a slow
+	// reviewer reports its own timeout instead of being cut off by takt's.
+	rctx, rcancel := context.WithTimeout(context.Background(), deadline.GateReview(time.Duration(be.Timeout)))
 	defer rcancel()
 	res, err := reviewer.Review(rctx, backend.ReviewRequest{
 		Rubric: g, Title: tgt.slug, Prompt: prompt, RepoRoot: tgt.ws.Repo.Root,

@@ -2,10 +2,12 @@ package decide_test
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/decide"
 	"github.com/monrad/takt/internal/op"
 )
@@ -306,4 +308,50 @@ func TestQuestionBranchFinishRecommendsAChoosableOption(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestVerifyExecTimeoutStrictlyContainsTheBinaryCap is row 20's half of spec
+// A2.2: `exec takt verify` carries [deadline.Session] of the cap `takt
+// verify` puts on itself, which is verify_timeout per command over the union
+// it will actually run — not the fixed 900s that budgeted neither.
+//
+// The rows differ only in the command count, and each is its own subtest so
+// that an empty union failing cannot hide what a three-command one does.
+// The last of them is the second half of the claim: the count is genuinely
+// read, so three commands buy more room than none. A timeout blind to the
+// count is what makes an outer deadline fire first on a long verify.
+func TestVerifyExecTimeoutStrictlyContainsTheBinaryCap(t *testing.T) {
+	t.Parallel()
+	for _, cmds := range []int{0, 3} {
+		t.Run(strconv.Itoa(cmds)+" commands", func(t *testing.T) {
+			t.Parallel()
+			d := verifyExec(t, cmds)
+			assertSessionContains(t, d.Op.TimeoutS, deadline.Verify(factVerifyTimeout, cmds))
+		})
+	}
+	t.Run("a longer union buys more room", func(t *testing.T) {
+		t.Parallel()
+		empty, three := verifyExec(t, 0), verifyExec(t, 3)
+		if three.Op.TimeoutS <= empty.Op.TimeoutS {
+			t.Fatalf("a three-command union must outbudget an empty one: %d vs %d",
+				three.Op.TimeoutS, empty.Op.TimeoutS)
+		}
+	})
+}
+
+// verifyExec is row 20's exec op for a union of the given size, which is the
+// only fact the row's deadline varies with.
+func verifyExec(t *testing.T, cmds int) decide.Decision {
+	t.Helper()
+	d, err := decide.Decide(finishState(), decide.Facts{
+		VerifyTimeout: factVerifyTimeout,
+		Finish:        decide.FinishFacts{VerifyCommands: cmds},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Action != decide.ActExec || d.Op.Command != "takt verify --slug demo" {
+		t.Fatalf("%d commands: %+v", cmds, d)
+	}
+	return d
 }

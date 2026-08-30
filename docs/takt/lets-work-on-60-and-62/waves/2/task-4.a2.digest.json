@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Nil-index wave facts now budget zero work on both counts (with an active-wave test), the finish verify count is gathered only while unverified and off the single already-parsed index, the `ReadExtra` error path is tested, and the decide verify-timeout test is split into subtests.",
+  "blockers": "none — except that the residual `ReadExtra`+`UnionCommands` overlap with `verifyAtHead` cannot be factored without `internal/cli/cmd_verify.go` in scope.",
+  "model": "opus",
+  "recorded_at": "2026-08-29T13:46:18.861603821Z"
+}

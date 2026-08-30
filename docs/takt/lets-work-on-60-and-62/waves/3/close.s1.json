@@ -1,0 +1,107 @@
+{
+  "wave": 3,
+  "slice": 1,
+  "attempt": 2,
+  "tasks": [
+    {
+      "task": 5,
+      "status": "done",
+      "files_changed": [
+        "internal/cli/facts.go",
+        "internal/cli/reviewer_facts_test.go",
+        "internal/decide/decide.go",
+        "internal/decide/decide_test.go",
+        "internal/decide/questions.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'ReviewerBackends' internal/decide/decide.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'ReviewerBackends' internal/cli/facts.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'backends.' internal/decide/questions.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestReviewErrorNamesTheBackendTimeouts' internal/decide/decide_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestGatherFactsFillsReviewerBackendsInPreferenceOrder' internal/cli/reviewer_facts_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'nonesuch' internal/cli/reviewer_facts_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestReviewErrorRendersIdenticallyAfterAContextRoundTrip' internal/decide/decide_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/decide/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/decide\t1.011s",
+          "elapsed_ms": 1169
+        },
+        {
+          "command": "go test -race -count=1 -run TestGatherFactsFillsReviewerBackends ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.039s",
+          "elapsed_ms": 1259
+        },
+        {
+          "command": "golangci-lint run ./internal/decide/... ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 373
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The implementation matches the task: reviewer backends are gathered in configured preference order through the timeout accessor, keyless entries are skipped, durations are preserved, and the review_error retry description names the appropriate keys and deadlines with the required fallback. The JSON-stable context shape and end-to-end seam are covered without changing the gate’s other behavior.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "commit_sha": "bb5469df06dd34fa5ae757ed87b38f669d189184",
+  "closed_at": "2026-08-30T14:04:39.638233971Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

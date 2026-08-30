@@ -1,0 +1,9 @@
+{
+  "task": 5,
+  "attempt": 1,
+  "status": "done",
+  "summary": "The review_error gate's retry option now names each configured reviewer backend's `backends.\u003cname\u003e.timeout` and its current deadline, filled from `gatherFacts` in preference order with keyless entries skipped and a literal-key fallback, covered by unit, round-trip and package-internal integration tests.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T13:43:16.223134158Z"
+}

@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "attempt": 1,
+  "status": "done",
+  "summary": "The `pr` disposition's archived stop now hands back `git push [-u] origin \u003cbranch\u003e` exactly when git says the branch holds commits the remote-tracking ref does not (diverged included), degrades to the push when either git read fails, and never fails the stop; covered by one end-to-end test over all four rows and two internal tests for the two read failures.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T11:45:22.395204866Z"
+}

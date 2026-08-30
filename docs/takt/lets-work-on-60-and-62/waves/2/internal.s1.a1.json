@@ -1,0 +1,210 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:32:24.539816626Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 112,
+      "title": "plan.index.json is read twice per finish-phase gatherFacts call with divergent error semantics",
+      "detail": "gatherIndexFacts (facts.go:112-137) reads and parses plan.index.json and treats a read/parse failure softly (HasIndex=false or IndexProblems, no error returned). verifyCommandCount (finish_facts.go:130-140) independently re-reads and re-parses the same file via readIndex and treats the identical failure as fatal for the whole gatherFacts call. Within one gatherFacts invocation in the finish phase, the same file is read twice with two different failure philosophies; passing the already-parsed *plan.Index from gatherIndexFacts into the finish-facts path (as is already done for gatherWaveFacts via idx) would remove both the duplicate I/O and the inconsistency.",
+      "id": "c1",
+      "task": 4,
+      "lenses": [
+        "correctness",
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/facts.go",
+      "line": 207,
+      "title": "countWaveWork's doc comment contradicts its own code for a nil index",
+      "detail": "The comment on countWaveWork (facts.go:201-208) says: \"A nil index (unreadable or unparsable) leaves both counts at zero, which is all the close could grade from it anyway.\" The code does not do that: `tasks++` runs unconditionally per pending task before the `if idx == nil { continue }` check (line 215-218), and the trailing `if st.Config.Review.Tasks { f.Wave.ReviewTasks = tasks }` (lines 223-225) is not gated on idx at all. So when idx is nil, VerifyCommands is 0 but ReviewTasks is still set to the pending-task count whenever review.tasks is on — not zero. This also contradicts the wave's own task brief, which states the intended behaviour as \"0 for both when idx is nil\". The WaveFacts.ReviewTasks doc comment in internal/decide/decide.go:156-159 (\"all of them when review.tasks is on and none of them when it is off\") likewise makes no exception for a nil index, reinforcing the same wrong invariant. Either the comment needs to state the real behaviour, or the code needs to match the documented/spec'd one.",
+      "id": "c2",
+      "task": 4,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "internal/cli/facts.go",
+      "line": 209,
+      "title": "countWaveWork does not zero ReviewTasks when idx is nil, contradicting both its own doc comment and the task spec",
+      "detail": "The task text requires 'ReviewTasks = the task count when st.Config.Review.Tasks else 0 (0 for both when idx is nil)', and countWaveWork's own doc comment (lines 207-208) states 'A nil index (unreadable or unparsable) leaves both counts at zero'. The implementation does not do this: `tasks` is incremented unconditionally for every pending wave task before the `if idx == nil { continue }` check (lines 210-218), so only VerifyCommands is correctly held at 0 when idx is nil — ReviewTasks (line 223-224, `if st.Config.Review.Tasks { f.Wave.ReviewTasks = tasks }`) is set to the full pending-task count regardless of idx. On the binary side, closeWaveBudgeted (internal/cli/cmd_close_wave.go:94-98) fails on a readIndex error before ever calling closeBudget, so the binary actually performs zero work (no review calls) in this scenario — meaning the decide-side ReviewTasks count is factually wrong here, not just mismatched with its comment. No test in internal/cli/deadline_facts_test.go exercises the idx-nil-with-review.tasks-on case, so this gap is untested. Practically this only inflates the close-wave exec timeout rather than shrinking it, so it is not a containment-safety failure, but it is a stated task requirement not met and a direct self-contradiction within the diff.",
+      "id": "c3",
+      "task": 4,
+      "lenses": [
+        "intent",
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/facts.go",
+      "line": 216,
+      "title": "countWaveWork's nil-index branch is untested, and the doc comment misdescribes it",
+      "detail": "countWaveWork's doc comment (facts.go:207-208) claims 'A nil index (unreadable or unparsable) leaves both counts at zero,' but the code only skips the VerifyCommands increment when idx==nil (line 216-218); ReviewTasks is still set to the pending-task count at line 223-225 whenever review.tasks is on, regardless of idx's nilness. No test exercises gatherWaveFacts/countWaveWork with idx==nil while an ActiveWave with pending tasks exists: TestGatheredFactsMatchTheBinaryBudget (internal/cli/deadline_facts_test.go) only uses a parseable index, and the only unreadable/malformed-index test, TestGatherFinishFactsPropagatesAnIndexReadError, runs in PhaseFinish where st.ActiveWave is nil so gatherWaveFacts returns before ever calling countWaveWork. A test driving this branch would have caught the doc/behaviour mismatch (or confirmed it's intentional and fixed the comment).",
+      "id": "c4",
+      "task": 4,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/finish_facts.go",
+      "line": 70,
+      "title": "gatherFinishFacts hard-fails on every finish-phase call, not just when a verify exec is about to be emitted",
+      "detail": "verifyCommandCount(bdir) (readIndex + finish.ReadExtra) is now called unconditionally at the top of gatherFinishFacts, before fin.Verified is even known. Its result is only consumed by decide.decideVerify, which is reached only when !fin.Verified (decide/finish.go:49-51,92-97). Once a run has passed verification, every subsequent finish-phase decision (goals check, retro, branch_finish, push-PR, archive) still re-reads and re-parses plan.index.json and finish/verify-extra.json and now aborts the whole `takt next`/`takt record` call with a hard error if that read fails — even though the value it produced would never be used. This breaks the established pattern in the very same function (see the comment at finish_facts.go:95-97, 'Row 23 is the only consumer of the availability facts... so they are gathered only when that row is the one about to be reached'), and turns a plan-index becoming unreadable/malformed after verification into a hard failure of unrelated finish-phase rows that previously never touched plan.index.json at all. Moving the verifyCommandCount call inside the `!fin.Verified` branch (or short-circuiting when fin.Verified is already true) would preserve the intended fail-open protection for the verify exec op without regressing the other rows.",
+      "id": "c5",
+      "task": 4,
+      "lenses": [
+        "correctness"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/finish_facts.go",
+      "line": 130,
+      "title": "verifyCommandCount duplicates verifyAtHead's index+extra+union assembly instead of sharing it",
+      "detail": "verifyCommandCount (internal/cli/finish_facts.go:130-139) re-implements, line for line, the readIndex → finish.ReadExtra → finish.UnionCommands sequence that verifyAtHead already runs at internal/cli/cmd_verify.go:63-71 (idx, err := readIndex(...); extra, err := finish.ReadExtra(...); finish.UnionCommands(idx, extra)). The doc comment even says the count is taken 'through the very calls verifyAtHead assembles it from' — acknowledging the overlap without factoring it into one helper (e.g. a shared `verifyUnion(bdir) ([]string, error)` both cmd_verify.go and finish_facts.go could call). As written, two independent copies of the assembly sequence must be kept in sync by hand every time the union logic changes, which is exactly the drift risk the surrounding deadline/containment work is trying to eliminate elsewhere.",
+      "id": "c6",
+      "task": 4,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/finish_facts.go",
+      "line": 135,
+      "title": "verifyCommandCount's finish.ReadExtra error path is never exercised",
+      "detail": "verifyCommandCount (finish_facts.go:130-140) has two error returns: the readIndex failure (tested by TestGatherFinishFactsPropagatesAnIndexReadError in internal/cli/deadline_facts_test.go, covering both 'missing' and 'malformed' index cases) and the finish.ReadExtra failure at line 135-137, which no test drives (e.g. a malformed finish/verify-extra.json at HEAD in the finish phase). Low risk since it mirrors the already-tested readIndex propagation pattern, but it is a distinct untested error return introduced by this diff.",
+      "id": "c7",
+      "task": 4,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/decide/finish_test.go",
+      "line": 324,
+      "title": "TestVerifyExecTimeoutStrictlyContainsTheBinaryCap doesn't isolate its two cases with t.Run",
+      "detail": "The loop over cmds in {0,3} (finish_test.go:324-338) calls t.Fatalf directly rather than via t.Run subtests, so a failure on the cmds=0 iteration aborts the test before the cmds=3 iteration (and the final 'must outbudget' comparison) ever runs, hiding whether the second case would also fail. Purely a diagnostics/independence nit, not a coverage gap — both cases still run if the first one passes.",
+      "id": "c8",
+      "task": 4,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "gatherIndexFacts (facts.go:112-142) reads plan.index.json via os.ReadFile+plan.ParseIndex and, on either failure, returns nil with NO error propagated to gatherFacts (only f.IndexProblems/f.HasIndex are touched). In the finish phase, gatherFacts (facts.go:71,90-94) also calls gatherFinishFacts, which (finish_facts.go:70-72) calls verifyCommandCount → readIndex (launch.go:422-428), independently re-opening and re-parsing the same plan.index.json, and this time a read/parse failure IS propagated as a hard error that aborts the whole gatherFacts call (finish_facts.go:130-134). The already-parsed *plan.Index from gatherIndexFacts is in scope at the call site (used one line later for gatherWaveFacts at facts.go:95) but is not threaded into gatherFinishFacts, so the same file is read and parsed twice per finish-phase call with two different failure philosophies.",
+      "citations": [
+        "internal/cli/facts.go:71",
+        "internal/cli/facts.go:112-142",
+        "internal/cli/facts.go:90-95",
+        "internal/cli/finish_facts.go:70-72",
+        "internal/cli/finish_facts.go:130-139"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "countWaveWork's doc comment (facts.go:206-208) states 'A nil index (unreadable or unparsable) leaves both counts at zero'. The code (facts.go:209-226) increments tasks++ unconditionally for every pending task (line 215) before the `if idx == nil { continue }` check (216-218), which only skips the VerifyCommands increment; the trailing `if st.Config.Review.Tasks { f.Wave.ReviewTasks = tasks }` (223-225) runs regardless of idx. So with idx nil and review.tasks on, ReviewTasks is set to the full pending-task count, not zero — contradicting the comment. The task-4 brief (docs/takt/lets-work-on-60-and-62/waves/2/task-4.a1.md) explicitly specifies 'ReviewTasks = the task count when st.Config.Review.Tasks else 0 (0 for both when idx is nil)', confirming this is a real spec deviation. WaveFacts.ReviewTasks's doc comment at decide.go:156-159 ('all of them when review.tasks is on and none of them when it is off') likewise carries no nil-index exception.",
+      "citations": [
+        "internal/cli/facts.go:206-208",
+        "internal/cli/facts.go:209-226",
+        "internal/decide/decide.go:156-159"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "Same defect as c2, verified independently: countWaveWork (facts.go:209-226) does not zero ReviewTasks when idx is nil. On the binary side, closeWaveBudgeted (cmd_close_wave.go:94-98) returns the readIndex error immediately and never calls closeBudget, so in this scenario the binary performs no work at all — meaning the decide-side ReviewTasks value in this case is simply wrong relative to the doc/spec, though (as the candidate itself notes) it only inflates rather than shrinks the close-wave exec timeout. No test in internal/cli/deadline_facts_test.go exercises idx-nil with an active wave and review.tasks on: TestGatheredFactsMatchTheBinaryBudget always writes a parseable plan.index.json (factsBundle/factsPlan), and the only unreadable/malformed-index test, TestGatherFinishFactsPropagatesAnIndexReadError, runs in PhaseFinish, where factsState only sets st.ActiveWave for PhaseExecute — so aw is nil and gatherWaveFacts (facts.go:177-180) returns before ever calling countWaveWork.",
+      "citations": [
+        "internal/cli/facts.go:209-226",
+        "internal/cli/cmd_close_wave.go:94-98",
+        "internal/cli/deadline_facts_test.go:171-235",
+        "internal/cli/deadline_facts_test.go:90-113",
+        "internal/cli/deadline_facts_test.go:286-312"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "Confirmed the same underlying gap from the testing angle: countWaveWork's doc comment (facts.go:206-208) claims both counts land at zero for a nil index, but only the VerifyCommands increment is skipped at facts.go:216-218 ('if idx == nil { continue }'); ReviewTasks is still set at facts.go:223-225 regardless of idx. As verified directly against internal/cli/deadline_facts_test.go: TestGatheredFactsMatchTheBinaryBudget's fixtures (factsBundle/factsPlan) always write a parseable index, and TestGatherFinishFactsPropagatesAnIndexReadError (the only nil-index test) runs with phase PhaseFinish, where factsState leaves st.ActiveWave nil, so gatherWaveFacts returns at the `aw == nil` guard (facts.go:177-180) before countWaveWork is ever invoked with a nil idx and pending tasks.",
+      "citations": [
+        "internal/cli/facts.go:206-208",
+        "internal/cli/facts.go:216-225",
+        "internal/cli/deadline_facts_test.go:90-113",
+        "internal/cli/deadline_facts_test.go:171-193",
+        "internal/cli/deadline_facts_test.go:286-312"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "gatherFinishFacts (finish_facts.go:64-72) calls `fin.VerifyCommands, err = verifyCommandCount(bdir)` unconditionally right after resolving HEAD, before fin.Verified is computed a few lines later via st.VerifiedSHA (finish_facts.go:73-77). decideFinish only reads f.Finish.VerifyCommands inside decideVerify, which decideFinish reaches only when `!fin.Verified` (finish.go:47-51,92-97) — once verification has passed, nothing downstream (goals check, retro, branch_finish, push-PR, archive) touches it. Before this diff, none of those later finish rows read plan.index.json/finish/verify-extra.json at all; now every finish-phase gatherFacts call does, unconditionally, and a readIndex/ReadExtra failure there aborts the whole call (verifyCommandCount at finish_facts.go:130-139 propagates errors). This is exactly the 'gathered only when that row is about to be reached' economy the function documents for disposition facts at finish_facts.go:95-97, which verifyCommandCount does not follow even though its value, like disposition's, is needed for exactly one row.",
+      "citations": [
+        "internal/cli/finish_facts.go:64-72",
+        "internal/cli/finish_facts.go:95-97",
+        "internal/decide/finish.go:47-51",
+        "internal/decide/finish.go:92-97"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "verifyCommandCount (finish_facts.go:130-139) is a line-for-line duplicate of the readIndex → finish.ReadExtra → finish.UnionCommands sequence verifyAtHead already runs (cmd_verify.go:63-71: `idx, err := readIndex(tgt.bdir)`; `extra, err := finish.ReadExtra(tgt.bdir)`; `cmds := finish.UnionCommands(idx, extra)`). No shared helper exists between the two call sites; each must be kept in sync by hand if the union-assembly logic changes.",
+      "citations": [
+        "internal/cli/finish_facts.go:130-139",
+        "internal/cli/cmd_verify.go:63-71"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "verifyCommandCount (finish_facts.go:130-139) has two error returns: the readIndex failure at lines 131-134, and the finish.ReadExtra failure at lines 135-137 (`extra, err := finish.ReadExtra(bdir); if err != nil { return 0, err }`). Checking internal/cli/deadline_facts_test.go, the only error-path test, TestGatherFinishFactsPropagatesAnIndexReadError (lines 286-312), only corrupts/removes plan.index.json (the 'missing'/'malformed' table cases), never finish/verify-extra.json, so the ReadExtra failure branch inside verifyCommandCount is never driven by any test in the diff.",
+      "citations": [
+        "internal/cli/finish_facts.go:135-137",
+        "internal/cli/deadline_facts_test.go:286-312"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "TestVerifyExecTimeoutStrictlyContainsTheBinaryCap (finish_test.go:321-342) loops `for _, cmds := range []int{0, 3}` without t.Run, calling assertSessionContains (which calls t.Fatalf on mismatch, decide_test.go's helper) and its own `t.Fatalf` at line 334 directly inside the loop body. Since t.Fatal/t.Fatalf calls FailNow (runtime.Goexit), a failure on the cmds=0 iteration terminates the test function immediately, so the cmds=3 iteration and the final `timeouts[3] \u003c= timeouts[0]` check (line 339-341) would never run, hiding whether the second case would also fail.",
+      "citations": [
+        "internal/decide/finish_test.go:321-342"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8"
+  ]
+}

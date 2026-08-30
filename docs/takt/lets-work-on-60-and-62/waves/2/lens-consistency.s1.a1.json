@@ -1,0 +1,34 @@
+{
+  "lens": "consistency",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:24:18.543503709Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/finish_facts.go",
+      "line": 130,
+      "title": "verifyCommandCount duplicates verifyAtHead's index+extra+union assembly instead of sharing it",
+      "detail": "verifyCommandCount (internal/cli/finish_facts.go:130-139) re-implements, line for line, the readIndex → finish.ReadExtra → finish.UnionCommands sequence that verifyAtHead already runs at internal/cli/cmd_verify.go:63-71 (idx, err := readIndex(...); extra, err := finish.ReadExtra(...); finish.UnionCommands(idx, extra)). The doc comment even says the count is taken 'through the very calls verifyAtHead assembles it from' — acknowledging the overlap without factoring it into one helper (e.g. a shared `verifyUnion(bdir) ([]string, error)` both cmd_verify.go and finish_facts.go could call). As written, two independent copies of the assembly sequence must be kept in sync by hand every time the union logic changes, which is exactly the drift risk the surrounding deadline/containment work is trying to eliminate elsewhere.",
+      "task": 4
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 209,
+      "title": "countWaveWork duplicates closeBudget's pending-task counting loop",
+      "detail": "countWaveWork (internal/cli/facts.go:209-226) re-implements the same loop as closeBudget (internal/cli/cmd_close_wave.go:115-138): iterate st.Tasks, keep t.Wave==aw.N \u0026\u0026 t.Status==bundle.StatusPending, sum idx.Task(id).Verify lengths, and set ReviewTasks to the count only when st.Config.Review.Tasks. The two copies must be kept in lockstep to preserve the containment claim the diff makes (spec A2.2/G4). This duplication is a documented, accepted risk in docs/takt/lets-work-on-60-and-62/plan.md:280-284, mitigated by the new TestGatheredFactsMatchTheBinaryBudget integration test rather than eliminated — worth flagging since a shared counting helper (taking st, aw, idx, reviewOn) would remove the drift risk outright instead of relying on a test to catch it after the fact.",
+      "task": 4
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 112,
+      "title": "*plan.Index return/parameter departs from the package's established value-passing convention",
+      "detail": "Every other function that carries a plan.Index in internal/cli passes it by value (readIndex, writeIndex, closeBudget, closeWave, resolveTaskResults, taskOutcome, reviewTasks, reviewOne — see internal/cli/launch.go:422, cmd_close_wave.go:115,147,272,344,723,757). gatherIndexFacts (facts.go:112) instead returns *plan.Index, and gatherWaveFacts/countWaveWork (facts.go:174-175, 209) take it as a pointer, using nil to mean 'unreadable or unparsable'. Since plan.Index's zero value already behaves safely for this use — idx.Task(id) on a zero-value Index (nil Tasks slice) returns nil for every id, same as the pointer being nil — the pointer adds a second idiom for 'no index' alongside the existing f.HasIndex bool, where a plain plan.Index value (as used everywhere else) would have matched convention and worked identically.",
+      "task": 4
+    }
+  ]
+}

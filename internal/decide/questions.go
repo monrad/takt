@@ -2,6 +2,7 @@ package decide
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/monrad/takt/internal/op"
 )
@@ -317,12 +318,15 @@ func questionWaveFailures(q *op.Op, ctx map[string]any) {
 	}
 }
 
-// questionReviewError fills the "review_error" gate.
+// questionReviewError fills the "review_error" gate. Only the retry option's
+// description depends on the facts: it names the deadline to raise when what
+// failed was a timeout, which is the one thing a user hitting this gate twice
+// otherwise has to read the source to learn (spec A3).
 func questionReviewError(q *op.Op, ctx map[string]any) {
 	q.Narration = "a task review errored"
 	q.Question = fmt.Sprintf("The reviewer failed for task(s) %v: %v", ctx["tasks"], ctx["error"])
 	q.Options = []op.Option{
-		{Choice: choiceRetry, Label: "Retry the review (Recommended)", Description: "Re-run `takt close-wave`."},
+		{Choice: choiceRetry, Label: "Retry the review (Recommended)", Description: reviewErrorRetryText(ctx)},
 		{
 			Choice:      "skip",
 			Label:       "Skip review for these tasks",
@@ -330,6 +334,61 @@ func questionReviewError(q *op.Op, ctx map[string]any) {
 		},
 		{Choice: choiceStop, Label: labelStop, Description: "End the turn with the wave open."},
 	}
+}
+
+// reRunClose is the retry option's first sentence, unchanged from before the
+// gate named any key: what the choice actually does.
+const reRunClose = "Re-run `takt close-wave`."
+
+// backendKeyPlaceholder is the key shape the retry option falls back to when
+// the run's reviewer chain names no backend config can speak for — an empty
+// chain, or one holding only "fake" and names config does not know. It
+// carries no deadline, because there is no configured one to quote.
+const backendKeyPlaceholder = "backends.<name>.timeout"
+
+// reviewErrorRetryText is the retry option's description: re-running the
+// close, plus which key raises the deadline when that is what the review hit.
+func reviewErrorRetryText(ctx map[string]any) string {
+	named := backendDeadlines(ctx)
+	if len(named) == 0 {
+		return reRunClose + " If the review timed out, raising `" + backendKeyPlaceholder +
+			"` in `.takt.json` is the fix."
+	}
+	return reRunClose + " If the review timed out, raising the deadline in `.takt.json` is the fix: " +
+		strings.Join(named, ", ") + "."
+}
+
+// backendDeadlines reads the `backends` context entry decideActiveWave built
+// — one pre-rendered key and deadline per reviewer backend that has a config
+// key, in preference order — and renders each as `key` (now duration).
+//
+// The read is defensive in the style internal/cli's toInt uses: a value that
+// is not the shape decide wrote is skipped rather than asserted on, since
+// this same map arrives both freshly built and decoded from the gate payload
+// persisted on disk. It is one code path over two encodings of one shape,
+// not two code paths.
+func backendDeadlines(ctx map[string]any) []string {
+	raw, isList := ctx[ctxBackends].([]any)
+	if !isList {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, e := range raw {
+		m, isMap := e.(map[string]any)
+		if !isMap {
+			continue
+		}
+		key, hasKey := m[ctxBackendKey].(string)
+		if !hasKey || key == "" {
+			continue
+		}
+		if d, hasTimeout := m[ctxBackendTimeout].(string); hasTimeout && d != "" {
+			out = append(out, "`"+key+"` (now "+d+")")
+			continue
+		}
+		out = append(out, "`"+key+"`")
+	}
+	return out
 }
 
 // questionVerificationFailed fills the "verification_failed" gate. It takes

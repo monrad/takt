@@ -1,0 +1,626 @@
+{
+  "sha": "55fcddd61dfe185ef96877963c1fd45b5cf464b2",
+  "passed": true,
+  "no_commands": false,
+  "commands": [
+    "grep -Eq 'defaultBackendTimeout += 15 \\* time\\.Minute' internal/config/config.go",
+    "grep -q '15 \\* time.Minute' internal/backend/run.go",
+    "grep -q 'func resolveTimeout' internal/backend/run.go",
+    "grep -q 'TAKT_FAKE_REVIEW_TIMEOUT_FILE' internal/backend/fake.go",
+    "grep -q 'func (b Backends) ReviewBudgetTimeout' internal/config/config.go",
+    "grep -q 'nonesuch' internal/config/config_test.go",
+    "grep -q 'TestBackendFallbackMatchesTheShippedDefault' internal/cli/backend_timeout_test.go",
+    "grep -q 'TAKT_FAKE_REVIEW_SLEEP' internal/backend/fake.go",
+    "grep -q 'Deadline()' internal/backend/fake.go",
+    "go test -race -count=1 ./internal/config/... ./internal/backend/...",
+    "go test -race -count=1 -run TestBackendFallback ./internal/cli/",
+    "golangci-lint run ./internal/config/... ./internal/backend/... ./internal/cli/...",
+    "grep -q 'func Close(b Budget) time.Duration' internal/deadline/deadline.go",
+    "grep -q 'func Session(' internal/deadline/deadline.go",
+    "grep -q 'Grace' internal/deadline/deadline.go",
+    "grep -q 'TestSessionStrictlyContainsEveryInner' internal/deadline/deadline_test.go",
+    "grep -q 'TestCloseBudgetsTheWave' internal/deadline/deadline_test.go",
+    "grep -q 'func Grace\\|Grace =' internal/deadline/deadline.go",
+    "grep -q 'MaxDuration' internal/deadline/deadline.go",
+    "grep -q 'TestSaturatesInsteadOfWrapping' internal/deadline/deadline_test.go",
+    "grep -q 'TestMonotonicity' internal/deadline/deadline_test.go",
+    "go test -race -count=1 ./internal/deadline/...",
+    "golangci-lint run ./internal/deadline/...",
+    "grep -c 'closeWaveTimeout' internal/cli/cmd_close_wave.go | grep -qx 0",
+    "grep -q 'deadline.Bootstrap' internal/cli/cmd_close_wave.go",
+    "grep -q 'deadline.Close' internal/cli/cmd_close_wave.go",
+    "grep -q 'deadline.Verify' internal/cli/cmd_verify.go",
+    "grep -c 'verifyMargin' internal/cli/cmd_verify.go | grep -qx 0",
+    "grep -q 'deadline.GateReview' internal/cli/cmd_review.go",
+    "grep -q 'TestCloseWaveRefusesWhenTheIndexCannotBeRead' internal/cli/close_budget_test.go",
+    "grep -q 'TestCloseBudgetCountsTheWave' internal/cli/close_budget_test.go",
+    "grep -c 'cli.reviewGrace' internal/backend/live_test.go | grep -qx 0",
+    "grep -q 'TestLandedCloseReplaysWithoutTheIndex' internal/cli/close_budget_test.go",
+    "go test -race -count=1 -run 'TestClose|TestVerify|TestReview' ./internal/cli/",
+    "golangci-lint run ./internal/cli/...",
+    "grep -c 'reviewTimeoutS' internal/decide/decide.go | grep -qx 0",
+    "grep -c 'closeTimeoutS' internal/decide/decide.go | grep -qx 0",
+    "grep -c 'verifyTimeoutS' internal/decide/finish.go | grep -qx 0",
+    "grep -q 'deadline.Session' internal/decide/decide.go",
+    "grep -q 'BackendTimeout' internal/cli/facts.go",
+    "grep -q 'UnionCommands' internal/cli/finish_facts.go",
+    "grep -q 'TestExecTimeoutsStrictlyContainTheBinaryCaps' internal/decide/decide_test.go",
+    "grep -q 'closeBudget' internal/cli/deadline_facts_test.go",
+    "grep -q 'TestGatheredFactsMatchTheBinaryBudget' internal/cli/deadline_facts_test.go",
+    "grep -q 'TestGatheredFinishFactsCountTheVerifyUnion' internal/cli/deadline_facts_test.go",
+    "grep -q 'TestGatherFinishFactsPropagatesAnIndexReadError' internal/cli/deadline_facts_test.go",
+    "go test -race -count=1 ./internal/decide/...",
+    "go test -race -count=1 -run 'TestGathered|TestGatherFinishFacts' ./internal/cli/",
+    "golangci-lint run ./internal/decide/... ./internal/cli/...",
+    "grep -q 'ReviewerBackends' internal/decide/decide.go",
+    "grep -q 'ReviewerBackends' internal/cli/facts.go",
+    "grep -q 'backends.' internal/decide/questions.go",
+    "grep -q 'TestReviewErrorNamesTheBackendTimeouts' internal/decide/decide_test.go",
+    "grep -q 'TestGatherFactsFillsReviewerBackendsInPreferenceOrder' internal/cli/reviewer_facts_test.go",
+    "grep -q 'nonesuch' internal/cli/reviewer_facts_test.go",
+    "grep -q 'TestReviewErrorRendersIdenticallyAfterAContextRoundTrip' internal/decide/decide_test.go",
+    "go test -race -count=1 -run TestGatherFactsFillsReviewerBackends ./internal/cli/",
+    "grep -q '\"pr body\"' internal/cli/cmd_next.go",
+    "grep -q 'TestPushPRLeavesTheBodyInHead' internal/cli/finish_test.go",
+    "grep -q 'preparePushPR(context' internal/cli/brief_stable_test.go",
+    "go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/",
+    "grep -q 'case dispositionPR' internal/cli/archive.go",
+    "grep -q 'git push -u origin' internal/cli/archive.go",
+    "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
+    "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
+    "grep -q 'commit-tree' internal/cli/archive_test.go",
+    "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
+    "grep -q 'TestArchivedPRPushIsOfferedWhenTheAncestryReadFails' internal/cli/archive_internal_test.go",
+    "go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/",
+    "grep -c '\"timeout\": \"5m\"' README.md | grep -qx 0",
+    "grep -q '\"timeout\": \"15m\"' README.md",
+    "grep -c '\"timeout\": \"5m\"' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+    "grep -q 'internal/deadline' docs/superpowers/specs/2026-08-24-takt-design.md",
+    "grep -c 'ask git for nothing at this step' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+    "grep -c 'archive asks git for nothing' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+    "grep -q 'holds commits the remote-tracking ref does not' docs/superpowers/specs/2026-08-24-takt-design.md",
+    "task check"
+  ],
+  "results": [
+    {
+      "command": "grep -Eq 'defaultBackendTimeout += 15 \\* time\\.Minute' internal/config/config.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q '15 \\* time.Minute' internal/backend/run.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'func resolveTimeout' internal/backend/run.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TAKT_FAKE_REVIEW_TIMEOUT_FILE' internal/backend/fake.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'func (b Backends) ReviewBudgetTimeout' internal/config/config.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'nonesuch' internal/config/config_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestBackendFallbackMatchesTheShippedDefault' internal/cli/backend_timeout_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TAKT_FAKE_REVIEW_SLEEP' internal/backend/fake.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'Deadline()' internal/backend/fake.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/config/... ./internal/backend/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/config\t1.010s\nok  \tgithub.com/monrad/takt/internal/backend\t1.312s",
+      "elapsed_ms": 1491
+    },
+    {
+      "command": "go test -race -count=1 -run TestBackendFallback ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.011s",
+      "elapsed_ms": 1240
+    },
+    {
+      "command": "golangci-lint run ./internal/config/... ./internal/backend/... ./internal/cli/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+      "elapsed_ms": 390
+    },
+    {
+      "command": "grep -q 'func Close(b Budget) time.Duration' internal/deadline/deadline.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'func Session(' internal/deadline/deadline.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'Grace' internal/deadline/deadline.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestSessionStrictlyContainsEveryInner' internal/deadline/deadline_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestCloseBudgetsTheWave' internal/deadline/deadline_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'func Grace\\|Grace =' internal/deadline/deadline.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'MaxDuration' internal/deadline/deadline.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestSaturatesInsteadOfWrapping' internal/deadline/deadline_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestMonotonicity' internal/deadline/deadline_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/deadline/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/deadline\t1.010s",
+      "elapsed_ms": 1164
+    },
+    {
+      "command": "golangci-lint run ./internal/deadline/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Path: \\\"_test\\\\\\\\.go\\\", Linters: \\\"bodyclose, dupl, errcheck, funlen, goconst, gosec, noctx, wrapcheck\\\"]\"\n0 issues.",
+      "elapsed_ms": 360
+    },
+    {
+      "command": "grep -c 'closeWaveTimeout' internal/cli/cmd_close_wave.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -q 'deadline.Bootstrap' internal/cli/cmd_close_wave.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'deadline.Close' internal/cli/cmd_close_wave.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'deadline.Verify' internal/cli/cmd_verify.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c 'verifyMargin' internal/cli/cmd_verify.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'deadline.GateReview' internal/cli/cmd_review.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestCloseWaveRefusesWhenTheIndexCannotBeRead' internal/cli/close_budget_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestCloseBudgetCountsTheWave' internal/cli/close_budget_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c 'cli.reviewGrace' internal/backend/live_test.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestLandedCloseReplaysWithoutTheIndex' internal/cli/close_budget_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 -run 'TestClose|TestVerify|TestReview' ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.428s",
+      "elapsed_ms": 1650
+    },
+    {
+      "command": "golangci-lint run ./internal/cli/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+      "elapsed_ms": 378
+    },
+    {
+      "command": "grep -c 'reviewTimeoutS' internal/decide/decide.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -c 'closeTimeoutS' internal/decide/decide.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -c 'verifyTimeoutS' internal/decide/finish.go | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'deadline.Session' internal/decide/decide.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'BackendTimeout' internal/cli/facts.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'UnionCommands' internal/cli/finish_facts.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestExecTimeoutsStrictlyContainTheBinaryCaps' internal/decide/decide_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'closeBudget' internal/cli/deadline_facts_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestGatheredFactsMatchTheBinaryBudget' internal/cli/deadline_facts_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestGatheredFinishFactsCountTheVerifyUnion' internal/cli/deadline_facts_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestGatherFinishFactsPropagatesAnIndexReadError' internal/cli/deadline_facts_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 ./internal/decide/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/decide\t1.011s",
+      "elapsed_ms": 1172
+    },
+    {
+      "command": "go test -race -count=1 -run 'TestGathered|TestGatherFinishFacts' ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.066s",
+      "elapsed_ms": 1289
+    },
+    {
+      "command": "golangci-lint run ./internal/decide/... ./internal/cli/...",
+      "exit": 0,
+      "passed": true,
+      "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+      "elapsed_ms": 378
+    },
+    {
+      "command": "grep -q 'ReviewerBackends' internal/decide/decide.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'ReviewerBackends' internal/cli/facts.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'backends.' internal/decide/questions.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestReviewErrorNamesTheBackendTimeouts' internal/decide/decide_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestGatherFactsFillsReviewerBackendsInPreferenceOrder' internal/cli/reviewer_facts_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'nonesuch' internal/cli/reviewer_facts_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestReviewErrorRendersIdenticallyAfterAContextRoundTrip' internal/decide/decide_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 -run TestGatherFactsFillsReviewerBackends ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.027s",
+      "elapsed_ms": 1251
+    },
+    {
+      "command": "grep -q '\"pr body\"' internal/cli/cmd_next.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 7
+    },
+    {
+      "command": "grep -q 'TestPushPRLeavesTheBodyInHead' internal/cli/finish_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'preparePushPR(context' internal/cli/brief_stable_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.496s",
+      "elapsed_ms": 1722
+    },
+    {
+      "command": "grep -q 'case dispositionPR' internal/cli/archive.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -q 'git push -u origin' internal/cli/archive.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c 'IsAncestor' internal/cli/archive.go | awk '$1 \u003e= 2 { found=1 } END { exit !found }'",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestArchivedPROffersThePushUntilItIsDone' internal/cli/archive_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'commit-tree' internal/cli/archive_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestArchivedPRPushIsOfferedWhenGitCannotAnswer' internal/cli/archive_internal_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'TestArchivedPRPushIsOfferedWhenTheAncestryReadFails' internal/cli/archive_internal_test.go",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/",
+      "exit": 0,
+      "passed": true,
+      "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.625s",
+      "elapsed_ms": 1848
+    },
+    {
+      "command": "grep -c '\"timeout\": \"5m\"' README.md | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 4
+    },
+    {
+      "command": "grep -q '\"timeout\": \"15m\"' README.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c '\"timeout\": \"5m\"' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'internal/deadline' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c 'ask git for nothing at this step' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -c 'archive asks git for nothing' docs/superpowers/specs/2026-08-24-takt-design.md | grep -qx 0",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "grep -q 'holds commits the remote-tracking ref does not' docs/superpowers/specs/2026-08-24-takt-design.md",
+      "exit": 0,
+      "passed": true,
+      "tail": "",
+      "elapsed_ms": 3
+    },
+    {
+      "command": "task check",
+      "exit": 0,
+      "passed": true,
+      "tail": "task: [build] go build ./...\ntask: [build] go build -ldflags \"-X github.com/monrad/takt/internal/version.Version=0.1.0\" -o takt ./cmd/takt\ntask: [test] go test ./... -race -count=1\n?   \tgithub.com/monrad/takt/cmd/takt\t[no test files]\nok  \tgithub.com/monrad/takt/internal/backend\t1.311s\nok  \tgithub.com/monrad/takt/internal/brief\t1.011s\nok  \tgithub.com/monrad/takt/internal/bundle\t1.030s\nok  \tgithub.com/monrad/takt/internal/cli\t7.566s\nok  \tgithub.com/monrad/takt/internal/config\t1.012s\nok  \tgithub.com/monrad/takt/internal/deadline\t1.017s\nok  \tgithub.com/monrad/takt/internal/decide\t1.019s\nok  \tgithub.com/monrad/takt/internal/doctor\t1.028s\nok  \tgithub.com/monrad/takt/internal/finish\t1.016s\nok  \tgithub.com/monrad/takt/internal/gate\t1.024s\nok  \tgithub.com/monrad/takt/internal/gitx\t6.554s\nok  \tgithub.com/monrad/takt/internal/goals\t1.011s\nok  \tgithub.com/monrad/takt/internal/hosts\t1.010s\nok  \tgithub.com/monrad/takt/internal/op\t1.016s\nok  \tgithub.com/monrad/takt/internal/plan\t1.028s\nok  \tgithub.com/monrad/takt/internal/prompt\t1.020s\n?   \tgithub.com/monrad/takt/internal/testutil\t[no test files]\nok  \tgithub.com/monrad/takt/internal/tools/hostgen\t1.018s\nok  \tgithub.com/monrad/takt/internal/tools/setversion\t1.024s\nok  \tgithub.com/monrad/takt/internal/version\t1.013s\nok  \tgithub.com/monrad/takt/internal/wave\t1.530s\ntask: [lint] golangci-lint run ./...\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.\ntask: [hosts:check] go run ./internal/tools/hostgen --check",
+      "elapsed_ms": 8591
+    }
+  ],
+  "at": "2026-08-30T14:30:40.560292806Z"
+}

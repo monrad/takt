@@ -1,0 +1,26 @@
+{
+  "lens": "consistency",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:55:17.324421869Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/archive_internal_test.go",
+      "line": 1,
+      "title": "New internal test file omits the established testpackage nolint directive",
+      "detail": "archive_internal_test.go is `package cli` — an internal test, as its own top comment says (\"like slug_test.go\") — but every other internal (package cli) test file in this package carries `//nolint:testpackage // tests an unexported helper` immediately above the package clause: internal/cli/slug_test.go:1, internal/cli/revision_test.go:1, internal/cli/brief_stable_test.go, internal/cli/cmd_review_test.go, internal/cli/cmd_review_cache_test.go, internal/cli/cmd_record_test.go, and internal/bundle/state_test.go/write_test.go. .golangci.yml enables the `testpackage` linter and only exempts `_test\\.go` files from bodyclose/dupl/errcheck/funlen/goconst/gosec/noctx/wrapcheck (line 463-472) — testpackage is not in that exempt list. Without the directive, `golangci-lint run` will flag this new file exactly where every sibling internal test file in the package is consistently suppressed.",
+      "task": 7
+    },
+    {
+      "severity": "minor",
+      "file": "internal/deadline/deadline.go",
+      "line": 72,
+      "title": "New Grace/verifyMargin constants duplicate cmd_review.go/cmd_verify.go's existing ones, un-unified for now",
+      "detail": "deadline.go:72 adds `Grace = 30 * time.Second` — task 2's own brief describes this as \"cmd_review.go's reviewGrace moves here (value unchanged)\" — and deadline.go:76 adds an unexported `verifyMargin = 30 * time.Second`. Neither call site is repointed at the new package in this wave: internal/cli/cmd_review.go:82 still declares its own `reviewGrace = 30 * time.Second` (used at cmd_review.go:176), internal/cli/cmd_verify.go:15 still declares its own `verifyMargin = 30 * time.Second` (used at cmd_verify.go:111), and internal/cli/cmd_close_wave.go:30's fixed `closeWaveTimeout = 30 * time.Minute` is untouched even though deadline_test.go's own worked example (TestCloseBudgetsTheWave, 'eight tasks... exceeds today's fixed 30m') proves a realistic 8-task wave already needs 192m. This is evidently staged for a later task (the plan's alignment-verdicts.md describes call-site rewiring as a separate step), so it is not this wave's own tasks failing to do their job, but it does leave two independent, untested-for-drift 30s constants (and a stale 30m cap) coexisting in the tree in the meantime — unlike task 1's defaultTimeout/defaultBackendTimeout pair, which does get an explicit equality test (internal/cli/backend_timeout_test.go).",
+      "task": 2
+    }
+  ]
+}

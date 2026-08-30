@@ -1,0 +1,18 @@
+{
+  "lens": "intent",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:24:40.835172653Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "internal/cli/facts.go",
+      "line": 209,
+      "title": "countWaveWork does not zero ReviewTasks when idx is nil, contradicting both its own doc comment and the task spec",
+      "detail": "The task text requires 'ReviewTasks = the task count when st.Config.Review.Tasks else 0 (0 for both when idx is nil)', and countWaveWork's own doc comment (lines 207-208) states 'A nil index (unreadable or unparsable) leaves both counts at zero'. The implementation does not do this: `tasks` is incremented unconditionally for every pending wave task before the `if idx == nil { continue }` check (lines 210-218), so only VerifyCommands is correctly held at 0 when idx is nil — ReviewTasks (line 223-224, `if st.Config.Review.Tasks { f.Wave.ReviewTasks = tasks }`) is set to the full pending-task count regardless of idx. On the binary side, closeWaveBudgeted (internal/cli/cmd_close_wave.go:94-98) fails on a readIndex error before ever calling closeBudget, so the binary actually performs zero work (no review calls) in this scenario — meaning the decide-side ReviewTasks count is factually wrong here, not just mismatched with its comment. No test in internal/cli/deadline_facts_test.go exercises the idx-nil-with-review.tasks-on case, so this gap is untested. Practically this only inflates the close-wave exec timeout rather than shrinking it, so it is not a containment-safety failure, but it is a stated task requirement not met and a direct self-contradiction within the diff.",
+      "task": 4
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:48:56.006566602Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/decide/questions.go",
+      "line": 370,
+      "title": "backendDeadlines' defensive/malformed-payload branches are never exercised by any test",
+      "detail": "backendDeadlines has four distinct guard branches for a `backends` ctx entry that isn't the shape decide.go writes: the whole value not being []any (line 371-374), an element not being map[string]any (377-379), a missing/empty key (381-384), and a present key with a missing/empty timeout — which produces the untested 'named but no deadline' rendering `` `key` `` with no '(now …)' suffix (line 385-389). Every case in TestReviewErrorNamesTheBackendTimeouts and the round-trip test only ever feeds backendDeadlines well-formed output of backendsContext (either non-empty entries with both key and timeout, or a genuinely empty list), so none of these four branches is independently verified. They're documented as defensive rather than a second code path, so this is low risk, but a regression that broke the type assertions or the no-timeout fallback formatting would go uncaught.",
+      "task": 5
+    }
+  ]
+}

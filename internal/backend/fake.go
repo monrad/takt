@@ -13,9 +13,10 @@ import (
 const fakeElapsed = time.Millisecond
 
 // defaultFakeResult is used when neither TAKT_FAKE_REVIEW_FILE nor
-// TAKT_FAKE_REVIEW is set. A third variable, TAKT_FAKE_REVIEW_CALLS, does not
-// choose the result at all: it names the file recordReviewCall records every
-// call in.
+// TAKT_FAKE_REVIEW is set. Two further variables do not choose the result at
+// all: TAKT_FAKE_REVIEW_CALLS names the file recordReviewCall records every
+// call in, and TAKT_FAKE_REVIEW_TIMEOUT_FILE the one recordReviewDeadline
+// reports the review's remaining time in.
 const defaultFakeResult = `{"verdict":"approve","summary":"fake approve"}`
 
 // fakeReviewer returns a canned result (tests and dry runs). It never shells
@@ -29,6 +30,20 @@ func (f *fakeReviewer) Healthy(context.Context) error { return nil }
 func (f *fakeReviewer) Review(ctx context.Context, req ReviewRequest) (ReviewResult, error) {
 	if p := f.getenv("TAKT_FAKE_REVIEW_CALLS"); p != "" {
 		if err := recordReviewCall(p, req.Rubric, req.LogID); err != nil {
+			return errorResult(nameFake, nameFake, err.Error(), "", 0), nil
+		}
+	}
+
+	// The fake reviews under the deadline a real one would: the request's
+	// Timeout, or the package fallback when it is unset. Building it here —
+	// around fakeDelay and everything after it — is what makes the value
+	// recordReviewDeadline reports the deadline the work is actually
+	// honouring, rather than one merely computed beside it.
+	ctx, cancel := context.WithTimeout(ctx, resolveTimeout(req.Timeout))
+	defer cancel()
+
+	if p := f.getenv("TAKT_FAKE_REVIEW_TIMEOUT_FILE"); p != "" {
+		if err := recordReviewDeadline(ctx, p); err != nil {
 			return errorResult(nameFake, nameFake, err.Error(), "", 0), nil
 		}
 	}
@@ -79,6 +94,22 @@ func recordReviewCall(path, rubric, logID string) error {
 	}
 	_, err = fh.WriteString(rubric + " " + logID + "\n")
 	return errors.Join(err, fh.Close())
+}
+
+// recordReviewDeadline writes the time left on ctx — the review's work
+// context, deadline and all — to the file TAKT_FAKE_REVIEW_TIMEOUT_FILE
+// names, which is how a test learns the deadline a review with no explicit
+// Timeout actually ran under. It reports what remains on the context rather
+// than the value the fake resolved, so an implementation that resolves the
+// fallback but never puts it on the context has no deadline to report and
+// fails here instead of passing. Like recordReviewCall, the failure is not
+// swallowed: the caller turns it into an error verdict.
+func recordReviewDeadline(ctx context.Context, path string) error {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("fake reviewer: the review context carries no deadline")
+	}
+	return os.WriteFile(path, []byte(time.Until(deadline).String()), logFileMode)
 }
 
 // rubricEnvKey turns a rubric name into its env-var suffix: upper-cased,

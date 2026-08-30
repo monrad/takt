@@ -15,8 +15,12 @@ import (
 // before it is killed.
 const waitDelay = 5 * time.Second
 
-// defaultTimeout applies when a ReviewRequest leaves Timeout unset.
-const defaultTimeout = 5 * time.Minute
+// defaultTimeout applies when a ReviewRequest leaves Timeout unset. It
+// mirrors config's defaultBackendTimeout (backends.<name>.timeout) without
+// importing it, for the same reason waitDelay above mirrors gitx.WaitDelay;
+// a test in internal/cli, which imports both packages, asserts the two are
+// equal so they cannot drift.
+const defaultTimeout = 15 * time.Minute
 
 // healthCheckTimeout bounds a reviewer binary's `--version` probe.
 const healthCheckTimeout = 10 * time.Second
@@ -40,10 +44,7 @@ type cliRun struct {
 // runCLI runs argv in dir under timeout, logging stdout/stderr to
 // <logDir>/<logID>.{stdout,stderr} when logDir and logID are both set.
 func runCLI(ctx context.Context, dir string, timeout time.Duration, logDir, logID string, argv []string) cliRun {
-	if timeout <= 0 {
-		timeout = defaultTimeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, resolveTimeout(timeout))
 	defer cancel()
 
 	//nolint:gosec // argv is takt's own reviewer invocation
@@ -61,6 +62,17 @@ func runCLI(ctx context.Context, dir string, timeout time.Duration, logDir, logI
 	writeLog(logDir, logID, "stdout", out.Bytes())
 	writeLog(logDir, logID, "stderr", errb.Bytes())
 	return run
+}
+
+// resolveTimeout applies the package fallback: a deadline that is unset —
+// or negative, which would be one already past — becomes defaultTimeout.
+// Every backend call resolves its deadline here, so there is one place the
+// fallback lives and one value a test can observe.
+func resolveTimeout(d time.Duration) time.Duration {
+	if d <= 0 {
+		return defaultTimeout
+	}
+	return d
 }
 
 // logPrompt stores the rendered prompt beside the outputs.

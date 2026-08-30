@@ -72,11 +72,62 @@ type Backend struct {
 	Timeout Duration `json:"timeout"`
 }
 
+// Backend names that have a per-backend config key. The registry
+// (internal/backend) also holds "fake" and tolerates unknown names until
+// selection, so these two are the only ones config can speak for.
+const (
+	backendCopilot = "copilot"
+	backendClaude  = "claude"
+)
+
 // Backends lists the reviewer chain and per-backend settings.
 type Backends struct {
 	Reviewer []string `json:"reviewer"`
 	Copilot  Backend  `json:"copilot"`
 	Claude   Backend  `json:"claude"`
+}
+
+// Timeout returns the deadline configured under backends.<name>.timeout and
+// whether that key exists at all. Only "copilot" and "claude" have a Timeout
+// field: "fake" and any name config does not know report false, so a caller
+// never names a config key that is not there (spec §A3).
+func (b Backends) Timeout(name string) (Duration, bool) {
+	switch name {
+	case backendCopilot:
+		return b.Copilot.Timeout, true
+	case backendClaude:
+		return b.Claude.Timeout, true
+	default:
+		return 0, false
+	}
+}
+
+// ReviewBudgetTimeout returns the deadline a budget must assume for one
+// backend review: the largest Timeout among the reviewer chain entries that
+// have a config key. Selection picks the first healthy backend and takt
+// cannot probe health here, so the budget takes the worst case among the
+// candidates. An entry with no key cannot be sized and is skipped; when that
+// leaves none — an empty chain, or one naming only "fake" and unknowns — the
+// larger of the two shipped fields stands in, since that is the deadline a
+// run falling back to a shipped backend would honour.
+func (b Backends) ReviewBudgetTimeout() Duration {
+	var (
+		largest Duration
+		found   bool
+	)
+	for _, name := range b.Reviewer {
+		d, ok := b.Timeout(name)
+		if !ok {
+			continue
+		}
+		if !found || d > largest {
+			largest, found = d, true
+		}
+	}
+	if !found {
+		return max(b.Copilot.Timeout, b.Claude.Timeout)
+	}
+	return largest
 }
 
 // Implementer maps task classes to models (spec D22).
@@ -138,7 +189,7 @@ const (
 	defaultWaveStaleAfter  = 30 * time.Minute
 	defaultLockTTL         = 10 * time.Minute
 	defaultVerifyTimeout   = 10 * time.Minute
-	defaultBackendTimeout  = 5 * time.Minute
+	defaultBackendTimeout  = 15 * time.Minute
 )
 
 // Defaults returns the shipped defaults (spec §12).
@@ -157,7 +208,7 @@ func Defaults() Config {
 		LockTTL:         Duration(defaultLockTTL),
 		VerifyTimeout:   Duration(defaultVerifyTimeout),
 		Backends: Backends{
-			Reviewer: []string{"copilot", "claude"},
+			Reviewer: []string{backendCopilot, backendClaude},
 			Copilot:  Backend{Model: "gpt-5.6-sol", Effort: "high", Timeout: Duration(defaultBackendTimeout)},
 			Claude:   Backend{Model: "opus", Effort: "high", Timeout: Duration(defaultBackendTimeout)},
 		},

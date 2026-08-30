@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 1,
+  "status": "done",
+  "summary": "close-wave now runs openTarget/landedClose under deadline.Bootstrap and the remaining close under deadline.Close of a new pure closeBudget built from a single index read, with verify and gate review taking deadline.Verify/deadline.GateReview and the three local constants deleted.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T12:53:08.622399045Z"
+}

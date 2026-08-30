@@ -1,0 +1,34 @@
+{
+  "lens": "docs",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T14:16:02.955170351Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 337,
+      "title": "§4.7 commit-message catalog omits the new \"pr body\" commit",
+      "detail": "The \"Commits.\" bullet enumerates every message takt commits with (`wave \u003cn\u003e — tasks…`, `plan → execute`, `archive`) but not the `takt(\u003cslug\u003e): pr body` commit that `preparePushPR` (internal/cli/cmd_next.go) now makes when it writes `finish/pr.md`, before the session's `push_pr` runs `git push`. This is a branch-wide behavior change (run's own spec.md: \"next commits finish/pr.md in the commit the push carries\", goal G6, tested by TestPushPRLeavesTheBodyInHead) that this final docs wave did not fold into the invariant list it lives next to.",
+      "task": 8
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 869,
+      "title": "§7.5 step 4's `pr` disposition prose doesn't mention finish/pr.md is committed before the push",
+      "detail": "The paragraph describing `pr: run push_pr` says the body file path (`inputs.pr_body_path`, naming `finish/pr.md`) is handed to the session for `gh pr create --body-file`, but never says takt commits that file into the branch first (subject `pr body`) so the pushed branch already carries the PR body it was created from. A reader of this section would still believe the body is only written to disk, not committed — the exact behavior issue #62's first half changed, per the run's own spec.md and internal/cli/cmd_next.go's preparePushPR doc comment (\"Committing here... is what puts finish/pr.md in the branch before the session pushes it\").",
+      "task": 8
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 814,
+      "title": "review_error gate's dynamic retry text (backends.\u003cname\u003e.timeout) is undocumented",
+      "detail": "internal/decide/questions.go's questionReviewError now names the specific `backends.\u003cname\u003e.timeout` key (and its current deadline) in the retry option's description when the review errored, falling back to the literal placeholder key when no backend can be named — a branch change (run spec G5). Line 814 still describes the gate only as \"(retry / skip this task's review with reason / stop)\" with no mention of this. This matches the doc's existing terseness for other gates' option text, so it's a minor gap rather than a clear regression.",
+      "task": 8
+    }
+  ]
+}

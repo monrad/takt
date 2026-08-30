@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T14:13:55.588735133Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 487,
+      "title": "§5.2's \"exactly when\" wording for pr cleanup is looser than §7.5 step 5's own case list",
+      "detail": "§5.2 (lines 486-488) says a `pr` archive carries the push as `cleanup` \"exactly when the remote-tracking ref is missing commits.\" §7.5 step 5 (lines 892-897), added in the same diff and describing the same `prCleanup` predicate, adds a case §5.2 omits: \"a failed git read still offers the push\" — which matches `internal/cli/archive.go`'s `prCleanup` (both `CommitExists` and `IsAncestor` error paths return the push regardless of whether the ref is actually missing anything). So on a read failure the push can be offered even when the ref is not actually missing commits, which the §5.2 sentence's \"exactly when\" does not account for. §7.5's fuller statement is accurate; §5.2's summary overclaims precision. Low impact since §5.2 cross-references §7.5 step 5 for the mechanism, but the two sentences describe the same rule slightly differently within the same document.",
+      "task": 8
+    }
+  ]
+}

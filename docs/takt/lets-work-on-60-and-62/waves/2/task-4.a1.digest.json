@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Exec-op timeouts in internal/decide are now `deadline.Session` of the matching binary cap, fed by new `Facts`/`WaveFacts`/`FinishFacts` fields that `internal/cli` fills from the same config and plan the binary budgets from, with a package-internal integration test proving the two sides budget identical work.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T13:19:17.030775168Z"
+}

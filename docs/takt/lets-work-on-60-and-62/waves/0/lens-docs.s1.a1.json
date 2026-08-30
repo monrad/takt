@@ -1,0 +1,34 @@
+{
+  "lens": "docs",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:54:54.198354059Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "commands/takt.md",
+      "line": 45,
+      "title": "Prompt invariant \"never push except push_pr\" is now false: archived pr cleanup pushes too",
+      "detail": "This wave's archive.go change (prCleanup, archive.go:179-198) makes an `archived` stop's `cleanup` list carry a literal `git push origin \u003cbranch\u003e` / `git push -u origin \u003cbranch\u003e` command for the pr disposition — a second place a takt op instructs a push, not covered by this line's sole named exception `(push_pr)`. The op-table's `stop` bullet (commands/takt.md:33) already generically tells the agent to run confirmed cleanup commands, so this line now contradicts it inside the same file: an LLM strictly honouring the Invariants section's 'never push except push_pr' could refuse the very cleanup push task 7 exists to hand back. The identical stale sentence is duplicated in hosts/copilot/skills/takt/SKILL.md:46 (same text, not part of the crossHostInvariants test set, so it won't be caught by TestPromptInvariantsReadTheSameOnEveryHost either). Neither file is mentioned anywhere in this run's own docs/takt/lets-work-on-60-and-62/plan.md task 8, which only targets README.md and the design spec — so this gap is not already tracked to be fixed by a later task in this run.",
+      "task": 0
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 886,
+      "title": "Design spec still says \"pr and keep ask git for nothing at this step\"",
+      "detail": "Section 7.5 step 5 states '`pr` and `keep` ask git for nothing at this step,' and §5.2 repeats the claim at line 481-482 ('a `keep` or a `pr` archive asks git for nothing and carries neither [context nor cleanup]'). Task 7's new `prCleanup`/`dispositionPR` case in archive.go directly contradicts both sentences (pr now asks CommitExists/IsAncestor and can return a push in `cleanup`) — archive.go's own applyDisposition doc comment was rewritten to say so, but this canonical design doc was not. This is already tracked: docs/takt/lets-work-on-60-and-62/plan.md (task 8, lines 257-262 of plan.md) names both this exact line and §5.2's :480-481 for correction in a later wave, so no action is owed within wave 0 — flagged here only for completeness/visibility while the spec is checked.",
+      "task": 0
+    },
+    {
+      "severity": "minor",
+      "file": "README.md",
+      "line": 151,
+      "title": "Shipped config example still shows the old 5m backend timeout",
+      "detail": "README.md:151-152 and docs/superpowers/specs/2026-08-24-takt-design.md:1133-1134 both show `\"timeout\": \"5m\"` for copilot and claude in the shipped-defaults JSON example, but internal/config/config.go's `defaultBackendTimeout` is raised to `15 * time.Minute` in this diff (config.go:189 area, was 573 pre-diff). Both docs now describe a default that no longer matches `config.Defaults()`. This is already tracked: docs/takt/lets-work-on-60-and-62/plan.md task 8 (lines 255-256) names these exact two locations for a follow-up docs task later in this run, so no action is owed within wave 0 — flagged here for completeness.",
+      "task": 0
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "anchor_hash": "sha256:99d3cfe9835db6090704c38ba0d3d05d31b0b3c769f20ebe1aedcdde4fc88484",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "work on #60",
+      "span": "work on #60"
+    },
+    {
+      "id": "A2",
+      "text": "work on #62",
+      "span": "and #62"
+    }
+  ],
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "plan.md's opening paragraph states 'Part A (tasks 1–5) raises the shipped backend review deadline to 15m and replaces the three fixed session/binary deadlines with budgets derived from the run's config and plan,' and plan.index.json tasks 1–5 (goals G1–G5) implement exactly that, each task description opening with a reference to spec section A1/A2."
+    },
+    {
+      "id": "A2",
+      "verdict": "covered",
+      "evidence": "plan.md states 'Part B (tasks 6–7) commits finish/pr.md before the session pushes and makes the archived pr stop hand the missing push back as cleanup,' and plan.index.json task 6's description opens 'Spec B1, issue #62's first half' while task 7's opens 'Spec B2, issue #62's second half.'"
+    }
+  ]
+}

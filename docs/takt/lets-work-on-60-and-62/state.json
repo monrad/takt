@@ -1,0 +1,225 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "lets-work-on-60-and-62",
+  "topic": "lets work on #60 and #62",
+  "phase": "archived",
+  "created_at": "2026-08-29T02:07:54.750660636Z",
+  "branch": "monrad/6062",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "7d72a259a473984f0f838b107ad3e8312b218944",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:f3f8b4f6db4030b3e1e806153866880b769f22ed4a329eca0f54edd077c19c43",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/backend/run.go",
+        "internal/backend/fake.go",
+        "internal/cli/backend_timeout_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Raised the shipped backend review deadline to 15m in config and pinned internal/backend's mirrored fallback to it via a fake-reviewer deadline probe, plus the two Backends accessors and their table tests.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:42:58.026163379Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/deadline/deadline.go",
+        "internal/deadline/deadline_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "New standard-library-only `internal/deadline` package with `Close`/`Verify`/`GateReview`/`Session`, saturating arithmetic, the overflow-safe ceil, and the moved `Grace` constant, covered by table tests for containment, the wave budget, saturation boundaries and monotonicity (100% coverage, lint clean).",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:45:42.515298993Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/cli/cmd_close_wave.go",
+        "internal/cli/cmd_verify.go",
+        "internal/cli/cmd_review.go",
+        "internal/cli/close_budget_test.go",
+        "internal/backend/live_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "close-wave now runs openTarget/landedClose under deadline.Bootstrap and the remaining close under deadline.Close of a new pure closeBudget built from a single index read, with verify and gate review taking deadline.Verify/deadline.GateReview and the three local constants deleted.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T12:53:08.622399045Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 2,
+      "status": "waived",
+      "files": [
+        "internal/decide/decide.go",
+        "internal/decide/finish.go",
+        "internal/decide/decide_test.go",
+        "internal/decide/finish_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/finish_facts.go",
+        "internal/cli/deadline_facts_test.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 4,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Nil-index wave facts now budget zero work on both counts (with an active-wave test), the finish verify count is gathered only while unverified and off the single already-parsed index, the `ReadExtra` error path is tested, and the decide verify-timeout test is split into subtests.",
+        "blockers": "none — except that the residual `ReadExtra`+`UnionCommands` overlap with `verifyAtHead` cannot be factored without `internal/cli/cmd_verify.go` in scope.",
+        "model": "opus",
+        "recorded_at": "2026-08-29T13:46:18.861603821Z"
+      }
+    },
+    {
+      "id": 5,
+      "wave": 3,
+      "status": "done",
+      "files": [
+        "internal/decide/decide.go",
+        "internal/decide/questions.go",
+        "internal/decide/decide_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/reviewer_facts_test.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 5,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Added `TestReviewErrorToleratesAMalformedBackendsContext` to internal/decide/decide_test.go covering all four of `backendDeadlines`' defensive guards including the bare-key-no-deadline rendering (mutation-checked, 100% coverage); assessed the \"undeclared workflow artifacts\" finding as a false positive about takt's own bookkeeping and left the facts.go/config duplication for a task that has internal/config in scope.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T13:59:26.685015591Z"
+      }
+    },
+    {
+      "id": 6,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go",
+        "internal/cli/brief_stable_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 6,
+        "attempt": 1,
+        "status": "done",
+        "summary": "preparePushPR now commits finish/pr.md (\"pr body\") after writing it, threaded through a new ctx parameter on run/preparePushPR; added TestPushPRLeavesTheBodyInHead and updated brief_stable_test.go's two direct callers plus its zero-workspace no-op assertion.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T11:46:01.990950203Z"
+      }
+    },
+    {
+      "id": 7,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/cli/archive.go",
+        "internal/cli/archive_test.go",
+        "internal/cli/archive_internal_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 7,
+        "attempt": 1,
+        "status": "done",
+        "summary": "The `pr` disposition's archived stop now hands back `git push [-u] origin \u003cbranch\u003e` exactly when git says the branch holds commits the remote-tracking ref does not (diverged included), degrades to the push when either git read fails, and never fails the stop; covered by one end-to-end test over all four rows and two internal tests for the two read failures.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:45:22.395204866Z"
+      }
+    },
+    {
+      "id": 8,
+      "wave": 4,
+      "status": "done",
+      "files": [
+        "README.md",
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "class": "docs",
+      "attempt": 1,
+      "last_digest": {
+        "task": 8,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Made all four planned documentation edits (README 15m x2, design-doc 15m x2, derived-budget rule, corrected pr-archive prose in §7.5 and §5.2) plus the unscripted fifth edit correcting the hard-coded `timeout_s: 1800` close-wave example at line 462 to show a derived, non-constant value; all seven grep verifies and the full `task check` gate pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-30T14:09:56.148462278Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "55fcddd61dfe185ef96877963c1fd45b5cf464b2",
+  "goals_checked_sha": "55fcddd61dfe185ef96877963c1fd45b5cf464b2",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-30T14:37:54.532409229Z",
+    "pr_url": "https://github.com/monrad/takt/pull/64",
+    "applied": true
+  }
+}

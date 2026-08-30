@@ -337,7 +337,9 @@ tracked `logs/.gitignore` still protects clones.
   is inside the repo. Never `add -A`, never the user's unrelated dirty files (they are in the wave
   baseline and are excluded from scope verification).
 - **Commits.** `takt(<slug>): wave <n> — tasks 1, 2` after a successful close; `takt(<slug>): plan →
-  execute` at phase transitions; `takt(<slug>): archive`. `takt(<slug>): archive` is the run's last
+  execute` at phase transitions; `takt(<slug>): pr body` when `next` writes `finish/pr.md` for the
+  `push_pr` op, so the body is in the branch before the session pushes it (§7.5 step 4);
+  `takt(<slug>): archive`. `takt(<slug>): archive` is the run's last
   commit; the merge disposition is applied only after it, in the primary worktree (§7.5 step 5).
   Commits are made by takt with `git commit` in the cwd worktree; the user's git identity applies.
 - **Agents never commit.** That is what makes re-dispatch after a crash safe.
@@ -462,8 +464,13 @@ user; the anchor is the verbatim topic), `retro`, `push_pr`.
 
 ```json
 { "op": "exec", "narration": "closing wave 0: verify + review 3 tasks",
-  "command": "takt close-wave --slug cedar-policy-2154", "timeout_s": 1800 }
+  "command": "takt close-wave --slug cedar-policy-2154", "timeout_s": 2820 }
 ```
+
+`timeout_s` here is not a fixed constant: `internal/deadline` computes it per wave from that wave's
+verify commands and reviewer count (§13, "Timeouts everywhere takt waits on something"), so it scales
+with the wave's real work — 2820 above is one plausible value for a small wave, not the canonical one; a
+larger wave can carry several times that.
 
 **stop** — end the turn.
 
@@ -481,8 +488,11 @@ An archived run's `stop` also carries `context` — git-derived facts about what
 now (e.g. `{"merged": "<sha>"}`, `{"deleted": true}`), read fresh from git on every call rather than
 remembered — and, whenever something git would not let takt do from this worktree, `cleanup`: the exact
 git commands takt could not run itself, for the session to run (§7.5 step 5). Both are present only
-when they have something to say: a `keep` or a `pr` archive asks git for nothing and carries neither,
-so the prompt must treat both as optional rather than expect an empty object and an empty list.
+when they have something to say: a `keep` archive carries neither; a `pr` archive carries the push as
+`cleanup` when git says the branch holds commits the remote-tracking ref does not — and also when
+either git read fails, since a redundant suggestion costs less than a push that silently went
+missing (§7.5 step 5) — so the prompt must treat both as
+optional rather than expect an empty object and an empty list.
 
 A `cleanup` that deletes the run branch (`git branch -d|-D <branch>`) can only run once nothing has
 that branch checked out — git refuses otherwise. The prompt therefore frames it as work to do **after
@@ -809,7 +819,10 @@ A wave, end to end:
      `{verdict, findings}`; written to `reviews/wave-<n>/task-<id>.md`. `approve` → stays `done`.
      `rework` → the task returns to `pending` with the findings attached (row 16 re-dispatches once, then row 17 asks). `reject` →
      `failed` (`reason: review`). `error` → `ask review_error` (retry / skip this task's review with
-     reason / stop) — fail closed, human-resolvable.
+     reason / stop) — fail closed, human-resolvable. The *retry* option names each configured
+     reviewer backend's `backends.<name>.timeout` and its current deadline, so a review that timed
+     out says what to raise without the user reading the source; a chain whose entries have no
+     config key (`fake`, unknown names) leaves the literal `backends.<name>.timeout` instead.
    - **Commit.** If every task of the wave (or of the current slice, §7.4 chunking) is `done`: stage each
      task's `files` (and the bundle if in-repo), commit `takt(<slug>): wave <n> — tasks …`, clear
      `active_wave`. Otherwise leave the
@@ -876,7 +889,10 @@ slice, which keeps every commit verified.
    the session runs `git push -u origin <branch>` and `gh pr create --base <base> --title '<title>'
    --body-file <path>`, the title and body file taken from the op's `inputs.pr_title` and
    `inputs.pr_body_path` (the latter naming `finish/pr.md`), then `done --step push_pr --url <pr-url>`
-   (§5.1's no-op rule applies: the same URL again is a no-op, a different one replaces it). `keep`:
+   (§5.1's no-op rule applies: the same URL again is a no-op, a different one replaces it). `next`
+   commits that body as `takt(<slug>): pr body` when it writes it, *before* handing the op over, so
+   the branch the session pushes already carries the body the pull request is created from; the
+   commit is replay-safe, since re-deriving the same bytes stages nothing. `keep`:
    nothing further.
 5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
    before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
@@ -898,7 +914,12 @@ slice, which keeps every commit verified.
      anywhere else; every other case (the primary mid-merge on `base`, or a third worktree holding the
      branch) hands off the bare deletion instead. takt never checks out another branch itself (§4.7):
      everything it cannot do from here is handed to the session verbatim as `stop archived`'s `cleanup`
-     (§5.2). `pr` and `keep` ask git for nothing at this step.
+     (§5.2). `keep` asks git for nothing at this step; `pr` asks whether the branch
+     holds commits the remote-tracking ref does not — no ref → `git push -u origin <branch>`; the
+     branch is an ancestor of the remote-tracking ref, i.e. fully pushed → no cleanup; ahead or
+     diverged, i.e. it holds commits the ref does not → `git push origin <branch>`; a failed git read
+     still offers the push — and hands it back as `cleanup`. "That commit is the run's last one"
+     (above) is unaffected: the push is a cleanup command, not a commit.
    - None of this is ever recorded in state: there is no `disposition_applied` event and no write after
      the archive commit. `archive`, and every later `takt next` on the archived run, re-derive the same
      outcome from git each time, so an effect that could not land the first try (the primary was busy, the
@@ -1145,8 +1166,8 @@ config is for what a team shares (`dir`, gate defaults); user config for machine
   "default_branch": "",
   "backends": {
     "reviewer": ["copilot", "claude"],
-    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "5m" },
-    "claude":  { "model": "opus", "effort": "high", "timeout": "5m" }
+    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "15m" },
+    "claude":  { "model": "opus", "effort": "high", "timeout": "15m" }
   },
   "agents": {
     "implementer": {
@@ -1191,7 +1212,12 @@ run's behaviour.
 - **No network in takt.** `push`, `gh`, and anything that needs credentials stay in the session.
 - **No secrets in the bundle.** Reviewer logs are gitignored; briefs never include environment variables.
 - **Timeouts everywhere takt waits on something.** Reviewers, verify commands, git — all under `context`
-  deadlines; a timeout is a result, never a hang.
+  deadlines; a timeout is a result, never a hang. The deadlines that wrap a backend call — close-wave,
+  verify, gate review, and the session-side `timeout_s` on their `exec` ops — are never fixed constants:
+  `internal/deadline` derives each from the run's config and plan (verify budgeted per command and run
+  serially across the wave; reviews divided by `max_parallel`; `Session` strictly containing every
+  binary's own cap), so the outer deadline cannot fire before the work it wraps could still be reporting
+  a result.
 
 ---
 

@@ -293,7 +293,7 @@ func (r *nextRun) loop(ctx context.Context) int {
 		case decide.ActAsk:
 			return r.ask(*d.Op)
 		case decide.ActRun:
-			return r.run(*d.Op)
+			return r.run(ctx, *d.Op)
 		case decide.ActExec, decide.ActStop:
 			return r.emit(*d.Op)
 		case decide.ActArchive:
@@ -1005,7 +1005,7 @@ func (r *nextRun) ask(o op.Op) int {
 
 // run fills a run op's instructions from the step's template (spec §5.2)
 // and adds whatever else that step needs to do its work.
-func (r *nextRun) run(o op.Op) int {
+func (r *nextRun) run(ctx context.Context, o op.Op) int {
 	data := brief.RunData{
 		Slug: r.slug, Topic: r.st.Topic,
 		SpecPath: filepath.Join(r.bdir, "spec.md"), GoalsPath: filepath.Join(r.bdir, "goals.md"),
@@ -1028,7 +1028,7 @@ func (r *nextRun) run(o op.Op) int {
 		// The body is re-derived on every call that emits this op, exactly
 		// as the retro inputs are: a replayed `next` writes the same bytes
 		// and hands back the same op (spec §5.4).
-		if err := r.preparePushPR(&data, inputs); err != nil {
+		if err := r.preparePushPR(ctx, &data, inputs); err != nil {
 			return fail(r.env.Stderr, exitError, err.Error(), "")
 		}
 		inputs[keyBranch] = data.Branch
@@ -1044,19 +1044,29 @@ func (r *nextRun) run(o op.Op) int {
 	return r.emit(o)
 }
 
-// preparePushPR writes finish/pr.md and fills the push_pr op's title and
-// body path from it (#36). Nothing here is best-effort: a run that reaches
-// the pull request has a spec, and a goals-on run has goals.md and — unless
-// it never wrote one — a readable finish/goals.json, so a read that fails is
-// a broken bundle, not a body with a section quietly missing. The one
-// absence that is not an error is a goals record that does not exist:
-// finish.ReadGoals reports it as (nil, nil) and every goal is then rendered
-// "not assessed" — which a record that exists but cannot be decoded is
-// never rendered as. That last one is stopped before this: the finish facts
-// decode the same file on the way to deciding this op, so the call has
-// already failed with the path factsHint names. The check below is what
-// makes the rule hold at this end too, whichever reader gets there first.
-func (r *nextRun) preparePushPR(data *brief.RunData, inputs map[string]any) error {
+// preparePushPR writes finish/pr.md, commits it, and fills the push_pr op's
+// title and body path from it (#36, #62). Nothing here is best-effort: a run
+// that reaches the pull request has a spec, and a goals-on run has goals.md
+// and — unless it never wrote one — a readable finish/goals.json, so a read
+// that fails is a broken bundle, not a body with a section quietly missing.
+// The one absence that is not an error is a goals record that does not
+// exist: finish.ReadGoals reports it as (nil, nil) and every goal is then
+// rendered "not assessed" — which a record that exists but cannot be
+// decoded is never rendered as. That last one is stopped before this: the
+// finish facts decode the same file on the way to deciding this op, so the
+// call has already failed with the path factsHint names. The check below is
+// what makes the rule hold at this end too, whichever reader gets there
+// first.
+//
+// The commit is replay-safe by construction: the body is re-derived on
+// every `next` that emits this op, and commitBundle stages the bundle then
+// reports committed=false when HasStagedIn finds nothing staged — identical
+// bytes make no commit. A body that genuinely changed (goals assessed in
+// between) makes a correct second "pr body" commit. Committing here, rather
+// than waiting for `takt done --step push_pr`, is what puts finish/pr.md in
+// the branch before the session pushes it, so the pull request it creates
+// carries the very body it was created from.
+func (r *nextRun) preparePushPR(ctx context.Context, data *brief.RunData, inputs map[string]any) error {
 	spec, err := os.ReadFile(filepath.Join(r.bdir, "spec.md"))
 	if err != nil {
 		return err
@@ -1077,6 +1087,9 @@ func (r *nextRun) preparePushPR(data *brief.RunData, inputs map[string]any) erro
 	}
 	pr := finish.BuildPR(string(spec), r.st.Topic, items, rec, rel)
 	if err = finish.WritePR(r.bdir, pr.Body); err != nil {
+		return err
+	}
+	if _, _, err = commitBundle(ctx, r.ws, r.bdir, r.slug, "pr body"); err != nil {
 		return err
 	}
 	data.PRTitle, data.PRBodyPath = pr.Title, finish.PRPath(r.bdir)

@@ -1,0 +1,44 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:30:28.562146968Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 462,
+      "title": "Design spec still shows the deleted fixed close-wave timeout as the canonical exec example",
+      "detail": "The `exec` example for `takt close-wave` still reads `\"timeout_s\": 1800` — the exact value of the now-deleted `closeTimeoutS` constant. This diff removes that constant and makes the close-wave exec op's timeout_s a computed value (`sessionSeconds(deadline.Close(deadline.Budget{...}))`, spec A2.2), which generally will not be 1800 (it scales with VerifyCommands/ReviewTasks/BackendTimeout/VerifyTimeout and is strictly greater than deadline.Close's own result). This is the master design reference under docs/superpowers/specs/ that the rubric names explicitly, and it now documents the pre-A2.2 fixed-timeout behaviour this wave's diff replaces. The spec/plan docs that guided this task (docs/takt/lets-work-on-60-and-62/plan.md and spec.md) do not list this file among the ones to update, so nothing else in the run addresses it.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "internal/decide/decide.go's fixed `closeTimeoutS = 1800` constant is deleted by this diff and the close-wave `exec` op's timeout_s is replaced with `sessionSeconds(deadline.Close(deadline.Budget{VerifyTimeout: f.VerifyTimeout, VerifyCommands: f.Wave.VerifyCommands, BackendTimeout: f.BackendTimeout, ReviewTasks: f.Wave.ReviewTasks, MaxParallel: st.Config.MaxParallel}))` (wave-2.s1.a2.diff, decide.go hunk around line 307). The design spec's `exec` example still hard-codes the old value verbatim: `{ \"op\": \"exec\", \"narration\": \"closing wave 0: verify + review 3 tasks\", \"command\": \"takt close-wave --slug cedar-policy-2154\", \"timeout_s\": 1800 }` at docs/superpowers/specs/2026-08-24-takt-design.md:462, and a repo-wide grep confirms this is the only mention of `1800`/`timeout_s`/`deadline.Close`/`internal/deadline` in that file, so nothing nearby already reflects the new derivation. Checked for a later mitigation: task 8 (plan.index.json id 8, class docs, the only task after task 4 that touches this file) is scoped to exactly four edits — README.md:151-152, the design doc's §12 config example (lines 1133-1134, the `\"timeout\": \"5m\"` backend example, unrelated), the §13 'Timeouts everywhere' bullet (lines 1178-1179), and §7.5/§5.2 prose about pr-archive cleanup (lines 886, 480-481, for issue #62) — none of which is line 462 or the exec example's `timeout_s` value; task 8's verify greps (checked in plan.index.json) likewise never touch `timeout_s` or `1800`. The docs lens rubric for this wave explicitly names 'the design specs under docs/superpowers/specs/' as required reading, matching the candidate's claim that the rubric names this file. No existing mitigation found.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:462",
+        "docs/takt/lets-work-on-60-and-62/logs/wave-2.s1.a2.diff:267-314",
+        "docs/takt/lets-work-on-60-and-62/plan.index.json:227-242"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1"
+  ]
+}

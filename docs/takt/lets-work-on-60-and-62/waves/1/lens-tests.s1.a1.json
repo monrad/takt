@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:57:43.086141122Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_close_wave.go",
+      "line": 121,
+      "title": "closeBudget's nil-ActiveWave guard is untested and unreachable",
+      "detail": "closeBudget's `if st.ActiveWave == nil { return b }` branch (lines 121-123) has no test in close_budget_test.go. It's also unreachable in production: closeBudget is only called from closeWaveBudgeted, which cmdCloseWave only reaches after already checking tgt.st.ActiveWave != nil. Low risk since it's dead code on the real call path, but as written it's a new branch a regression in could go uncaught.",
+      "task": 3
+    }
+  ]
+}

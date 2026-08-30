@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/config"
 	"github.com/monrad/takt/internal/decide"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/goals"
@@ -51,7 +52,17 @@ func gatherFacts(
 	f := decide.Facts{
 		Now: now, SessionID: session, Force: force, Recover: recovering,
 		LockTTL: time.Duration(ws.Cfg.LockTTL), WaveStaleAfter: time.Duration(ws.Cfg.WaveStaleAfter),
-		Wave: decide.WaveFacts{Recorded: map[int]bool{}},
+		// The two terms every deadline that wraps a backend call is derived
+		// from (spec A2.2). They are the binary's own per-unit caps, so the
+		// session's deadline for an `exec` op is computed from exactly the
+		// numbers the binary will apply to itself.
+		BackendTimeout: time.Duration(ws.Cfg.Backends.ReviewBudgetTimeout()),
+		VerifyTimeout:  time.Duration(ws.Cfg.VerifyTimeout),
+		// The chain the review_error gate names when a review errors, which
+		// is a fact about config alone and so is gathered with the rest of
+		// them (spec A3).
+		ReviewerBackends: reviewerBackends(ws.Cfg.Backends),
+		Wave:             decide.WaveFacts{Recorded: map[int]bool{}},
 	}
 	f.HasSpec = fileNonEmpty(filepath.Join(bdir, "spec.md"))
 	if b, err := os.ReadFile(filepath.Join(bdir, "goals.md")); err == nil {
@@ -62,7 +73,7 @@ func gatherFacts(
 	if err != nil {
 		return f, err
 	}
-	gatherIndexFacts(&f, ws, bdir)
+	pi := gatherIndexFacts(&f, ws, bdir)
 	f.PlanAttempts = countSinceReset(events, "plan_invalid", "plan_attempts_reset")
 	f.AlignmentAttempts = countSinceReset(events, evAlignmentInvalid, evAlignmentReset)
 	f.AlignmentProblems = lastProblems(events, evAlignmentInvalid, evAlignmentReset)
@@ -85,9 +96,58 @@ func gatherFacts(
 		if f.Finish, err = gatherFinishFacts(ctx, ws, bdir, st); err != nil {
 			return f, err
 		}
+		// Row 20 is the only consumer of the verify command count, and an
+		// index it cannot be counted from fails this gather — so it is
+		// counted only while row 20 is still ahead, the same economy
+		// gatherFinishFacts gathers the availability facts under. Once HEAD
+		// is verified nothing would read the count, and a plan index that
+		// went unreadable after verification must not fail the goals, retro,
+		// branch_finish, push_pr and archive rows, none of which read it.
+		if !f.Finish.Verified {
+			if f.Finish.VerifyCommands, err = verifyCommandCount(bdir, pi); err != nil {
+				return f, err
+			}
+		}
 	}
-	err = gatherWaveFacts(&f, bdir, st, events)
+	err = gatherWaveFacts(&f, bdir, st, events, pi)
 	return f, err
+}
+
+// reviewerBackends is the configured reviewer chain as the review_error gate
+// names it (spec A3): every entry with a real backends.<name>.timeout key, in
+// the preference order backends.reviewer lists them, carrying the deadline
+// that key holds today.
+//
+// An entry config cannot speak for — "fake", or a name it does not know — is
+// skipped rather than rendered as a key that does not exist; backends.reviewer
+// is not validated against a closed set, so such an entry is legal. No health
+// probe is made: gatherFacts must not shell out, so which backend would
+// actually run is unknowable here, and naming every candidate is accurate
+// without one.
+func reviewerBackends(b config.Backends) []decide.ReviewerBackend {
+	out := make([]decide.ReviewerBackend, 0, len(b.Reviewer))
+	for _, name := range b.Reviewer {
+		d, ok := b.Timeout(name)
+		if !ok {
+			continue
+		}
+		out = append(out, decide.ReviewerBackend{Name: name, Timeout: time.Duration(d)})
+	}
+	return out
+}
+
+// planIndex is the one read of plan.index.json a gatherFacts call makes,
+// carrying both answers that read has to give. The plan facts read it
+// softly — an index that cannot be parsed is a fact about the plan, which
+// row 8 judges and no other row needs — while the two deadline counts
+// cannot: a budget counted off an index nobody could read is a deadline for
+// work the binary will never reach, since close-wave and verify both fail
+// on the same file first. Exactly one field is set, and the file is read
+// once, so the soft half and the hard half can never disagree about what it
+// held.
+type planIndex struct {
+	idx plan.Index // the parsed index; meaningful only when err is nil
+	err error      // why there is none: unreadable, or unparsable
 }
 
 // gatherIndexFacts fills the plan-index half of the facts: present, parsed,
@@ -95,16 +155,25 @@ func gatherFacts(
 // plan.md the same planner was asked to write. This is the single seam every
 // decision about the plan's validity reads from — `takt next` and `takt
 // record --agent planner` both come through here.
-func gatherIndexFacts(f *decide.Facts, ws *workspace, bdir string) {
-	raw, err := os.ReadFile(filepath.Join(bdir, "plan.index.json"))
+//
+// It also hands the parsed index back, for the wave and finish facts to
+// count the deadlines' work from. That index is missing only when the file
+// cannot be read or cannot be parsed — never merely because validation
+// found problems — which is the parse-only view readIndex gives close-wave
+// and verify. Counting only a valid index would floor the session's
+// deadline at [deadline.Floor] while the binary budgeted the real thing,
+// which is the containment break this plumbing exists to close.
+func gatherIndexFacts(f *decide.Facts, ws *workspace, bdir string) planIndex {
+	raw, err := os.ReadFile(indexPath(bdir))
 	if err != nil {
-		return
+		return planIndex{err: err}
 	}
 	f.HasIndex = true
-	if idx, perr := plan.ParseIndex(raw); perr != nil {
+	parsed, perr := plan.ParseIndex(raw)
+	if perr != nil {
 		f.IndexProblems = []string{perr.Error()}
 	} else {
-		for _, p := range plan.Validate(idx, validateOpts(ws, bdir)) {
+		for _, p := range plan.Validate(parsed, validateOpts(ws, bdir)) {
 			f.IndexProblems = append(f.IndexProblems, p.String())
 		}
 	}
@@ -120,6 +189,10 @@ func gatherIndexFacts(f *decide.Facts, ws *workspace, bdir string) {
 		f.IndexProblems = append(f.IndexProblems, "plan.md is missing or empty")
 	}
 	f.IndexValid = len(f.IndexProblems) == 0
+	if perr != nil {
+		return planIndex{err: perr}
+	}
+	return planIndex{idx: parsed}
 }
 
 // gatherGateFacts computes the two review gates this run has enabled, each
@@ -148,13 +221,18 @@ func gatherGateFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 }
 
 // gatherWaveFacts records which of the active wave's tasks have a digest for
-// the current attempt, its close record when one was written, and the
-// internal review's state for the dispatch.
-func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State, events []bundle.Event) error {
+// the current attempt, its close record when one was written, the internal
+// review's state for the dispatch, and the work the close itself has to fit
+// into — which is what the session's deadline for `exec takt close-wave` is
+// derived from.
+func gatherWaveFacts(
+	f *decide.Facts, bdir string, st *bundle.State, events []bundle.Event, pi planIndex,
+) error {
 	aw := st.ActiveWave
 	if aw == nil {
 		return nil
 	}
+	countWaveWork(f, st, aw, pi)
 	for _, id := range aw.Tasks {
 		if fileNonEmpty(digestPath(bdir, aw.N, id, aw.Attempt)) {
 			f.Wave.Recorded[id] = true
@@ -172,6 +250,38 @@ func gatherWaveFacts(f *decide.Facts, bdir string, st *bundle.State, events []bu
 	}
 	f.Wave.Internal = gatherInternalFacts(bdir, st, aw, events)
 	return nil
+}
+
+// countWaveWork counts what the close of this wave has to do, over exactly
+// the set closeBudget counts on the binary side: the active wave's PENDING
+// tasks, which after a recovery can hold more tasks than the dispatch's own
+// list. A task the plan index does not hold contributes no verify commands
+// — close-wave cannot run commands it cannot read — and reviews are counted
+// only when the run has review.tasks on, since a run without it makes no
+// backend call at all.
+//
+// An index that could not be read or parsed leaves both counts at zero, and
+// that is the honest count rather than a shortcut: closeWaveBudgeted fails
+// on readIndex before it builds a budget at all, so the binary verifies
+// nothing and reviews nobody. Counting the pending tasks anyway would size
+// the session's deadline for reviews that never happen.
+func countWaveWork(f *decide.Facts, st *bundle.State, aw *bundle.ActiveWave, pi planIndex) {
+	if pi.err != nil {
+		return
+	}
+	tasks := 0
+	for _, t := range st.Tasks {
+		if t.Wave != aw.N || t.Status != bundle.StatusPending {
+			continue
+		}
+		tasks++
+		if pt := pi.idx.Task(t.ID); pt != nil {
+			f.Wave.VerifyCommands += len(pt.Verify)
+		}
+	}
+	if st.Config.Review.Tasks {
+		f.Wave.ReviewTasks = tasks
+	}
 }
 
 // gatherInternalFacts reads the internal review's state for the active
