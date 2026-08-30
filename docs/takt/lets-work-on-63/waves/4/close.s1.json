@@ -121,15 +121,13 @@
       ]
     }
   ],
-  "review_findings": 1,
+  "review_findings": 0,
   "out_of_scope": null,
   "reverted": null,
-  "committed": false,
-  "closed_at": "2026-08-30T14:18:32.935146768Z",
+  "committed": true,
+  "closed_at": "2026-08-30T14:22:45.441571528Z",
   "failed": [],
   "blocked": [],
-  "rework": [
-    7
-  ],
+  "rework": [],
   "review_errors": []
 }

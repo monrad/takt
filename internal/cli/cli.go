@@ -118,6 +118,7 @@ var commands = map[string]command{
 	"close-wave": cmdCloseWave,
 	"waive":      cmdWaive,
 	"verify":     cmdVerify,
+	"retro":      cmdRetro,
 }
 
 // Commands is every subcommand name, sorted: the list `takt` accepts, the
