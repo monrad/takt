@@ -1,0 +1,18 @@
+{
+  "lens": "docs",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:25:19.079164761Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/facts.go",
+      "line": 207,
+      "title": "countWaveWork's doc comment contradicts its own code for a nil index",
+      "detail": "The comment on countWaveWork (facts.go:201-208) says: \"A nil index (unreadable or unparsable) leaves both counts at zero, which is all the close could grade from it anyway.\" The code does not do that: `tasks++` runs unconditionally per pending task before the `if idx == nil { continue }` check (line 215-218), and the trailing `if st.Config.Review.Tasks { f.Wave.ReviewTasks = tasks }` (lines 223-225) is not gated on idx at all. So when idx is nil, VerifyCommands is 0 but ReviewTasks is still set to the pending-task count whenever review.tasks is on — not zero. This also contradicts the wave's own task brief, which states the intended behaviour as \"0 for both when idx is nil\". The WaveFacts.ReviewTasks doc comment in internal/decide/decide.go:156-159 (\"all of them when review.tasks is on and none of them when it is off\") likewise makes no exception for a nil index, reinforcing the same wrong invariant. Either the comment needs to state the real behaviour, or the code needs to match the documented/spec'd one.",
+      "task": 4
+    }
+  ]
+}

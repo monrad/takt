@@ -1,0 +1,34 @@
+{
+  "lens": "tests",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:26:03.114939407Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/facts.go",
+      "line": 216,
+      "title": "countWaveWork's nil-index branch is untested, and the doc comment misdescribes it",
+      "detail": "countWaveWork's doc comment (facts.go:207-208) claims 'A nil index (unreadable or unparsable) leaves both counts at zero,' but the code only skips the VerifyCommands increment when idx==nil (line 216-218); ReviewTasks is still set to the pending-task count at line 223-225 whenever review.tasks is on, regardless of idx's nilness. No test exercises gatherWaveFacts/countWaveWork with idx==nil while an ActiveWave with pending tasks exists: TestGatheredFactsMatchTheBinaryBudget (internal/cli/deadline_facts_test.go) only uses a parseable index, and the only unreadable/malformed-index test, TestGatherFinishFactsPropagatesAnIndexReadError, runs in PhaseFinish where st.ActiveWave is nil so gatherWaveFacts returns before ever calling countWaveWork. A test driving this branch would have caught the doc/behaviour mismatch (or confirmed it's intentional and fixed the comment).",
+      "task": 4
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/finish_facts.go",
+      "line": 135,
+      "title": "verifyCommandCount's finish.ReadExtra error path is never exercised",
+      "detail": "verifyCommandCount (finish_facts.go:130-140) has two error returns: the readIndex failure (tested by TestGatherFinishFactsPropagatesAnIndexReadError in internal/cli/deadline_facts_test.go, covering both 'missing' and 'malformed' index cases) and the finish.ReadExtra failure at line 135-137, which no test drives (e.g. a malformed finish/verify-extra.json at HEAD in the finish phase). Low risk since it mirrors the already-tested readIndex propagation pattern, but it is a distinct untested error return introduced by this diff.",
+      "task": 4
+    },
+    {
+      "severity": "nit",
+      "file": "internal/decide/finish_test.go",
+      "line": 324,
+      "title": "TestVerifyExecTimeoutStrictlyContainsTheBinaryCap doesn't isolate its two cases with t.Run",
+      "detail": "The loop over cmds in {0,3} (finish_test.go:324-338) calls t.Fatalf directly rather than via t.Run subtests, so a failure on the cmds=0 iteration aborts the test before the cmds=3 iteration (and the final 'must outbudget' comparison) ever runs, hiding whether the second case would also fail. Purely a diagnostics/independence nit, not a coverage gap — both cases still run if the first one passes.",
+      "task": 4
+    }
+  ]
+}

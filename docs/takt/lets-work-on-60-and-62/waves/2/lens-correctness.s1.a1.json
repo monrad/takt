@@ -1,0 +1,26 @@
+{
+  "lens": "correctness",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:25:45.039239734Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/finish_facts.go",
+      "line": 70,
+      "title": "gatherFinishFacts hard-fails on every finish-phase call, not just when a verify exec is about to be emitted",
+      "detail": "verifyCommandCount(bdir) (readIndex + finish.ReadExtra) is now called unconditionally at the top of gatherFinishFacts, before fin.Verified is even known. Its result is only consumed by decide.decideVerify, which is reached only when !fin.Verified (decide/finish.go:49-51,92-97). Once a run has passed verification, every subsequent finish-phase decision (goals check, retro, branch_finish, push-PR, archive) still re-reads and re-parses plan.index.json and finish/verify-extra.json and now aborts the whole `takt next`/`takt record` call with a hard error if that read fails — even though the value it produced would never be used. This breaks the established pattern in the very same function (see the comment at finish_facts.go:95-97, 'Row 23 is the only consumer of the availability facts... so they are gathered only when that row is the one about to be reached'), and turns a plan-index becoming unreadable/malformed after verification into a hard failure of unrelated finish-phase rows that previously never touched plan.index.json at all. Moving the verifyCommandCount call inside the `!fin.Verified` branch (or short-circuiting when fin.Verified is already true) would preserve the intended fail-open protection for the verify exec op without regressing the other rows.",
+      "task": 4
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 112,
+      "title": "plan.index.json is read twice per finish-phase gatherFacts call with divergent error semantics",
+      "detail": "gatherIndexFacts (facts.go:112-137) reads and parses plan.index.json and treats a read/parse failure softly (HasIndex=false or IndexProblems, no error returned). verifyCommandCount (finish_facts.go:130-140) independently re-reads and re-parses the same file via readIndex and treats the identical failure as fatal for the whole gatherFacts call. Within one gatherFacts invocation in the finish phase, the same file is read twice with two different failure philosophies; passing the already-parsed *plan.Index from gatherIndexFacts into the finish-facts path (as is already done for gatherWaveFacts via idx) would remove both the duplicate I/O and the inconsistency.",
+      "task": 4
+    }
+  ]
+}

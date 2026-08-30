@@ -99,6 +99,16 @@
       "detail": "closeBudget's task filter `t.Wave != st.ActiveWave.N || t.Status != bundle.StatusPending` (line 126) is a verbatim copy of resolveTaskResults' filter `t.Wave != aw.N || t.Status != bundle.StatusPending` (line 280). Both doc comments explicitly assert the two sets must stay identical (closeBudget's comment: 'the set resolveTaskResults grades'), and task-4's cross-check integration test that would guard this invariant doesn't exist yet in this wave. With the predicate spelled out twice rather than factored into one helper (e.g. a shared `pendingWaveTasks(st)` iterator), a future edit to one loop's condition can silently desync the deadline's counted work from the work actually graded, with nothing but human review catching it until the task-4 test lands.",
       "source": "internal",
       "ts": "2026-08-29T13:09:01.537916166Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 462,
+      "wave": 2,
+      "title": "Design spec still shows the deleted fixed close-wave timeout as the canonical exec example",
+      "detail": "The `exec` example for `takt close-wave` still reads `\"timeout_s\": 1800` — the exact value of the now-deleted `closeTimeoutS` constant. This diff removes that constant and makes the close-wave exec op's timeout_s a computed value (`sessionSeconds(deadline.Close(deadline.Budget{...}))`, spec A2.2), which generally will not be 1800 (it scales with VerifyCommands/ReviewTasks/BackendTimeout/VerifyTimeout and is strictly greater than deadline.Close's own result). This is the master design reference under docs/superpowers/specs/ that the rubric names explicitly, and it now documents the pre-A2.2 fixed-timeout behaviour this wave's diff replaces. The spec/plan docs that guided this task (docs/takt/lets-work-on-60-and-62/plan.md and spec.md) do not list this file among the ones to update, so nothing else in the run addresses it.",
+      "source": "internal",
+      "ts": "2026-08-30T13:30:28.562940404Z"
     }
   ]
 }

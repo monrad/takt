@@ -1,0 +1,154 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 2,
+  "tasks": [
+    {
+      "task": 4,
+      "status": "rework",
+      "reason": "The deadline calculations are mostly wired correctly, but finish fact gathering violates the required error-propagation contract and can bypass malformed index or extras errors during healing. The working tree also contains changes outside the declared files.",
+      "files_changed": [
+        "internal/cli/deadline_facts_test.go",
+        "internal/cli/facts.go",
+        "internal/cli/finish_facts.go",
+        "internal/decide/decide.go",
+        "internal/decide/decide_test.go",
+        "internal/decide/finish.go",
+        "internal/decide/finish_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -c 'reviewTimeoutS' internal/decide/decide.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c 'closeTimeoutS' internal/decide/decide.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c 'verifyTimeoutS' internal/decide/finish.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "grep -q 'deadline.Session' internal/decide/decide.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'BackendTimeout' internal/cli/facts.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'UnionCommands' internal/cli/finish_facts.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestExecTimeoutsStrictlyContainTheBinaryCaps' internal/decide/decide_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'closeBudget' internal/cli/deadline_facts_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestGatheredFactsMatchTheBinaryBudget' internal/cli/deadline_facts_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestGatheredFinishFactsCountTheVerifyUnion' internal/cli/deadline_facts_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestGatherFinishFactsPropagatesAnIndexReadError' internal/cli/deadline_facts_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/decide/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/decide\t1.011s",
+          "elapsed_ms": 1175
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestGathered|TestGatherFinishFacts' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.069s",
+          "elapsed_ms": 1298
+        },
+        {
+          "command": "golangci-lint run ./internal/decide/... ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 380
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "The deadline calculations are mostly wired correctly, but finish fact gathering violates the required error-propagation contract and can bypass malformed index or extras errors during healing. The working tree also contains changes outside the declared files.",
+        "findings": [
+          {
+            "severity": "major",
+            "file": "internal/cli/finish_facts.go",
+            "line": 68,
+            "title": "gatherFinishFacts does not gather or validate the verify-command union",
+            "detail": "The task explicitly requires gatherFinishFacts to call readIndex and finish.ReadExtra, populate FinishFacts.VerifyCommands from finish.UnionCommands, and propagate errors. Instead, gatherFacts computes the count separately and only when Finish.Verified is false. cmd_next.go's healing path calls gatherFinishFacts directly, so it can heal a successful verification despite a malformed index or extras file; afterward the count is skipped because the run is marked verified. The new error-path test even requires gatherFinishFacts to succeed, contrary to the specified contract. Move union counting and error propagation into gatherFinishFacts and update the tests accordingly."
+          },
+          {
+            "severity": "major",
+            "file": "docs/takt/lets-work-on-60-and-62/events.jsonl",
+            "line": 68,
+            "title": "Working tree contains changes outside the declared task files",
+            "detail": "The worktree includes modified and untracked files under docs/takt/lets-work-on-60-and-62, including events, state, follow-ups, close records, reviews, and wave artifacts. These are outside the seven declared internal/ files and must be excluded from the submitted change set."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "review_findings": 2,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": false,
+  "closed_at": "2026-08-30T13:30:33.210688092Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [
+    4
+  ],
+  "review_errors": []
+}

@@ -104,7 +104,7 @@
     {
       "id": 4,
       "wave": 2,
-      "status": "pending",
+      "status": "waived",
       "files": [
         "internal/decide/decide.go",
         "internal/decide/finish.go",
@@ -115,7 +115,16 @@
         "internal/cli/deadline_facts_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 4,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Nil-index wave facts now budget zero work on both counts (with an active-wave test), the finish verify count is gathered only while unverified and off the single already-parsed index, the `ReadExtra` error path is tested, and the decide verify-timeout test is split into subtests.",
+        "blockers": "none — except that the residual `ReadExtra`+`UnionCommands` overlap with `verifyAtHead` cannot be factored without `internal/cli/cmd_verify.go` in scope.",
+        "model": "opus",
+        "recorded_at": "2026-08-29T13:46:18.861603821Z"
+      }
     },
     {
       "id": 5,
@@ -186,17 +195,54 @@
     }
   ],
   "active_wave": {
-    "n": 1,
+    "n": 2,
     "slice": 1,
-    "attempt": 1,
-    "started_at": "2026-08-29T12:43:03.724058909Z",
+    "attempt": 2,
+    "started_at": "2026-08-29T13:34:40.851983519Z",
     "session_id": "b533a4ff-7183-49ac-a2c8-b71a174a7098",
     "tasks": [
-      3
+      4
     ],
     "baseline": []
   },
-  "pending_gate": null,
+  "pending_gate": {
+    "id": "wave_failures",
+    "opened_at": "2026-08-30T13:33:26.632884364Z",
+    "payload": {
+      "op": "ask",
+      "narration": "wave 2 has failed or blocked tasks",
+      "gate": "wave_failures",
+      "question": "Wave 2: failed [], blocked [], rework exhausted [4], rework pending []. How do you want to proceed?",
+      "options": [
+        {
+          "choice": "retry",
+          "label": "Retry the failed tasks (Recommended)",
+          "description": "Re-dispatch them with the failure context appended (model escalates one tier)."
+        },
+        {
+          "choice": "waive",
+          "label": "Waive selected tasks",
+          "description": "`takt waive --task N --reason …` per task, then `takt next`."
+        },
+        {
+          "choice": "stop",
+          "label": "Stop",
+          "description": "End the turn with the wave open."
+        }
+      ],
+      "context": {
+        "blocked": [],
+        "exhausted": [
+          4
+        ],
+        "failed": [],
+        "rework": [],
+        "slug": "lets-work-on-60-and-62",
+        "wave": 2
+      },
+      "answer": "takt answer --gate wave_failures --choice \u003cchoice\u003e --slug lets-work-on-60-and-62"
+    }
+  },
   "verified_sha": null,
   "goals_checked_sha": null,
   "disposition": null
