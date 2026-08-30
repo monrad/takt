@@ -115,22 +115,19 @@
         "docs/superpowers/specs/2026-08-24-takt-design.md"
       ],
       "class": "docs",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 4,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Re-scoped design §7.5 step 5's \"never recorded in state\" claim to the git side of the disposition (keeping the `disposition_applied`-event half) and removed the false exclusivity about post-archive writes in both places it appeared, naming the `retro done` commit and the re-taken `archive` commit; all attempt-1 work otherwise preserved and every verify command passes.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T22:32:01.116703257Z"
+      }
     }
   ],
-  "active_wave": {
-    "n": 0,
-    "slice": 1,
-    "attempt": 1,
-    "started_at": "2026-08-30T20:55:27.736352896Z",
-    "session_id": "ef94de62-00ca-4100-b2ae-805c08e99f4d",
-    "tasks": [
-      1,
-      2,
-      3
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

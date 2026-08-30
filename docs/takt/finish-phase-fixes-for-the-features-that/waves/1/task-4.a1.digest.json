@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Retired the stale `plainOp`/\"run's last commit\" prose in archive.go, cmd_done.go and the design doc (comments-only), reworded the §5.1 retro-rewrite lock row, and brought CONTRIBUTING.md plus three more design-doc regions in line with the now-generated Copilot skill.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T22:12:50.61068096Z"
+}

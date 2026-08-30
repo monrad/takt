@@ -1,0 +1,26 @@
+{
+  "lens": "docs",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T22:21:04.285801601Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 936,
+      "title": "New \"the disposition itself is never recorded\" contradicts the state schema and the same step's own preceding sentence",
+      "detail": "The rewritten sentence reads \"None of this is ever recorded in state: the disposition itself is never recorded, and the archive step writes nothing tracked after its commit\" (line 936-937). This directly contradicts: (1) the state-schema entry a few sections earlier, line 267-270, which says `disposition` — `{choice ∈ merge | pr | keep | discard, at, reason, pr_url, applied}` IS a state.json field, set at answer time and again (`applied`) before the archive commit; and (2) the same numbered step 5, seven lines above at line 907, which this diff left unchanged: \"`disposition.applied = true` for whichever choice was made — set before the commit\". The code confirms state.Disposition.Applied is persisted via bundle.SaveState (internal/cli/archive.go:71,73). The old wording this replaced (\"there is no `disposition_applied` event\") was precise — it denied a specific *event* existed, not that the disposition is recorded in state at all — and the task's own instruction to \"narrow\" it to \"the DISPOSITION is never recorded in state\" produced an inaccurate, self-contradictory claim. A reader who checks the state schema a page earlier, or the very sentence one line above, will find the disposition plainly is recorded.",
+      "task": 4
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 937,
+      "title": "\"The one write that can follow it ... not to this step\" ignores the second-archive-commit case documented two paragraphs later",
+      "detail": "Lines 937-938 claim the retro-done commit is \"the one write that can follow\" the archive commit, and that any such write \"belongs to `done --step retro`, not to this step\" (the archive step). But the very next bullet in the same numbered item 5, lines 943-947 (unchanged by this diff), documents a second kind of follow-on write that does belong to the archive step: \"The `archive` commit itself is re-taken on the same terms: a later `takt next` on the archived run that finds anything dirty in git under the bundle directory redoes it, so a file dropped there after archiving ... is swept into a second `archive` commit that carries it\" — implemented by recommitArchive (internal/cli/archive.go), whose own doc comment attributes it squarely to finishing an incomplete archive. The new absolute phrasing (\"the one write\", \"not to this step\") overclaims exclusivity and is inconsistent with the paragraph immediately following it in the same document.",
+      "task": 4
+    }
+  ]
+}

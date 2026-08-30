@@ -140,6 +140,16 @@
       "detail": "internal/tools/hostgen/main.go:112-115 returns the error from hosts.RenderCopilotSkill straight out of generateSkill, and run() (main.go:85-89) turns it into exitFailure — spec §2.3 explicitly names this half of the contract ('a render error is exitFailure'). Neither TestRunRegeneratesAHandEditedSkill nor TestRunRefusesARootMissingASkillSource (nor any other test in main_test.go) ever seeds a root whose commands/takt.md fails a substitution's declared count, so this branch of generateSkill/run is untested at the hostgen level — it is only exercised indirectly through hosts.RenderCopilotSkill's own unit tests in internal/hosts/skill_test.go, never through run()'s wiring of that error into exitFailure and its stderr message.",
       "source": "internal",
       "ts": "2026-08-30T21:25:04.039617964Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/archive_test.go",
+      "line": 177,
+      "wave": 1,
+      "title": "Test failure strings still use the retired \"run's last\" framing this task eliminates elsewhere",
+      "detail": "archive_test.go:177 (\"the archive commit is the run's last write\") and archive_test.go:327 (\"keep is applied by the archive commit, which is the run's last write\") still phrase the invariant in exactly the terms G7 retires from archive.go and the design doc (\"the run's last …\"). archive_test.go isn't one of task-4's editable files, so this isn't something the implementer could fix here, but it's now the one place in internal/cli that still asserts the archive commit is \"the run's last write\" — a claim the rest of the package and the design doc now go out of their way not to make, since a post-archive `retro --rewrite` + `done --step retro` can land a later commit. Worth a follow-up cleanup so the test vocabulary matches the comments it exercises.",
+      "source": "internal",
+      "ts": "2026-08-30T22:24:45.566936327Z"
     }
   ]
 }

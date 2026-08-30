@@ -381,6 +381,7 @@
   "out_of_scope": null,
   "reverted": null,
   "committed": true,
+  "commit_sha": "b87580d399a03ecd851c6404c0cccabd106a17d5",
   "closed_at": "2026-08-30T21:21:56.523644154Z",
   "failed": [],
   "blocked": [],
