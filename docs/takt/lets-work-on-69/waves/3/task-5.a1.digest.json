@@ -1,0 +1,9 @@
+{
+  "task": 5,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Amended both design documents (base design's 5 sites, fixed-point design's 7 sites plus supersession note) per the brief; all 19 grep verify checks and `task check` (build, race tests, lint, host parity) pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T18:00:33.192657831Z"
+}

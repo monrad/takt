@@ -71,6 +71,28 @@
       "detail": "TestPlanReviewRoundsAreCapped checks `len(choices) != 3` but never checks the actual Choice values/order (e.g. accept/retry/stop), so a bug in questionGateReviewCapped that returned three wrong options (or the wrong order) would still pass this test. This exactly mirrors the same weak assertion in the precedent TestSpecReviewRoundsAreCapped (internal/decide/decide_test.go:1099), so it's a pre-existing pattern rather than a new regression, but since decide_plan_cap_test.go is new code in this diff and free of the G7 no-edit constraint that applies to decide_test.go, it could have asserted `slices.Equal(choices, []string{\"accept\", \"retry\", \"stop\"})` (as another test does at decide_test.go:987 for a related gate) for a stronger guarantee.",
       "source": "internal",
       "ts": "2026-08-30T17:07:47.566895114Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 519,
+      "wave": 3,
+      "task": 5,
+      "title": "Trailing bare '§7.3' citation collides with the other document's own §7.3",
+      "detail": "Row 9 ends with '(fixed-point design §3, §8; §7.3)'. Everywhere else in this same diff, a bare '§N' means 'this document' and a cross-document reference is always spelled out ('fixed-point design §N') — e.g. the new §7.3 sentence at line 732-733 writes '(§7.2, fixed-point design §8)', self-reference first, cross-doc reference explicitly labelled second. Row 9 breaks that ordering: the bare '§7.3' is appended directly after 'fixed-point design §3, §8;' with no document reset, so it reads as continuing the fixed-point-design citation list. That matters here because docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md has its own real §7.3 ('follow-ups.json', line 242) — an unrelated topic. The intended referent (base design's own §7.3, Plan gate) is inferable from context, but the citation itself doesn't follow the convention this same wave establishes elsewhere, and this parenthetical wasn't part of the task's literal quoted text for row 9 — it was added on top of it.",
+      "source": "internal",
+      "ts": "2026-08-30T18:14:16.829894072Z"
+    },
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 663,
+      "wave": 3,
+      "task": 5,
+      "title": "Incidental unrequested wording tweak next to the required §7.2 rewrite",
+      "detail": "The task's §7.2 instruction is to rewrite the closing sentence ('It applies to the spec gate only…') so the round cap applies to both gates. The diff also silently changes 'and the round cap is' to 'and the round cap are' in the preceding, unrelated sentence (docs/.../.../design.md §3–§8 citation) — a change not called for by the task and not needed to satisfy any of the listed anchors/checks. Harmless, but it's an edit beyond the task's stated problem inside a file the task does govern precisely.",
+      "source": "internal",
+      "ts": "2026-08-30T18:14:16.829894269Z"
     }
   ]
 }

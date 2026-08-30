@@ -286,14 +286,14 @@ that found nothing blocking, at the hash they were shown; `gate_rounds_reset` �
 review round count for one more pass (fixed-point design §4, §8).
 Nine decisions read events as their durable record — gate overrides (`gate_overridden`, required by §9),
 the spec gate's revision satisfier (the newest `gate_revision_accepted` for a gate, read against the
-current hash, required by §9), its round cap (`gate_reviewed` events for the gate since the newest
-`gate_rounds_reset`, feeding the `gate_review_capped` ask), planner attempt counting (`plan_invalid` /
-`plan_attempts_reset`), the auditor's and the assessor's
+current hash, required by §9), the round cap for both review gates — spec or plan (`gate_reviewed` events
+for the gate since the newest `gate_rounds_reset`, feeding the `gate_review_capped` ask, §7.2, §7.3),
+planner attempt counting (`plan_invalid` / `plan_attempts_reset`), the auditor's and the assessor's
 attempt caps (`alignment_invalid` / `goals_invalid` since the last `*_attempts_reset` — appended both by
-`agent_invalid`'s *retry*, carrying the `problems` forward, and by a valid record, carrying
-`reason: "recorded"` and no problems), per-task review skips (`review_skipped`), the reviewer's attempt
-cap (`reviewer_invalid` / `reviewer_attempts_reset`, the same shape as the auditor's and the assessor's)
-and whether the internal review was skipped for a dispatch (`internal_review_skipped`, read by §7.4 step
+`agent_invalid`'s *retry*, carrying the `problems` forward, and by a valid record, carrying `reason:
+"recorded"` and no problems), per-task review skips (`review_skipped`), the reviewer's attempt cap
+(`reviewer_invalid` / `reviewer_attempts_reset`, the same shape as the auditor's and the assessor's) and
+whether the internal review was skipped for a dispatch (`internal_review_skipped`, read by §7.4 step
 3.5); everything else is the audit trail and the input for `takt status --history`. `wave_dispatched` and
 `wave_committed` both carry `slice` (§7.4 chunking); `wave_committed` also carries `backfilled: true`
 when `next` reconstructs a commit sha from git rather than recording it live — the repair for a crash
@@ -429,11 +429,12 @@ list — `branch_finish` disables `merge`/`discard` this way (§7.5 step 4).
 The gate ids are `decide.Vocab().Gates` — the list the prompt's parity test reads (§6). `agent_invalid` —
 the alignment auditor or the goal assessor replied unusably three times since the last reset; context
 `{agent, attempts, problems}`; choices `retry` (appends `<agent>_attempts_reset`), `skip`
-(alignment-auditor only: the audit is recorded as skipped), `stop`. `gate_review_capped` — the spec
-gate's review has run `maxAgentAttempts` (3) passes since the newest `gate_rounds_reset` without the gate
-closing; context `{gate, attempts}`; choices `accept` (records `gate_overridden` at the current hash, §9,
-and carries the findings forward, fixed-point design §6), `retry` (appends `gate_rounds_reset` for the
-gate, resetting the round count for one more pass), `stop` (fixed-point design §8). `gate_review` — a
+(alignment-auditor only: the audit is recorded as skipped), `stop`.
+`gate_review_capped` — a review gate's (spec or plan) review has run `maxAgentAttempts` (3) passes
+since the newest `gate_rounds_reset` without the gate closing; context `{gate, attempts}`; choices
+`accept` (records `gate_overridden` at the current hash, §9, and carries the findings forward,
+fixed-point design §6), `retry` (appends `gate_rounds_reset` for the gate, resetting the round
+count for one more pass), `stop` (fixed-point design §8). `gate_review` — a
 review that did not close its gate; context `{gate, verdict, summary, blocking, reason}`. When the
 reviewer answered, the choices are `revise`, `accept` and `stop` (fixed-point design §3–§4). When the
 verdict is `error`, nothing was reviewed and `reviews/<gate>.md` still describes the previous pass, so
@@ -515,7 +516,7 @@ exist, receipt contents, the git dirty set, current HEAD, the current session id
 | 6 | phase `brainstorm`, `config.review.spec` and spec gate not satisfied | a rework/reject/error receipt → `ask gate_review(spec)`, as before; else, once `SpecRounds ≥ maxAgentAttempts` (3) → `ask gate_review_capped`; else `exec takt review spec` (fixed-point design §3, §8) |
 | 7 | phase `brainstorm`, all of the above satisfied | transition → `plan` (commit), continue |
 | 8 | phase `plan`, no valid `plan.index.json` | `dispatch planner` (with validation errors from the last attempt, if any; after 3 invalid attempts → `ask plan_invalid`) |
-| 9 | phase `plan`, `config.review.plan` and plan gate not satisfied | `exec takt review plan`; `rework` → `ask gate_review(plan)` |
+| 9 | phase `plan`, `config.review.plan` and plan gate not satisfied | a rework/reject/error receipt → `ask gate_review(plan)`; else, once `PlanRounds ≥ maxAgentAttempts` (3) → `ask gate_review_capped`; else `exec takt review plan` (fixed-point design §3, §8; §7.3) |
 | 10 | phase `plan`, `config.alignment`, no confirmed clauses | `dispatch alignment-auditor (mode: clauses)` → then `ask alignment_confirm` — after 3 unusable replies → `ask agent_invalid` |
 | 11 | phase `plan`, clauses confirmed, no verdicts | `dispatch alignment-auditor (mode: verdicts)` — after 3 unusable replies → `ask agent_invalid` |
 | 12 | phase `plan`, everything satisfied | load tasks, transition → `execute` (commit), continue |
@@ -659,10 +660,11 @@ git repo.
    review rounds since the newest reset without closing, the run asks `gate_review_capped` — *accept*
    (override, findings carried forward) · *retry* (one more pass) · *stop* — instead of reviewing a fourth
    time. This is the spec gate's fixed point: the mechanism behind *revise* closing the gate, how the
-   scoped pass is scoped, and the round cap is
-   `docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md` §3–§8, not restated here. It applies
-   to the spec gate only — the plan gate (§7.3) keeps today's behaviour entirely, including its uncapped
-   rounds.
+   scoped pass is scoped, and the round cap are
+   `docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md` §3–§8, not restated here. *Revise*
+   closing the gate on the edit alone, and the scoped confirming pass, apply to the spec gate only. The
+   round cap does not: it applies to both review gates — spec here, and the plan gate at §7.3, which gets
+   its own asking sentence there.
 
 ### 7.3 `plan`
 
@@ -725,7 +727,10 @@ display, back into `plan.index.json` as `"wave"`.
 **Plan gate** — `exec takt review plan` over `spec.md`, `plan.md`, `plan.index.json` with the plan
 rubric: every spec requirement maps to a task; no task contradicts another; each task's verify commands
 would actually prove its description; file scopes are plausible for the description. Same resolution
-options as the spec gate.
+options as the spec gate. Once the plan review has taken `maxAgentAttempts` (3) rounds since the newest
+`gate_rounds_reset` for the plan gate without closing it, the run asks `gate_review_capped` — *accept*
+· *retry* · *stop* — instead of reviewing a fourth time, the same cap the spec gate has (§7.2,
+fixed-point design §8).
 
 **Alignment audit** (advisory). Two dispatches with a question between them:
 

@@ -1,5 +1,10 @@
 # The spec gate's fixed point — design
 
+> **Superseded in part** by [#69](https://github.com/monrad/takt/issues/69): the round cap (§8) no
+> longer belongs to the spec gate alone. Base design §7.3 extends it to the plan gate. The seven sites
+> below that said otherwise keep their original text and each gain a short amendment naming #69 and
+> pointing at base design §7.3, so a reader meets this note before D3.
+
 **Status:** draft for review · **Date:** 2026-08-26 · **Repo:** `github.com/monrad/takt` ·
 **Issues:** closes [#40](https://github.com/monrad/takt/issues/40), closes
 [#29](https://github.com/monrad/takt/issues/29) · **Amends:** `2026-08-24-takt-design.md` §4.2, §4.4,
@@ -61,8 +66,10 @@ Masterplan, which takt's design came from, never reviews specs. Rejected for thr
 | D1 | One review pass is the default; a `rework` verdict with no blocking finding closes on `revise` without a second backend call. | user |
 | D2 | A `blocking` finding earns exactly one **scoped** confirming pass, judged against the prior finding list rather than the whole document. | user |
 | D3 | Applies to the **spec gate only**. The plan gate keeps today's behaviour entirely, including its uncapped rounds. | user |
+| D3′ | *Amended by #69* (base design §7.3): D3's spec-only scoping stands for everything except the round cap — that now covers both review gates. | user |
 | D4 | `reject` keeps today's loop — it asks, `revise` re-arms, the whole document is re-judged. | assumed: "wrong approach" is the one verdict where re-judging everything is correct, and it is rare. D5 bounds it. |
 | D5 | Review rounds at the spec gate are capped at `maxAgentAttempts` (3); the run then asks instead of spending a fourth call. | user (#40 option 4) |
+| D5′ | *Amended by #69* (base design §7.3): the cap is no longer spec-only; it also applies to the plan gate, with the same `maxAgentAttempts` (3). | user |
 | D6 | Findings are carried forward when the gate closed without anyone being asked to act on them, or when the user explicitly declined. | user (#29 folded in) |
 | D7 | No new configuration. `Review.Spec` already toggles the gate; the cap reuses `maxAgentAttempts`. | assumed: YAGNI — neither knob has a demonstrated second setting. |
 | D8 | Severities are defined in the rubric text, not left to the reviewer's judgement. | assumed: once `blocking` is the only severity that costs a round, an undefined `blocking` inflates and D2 degrades into "always re-review". |
@@ -83,6 +90,10 @@ For the **spec gate only**, with a receipt at the current hash:
 
 `skipped` and `gate_overridden` keep today's meaning. The plan gate is untouched: `decidePlan` keeps
 calling `needsRework` exactly as it does now.
+
+*Amended by #69* (base design §7.3): the verdict rule above — `revise` closing the gate on the edit
+alone, and the scoped confirming pass — stays spec-only and is untouched by #69; only the round cap (§8)
+is extended to the plan gate there.
 
 "Blocking findings" is read from `Receipt.Severities["blocking"] > 0` (§7.1), so neither `gate.Compute`
 nor `Decide` parses a findings file to reach a gate decision.
@@ -269,6 +280,9 @@ At `SpecRounds >= maxAgentAttempts` (3) with the spec gate still unsatisfied, `d
 the new `gate_review_capped` gate instead of emitting a fourth `exec` op. This is the same shape as
 `plan_invalid` and `agent_invalid`.
 
+*Amended by #69* (base design §7.3): the identical cap now also fires from `decidePlan` at `PlanRounds
+>= maxAgentAttempts`; the choices and effects below are the same for either gate.
+
 | choice | effect |
 |---|---|
 | `accept` (recommended) | Requires `--reason`; records `gate_overridden` at the current hash, and carries the findings forward under §6. |
@@ -322,6 +336,7 @@ follow-ups; it moves to its own package if task reviews ever produce them too.
 |---|---|
 | `internal/gate` | Revision event satisfies at a different hash; does **not** at the same hash; newest event wins; older receipts with `Severities == nil` read as zero blocking. |
 | `internal/decide` | Table across `{approve, rework+blocking, rework−blocking, reject, error}` × `{rounds < cap, rounds ≥ cap}`; plan gate unchanged; `gate_rounds_reset` restarts the count. |
+| `internal/decide` (#69) | *Amended by #69* (base design §7.3): the "plan gate unchanged" row above no longer holds for the round cap; #69's own table mirrors it for `PlanRounds`. |
 | `internal/cli` | `revise` writes the event for spec and not for plan, and not on a blocking receipt; `reviews/spec.json` round-trips; the scoped template is chosen only after a blocking receipt; carry-forward fires on `approve` and `accept`, not on `revise`. |
 | `internal/finish` | Follow-ups reach `RetroInputs`. |
 | prompt parity | Covers `gate_review_capped` once `Vocab` and `commands/takt.md` agree. |
@@ -339,6 +354,7 @@ makes **exactly one** backend review call at the spec gate and then reaches `Pha
 | A2 | Reviewers respect "do not raise new findings" in the scoped rubric well enough to be useful. | If they do not, the pass still terminates via the cap; the fallback is to drop §5 and let every `rework` close on `revise` (pure D1). |
 | A3 | Defining severities (D8) is sufficient to prevent `blocking` inflation. | If `blocking` rates stay high across runs, tighten by requiring a blocking finding to cite a file and line. |
 | A4 | The plan gate's uncapped rounds are tolerable (D3). | Untouched. If it becomes the next bottleneck, D5's cap is the cheapest thing to extend to it — it needs no semantic change. |
+| A4′ | *Amended by #69* (base design §7.3): the answer is no longer "untouched" but extended by #69, which needed no semantic change — as predicted. | Resolved by #69; D5's cap now covers the plan gate too. |
 | A5 | `follow-ups.json` in the bundle root is the right home, rather than an events-only record. | A file, because the retro reads it as data and events are an append-only log the retro does not otherwise mine for findings. |
 | A6 | Carried findings need no lifecycle (no "done" marking). | They are retro input, not a tracker. If they need one, it belongs with #39's crit integration. |
 
@@ -348,4 +364,6 @@ makes **exactly one** backend review call at the spec gate and then reaches `Pha
   `reviews/spec.json` is exactly the structured findings list `crit comment --json` would be seeded
   from.
 - Any change to the plan gate, task reviews, or the goals loop.
+- *Amended by #69* (base design §7.3): the plan gate's round cap is no longer out of scope; everything
+  else in the bullet above — task reviews, the goals loop, and any other plan-gate change — still is.
 - The `error` verdict's handling, which remains today's ask.

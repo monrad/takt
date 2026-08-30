@@ -1,0 +1,11 @@
+# Review: lets-work-on-69 task 5 — approve
+
+The amendments satisfy all specified base-design and fixed-point-document requirements. The original superseded passages remain intact, each amendment is adjacent and names both #69 and base design §7.3, the spec-only verdict behavior is preserved, and the round cap is consistently extended to both review gates.
+
+
+_copilot / gpt-5.6-sol_
+
+## Internal findings (confirmed)
+
+- [lens:consistency] major docs/superpowers/specs/2026-08-24-takt-design.md:519 — Trailing bare '§7.3' citation collides with the other document's own §7.3: Row 9 ends with '(fixed-point design §3, §8; §7.3)'. Everywhere else in this same diff, a bare '§N' means 'this document' and a cross-document reference is always spelled out ('fixed-point design §N') — e.g. the new §7.3 sentence at line 732-733 writes '(§7.2, fixed-point design §8)', self-reference first, cross-doc reference explicitly labelled second. Row 9 breaks that ordering: the bare '§7.3' is appended directly after 'fixed-point design §3, §8;' with no document reset, so it reads as continuing the fixed-point-design citation list. That matters here because docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md has its own real §7.3 ('follow-ups.json', line 242) — an unrelated topic. The intended referent (base design's own §7.3, Plan gate) is inferable from context, but the citation itself doesn't follow the convention this same wave establishes elsewhere, and this parenthetical wasn't part of the task's literal quoted text for row 9 — it was added on top of it.
+- [lens:intent] nit docs/superpowers/specs/2026-08-24-takt-design.md:663 — Incidental unrequested wording tweak next to the required §7.2 rewrite: The task's §7.2 instruction is to rewrite the closing sentence ('It applies to the spec gate only…') so the round cap applies to both gates. The diff also silently changes 'and the round cap is' to 'and the round cap are' in the preceding, unrelated sentence (docs/.../.../design.md §3–§8 citation) — a change not called for by the task and not needed to satisfy any of the listed anchors/checks. Harmless, but it's an edit beyond the task's stated problem inside a file the task does govern precisely.

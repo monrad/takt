@@ -118,23 +118,32 @@
     {
       "id": 5,
       "wave": 3,
-      "status": "pending",
+      "status": "done",
       "files": [
         "docs/superpowers/specs/2026-08-24-takt-design.md",
         "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md"
       ],
       "class": "docs",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 5,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Amended both design documents (base design's 5 sites, fixed-point design's 7 sites plus supersession note) per the brief; all 19 grep verify checks and `task check` (build, race tests, lint, host parity) pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-30T18:00:33.192657831Z"
+      }
     }
   ],
   "active_wave": {
-    "n": 2,
+    "n": 3,
     "slice": 1,
-    "attempt": 3,
-    "started_at": "2026-08-30T17:43:16.001175871Z",
+    "attempt": 1,
+    "started_at": "2026-08-30T17:51:55.515776669Z",
     "session_id": "e7d58452-778a-4996-8f76-7ee51117266d",
     "tasks": [
-      3
+      5
     ],
     "baseline": []
   },
