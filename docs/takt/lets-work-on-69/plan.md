@@ -33,8 +33,10 @@ review". The two tests G1 and G2 name land in `decide_test.go` beside their spec
 precedents (lines 1067 and 1115): the cap test alone cannot tell the two checks apart
 (it never sets a verdict), which is exactly why the precedence test exists — its comment
 should say so, like the spec one does. Scoped to one package so the whole task is judged
-by `go test ./internal/decide/...`, which also proves the spec gate's own tests pass
-untouched (G7).
+by `go test ./internal/decide/...`. That run proves the spec gate's own tests still pass,
+but not that they were not *edited* — a rewritten test passes too — so G7 is pinned
+instead by a diff assertion: `git diff main -- internal/decide/decide_test.go` must show
+zero removed lines. The task adds test functions and touches no existing one.
 
 ### Task 2 — fill `PlanRounds` in `gatherGateFacts`, pinned by a mixed-events facts test
 
@@ -47,8 +49,13 @@ events log interleaving spec and plan `gate_reviewed` and `gate_rounds_reset` en
 that the two gates' counts come out different — a fill that counts the other gate's
 events, or ignores the per-gate reset, fails. The test must also assert `HasIndex` and
 `IndexValid` are true, or a broken fixture would make `PlanRounds == 0` pass vacuously.
-Kept separate from task 1 because it is the CLI half of the seam and its fixture is real
-I/O, not table rows.
+That positive test proves the count is right but not that it is *guarded*: its fixture
+satisfies every conjunct, so an unconditional assignment outside the branch would pass it
+unchanged. A second test therefore runs the same events log through three fixtures that
+each break one conjunct — plan review off, no valid index, empty `plan.md` — and asserts
+`PlanRounds == 0` while `SpecRounds` is still 1, so the zero is the guard's doing rather
+than an empty log. Kept separate from task 1 because it is the CLI half of the seam and
+its fixture is real I/O, not table rows.
 
 ### Task 3 — `cmd_answer` tests: all three answers on a capped plan gate, and spec-gate independence
 
@@ -90,9 +97,13 @@ design (`2026-08-26-spec-gate-fixed-point-design.md`) is superseded in place, no
 rewritten: a `> Superseded in part` note under the title, and a short marked amendment at
 each of the seven sites (D3, D5, §3, §8, §11, A4, §13) naming #69 and pointing at base
 design §7.3, with every original sentence kept — A4's answer becomes "extended by #69,
-which needed no semantic change — as predicted". This task runs last and carries
-`task check` (build + `go test ./... -race` + lint + host parity), which is G8's evidence
-on the assembled branch.
+which needed no semantic change — as predicted". Each amendment sits within four lines of
+the passage it amends (six at §8), and the verify commands exploit that: one per site,
+each grepping the original sentence verbatim and requiring `#69` in its immediate context,
+so a check fails both when an amendment is missing and when the original was deleted or
+reworded. A file-wide `#69` count is deliberately not used — it passes with a site
+omitted. This task runs last and carries `task check` (build + `go test ./... -race` +
+lint + host parity), which is G8's evidence on the assembled branch.
 
 ## Risks
 
@@ -106,10 +117,16 @@ on the assembled branch.
   describes. Mitigation: both documents are edited in one task, by one implementer, against
   the already-shipped code, with the spec's §6/§6.1 tables as the site-by-site checklist —
   and originals are kept, never deleted, at the fixed-point sites.
-- **Wording greps on docs are brittle by nature.** The doc verifies pin presence/absence of
-  load-bearing phrases (`PlanRounds` in row 9, the removed "including its uncapped", the
-  supersession note, seven `#69` mentions) rather than full sentences, so the implementer
-  has latitude on prose without the checks going stale.
+- **Doc verifies trade latitude for coverage.** Twelve site-anchored checks replace the
+  earlier loose counts, which could pass with an amendment site omitted. The cost is that
+  each check now pins an original sentence verbatim as its anchor — which is exactly what
+  §6.1 requires be kept, so the constraint and the requirement are the same one — while
+  the amendment's own wording stays free.
+- **The verify commands are the plan's own dogfood.** This run exists because the plan
+  gate could not stop; its first round found that two tasks could pass while their
+  requirement failed. Both were verification gaps, not decomposition errors, which is the
+  argument for fixing them here rather than trusting the per-task review to catch them
+  later against real code.
 
 ## Class justifications (tasks below `implement`)
 

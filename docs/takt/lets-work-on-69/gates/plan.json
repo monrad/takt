@@ -1,6 +1,6 @@
 {
   "gate": "plan",
-  "hash": "sha256:826f2e91b62f4b904cfe4cc8ea603b18156043977095b9928ca5b20d0728cd70",
+  "hash": "sha256:d9b1b1f69bc1002865cb894a47de9f2580742e1c7a3946340a60410dd9831159",
   "verdict": "rework",
   "reviewer": {
     "provider": "copilot",
@@ -11,6 +11,6 @@
     "major": 2,
     "minor": 1
   },
-  "ts": "2026-08-30T15:40:21.589826814Z",
+  "ts": "2026-08-30T16:21:08.254283149Z",
   "skipped": null
 }

@@ -1,31 +1,31 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition covers the requested behavior and documentation surfaces, but verification is insufficient for two explicit requirements. Task 2 cannot prove that PlanRounds is populated only under the existing plan-gate guard, and Task 5's loose document greps can pass while required amendment sites are missing.",
+  "summary": "The decomposition covers the production behavior, answer paths, prompts, and both design documents, but two advertised verification guarantees are materially weaker than claimed. G7 and the fixed-point documentation requirements could be violated while every verify command passes.",
   "findings": [
     {
       "severity": "major",
       "file": "plan.md",
       "line": 0,
-      "title": "Task 2's test cannot prove guarded placement",
-      "detail": "Task 2 claims that moving the PlanRounds assignment outside the guarded plan branch would fail, but its sole fixture enables plan review, supplies a valid index, and writes a non-empty plan.md. An unconditional assignment would therefore produce the same SpecRounds=1 and PlanRounds=2 and pass every listed verify command. Add negative cases for Review.Plan=false, an invalid or absent index, and an empty plan.md, each asserting PlanRounds remains zero."
+      "title": "Task 1's deletion-only diff check does not prove existing spec-gate tests are untouched",
+      "detail": "Task 1 claims its `git diff main ... | grep '^-[^-]'` assertion proves G7, but an implementer could insert `t.Skip()`, weaken assertions, or otherwise modify an existing test using additions only. The package tests and zero-removed-lines check would still pass. The task needs a verification that constrains additions to the new test functions or compares the existing spec-test regions byte-for-byte against the baseline."
     },
     {
       "severity": "major",
       "file": "plan.md",
       "line": 0,
-      "title": "Task 5 verification does not prove the required site-by-site amendments",
-      "detail": "Task 5 requires five specific base-design edits plus a supersession note and seven localized amendments that retain the original fixed-point text. Its checks only require one PlanRounds occurrence, removal of one phrase, one supersession phrase, and at least seven total #69 occurrences. The note plus seven amendments should already yield at least eight #69 mentions, so the stated threshold permits an omitted site, and repeated mentions elsewhere could mask additional omissions. Add site-specific checks or a targeted documentation test that proves every amendment is present near its named passage and that the required original sentences remain."
+      "title": "Task 5's amendment checks do not verify the required pointers or site-specific meaning",
+      "detail": "Task 5 requires every fixed-point amendment to name #69, point to base design §7.3, and preserve specific nuances at D3, §3, and A4. Its commands only look for `#69` near each original anchor, so seven generic `Amended by #69` lines would pass without any §7.3 pointer or the required semantic reconciliation. Likewise, the base-design absence checks for `its round cap` and `including its uncapped` can pass by deletion rather than the required rewrites. Add site-specific assertions for §7.3 and the required preserved distinctions."
     },
     {
       "severity": "minor",
       "file": "plan.md",
       "line": 0,
-      "title": "Task 1 does not verify that existing spec-cap tests remain untouched",
-      "detail": "Task 1 cites G7 and explicitly promises that the existing spec-gate tests are not edited, but its file scope includes decide_test.go and its package test only proves they still pass. A modified existing test could satisfy every command. Add a diff-based assertion for those existing test bodies or make the execution constraint independently checkable."
+      "title": "Task 3 does not fully prove that stop clears nothing",
+      "detail": "Task 3 verifies that `stop` reports `kept` and causes the capped question to reappear, which proves the gate remains open but not the stronger specified claim that no receipt or event state is cleared or otherwise mutated. Snapshotting the relevant plan receipt and events before the answer and comparing them afterward would directly prove the description."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:826f2e91b62f4b904cfe4cc8ea603b18156043977095b9928ca5b20d0728cd70",
-  "round": 1
+  "hash": "sha256:d9b1b1f69bc1002865cb894a47de9f2580742e1c7a3946340a60410dd9831159",
+  "round": 2
 }
