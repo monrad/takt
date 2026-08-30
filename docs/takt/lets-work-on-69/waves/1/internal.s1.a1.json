@@ -1,0 +1,44 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T17:17:43.28720405Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/plan_rounds_facts_test.go",
+      "line": 56,
+      "title": "planRoundsIndexGarbage duplicates the existing indexGarbage constant",
+      "detail": "internal/cli/deadline_facts_test.go:289 already declares `const indexGarbage = `{\"schema\":1,`` at package scope in the same package (cli). plan_rounds_facts_test.go re-declares an identical literal under a new name (planRoundsIndexGarbage) instead of reusing indexGarbage, which was visible and reusable without qualification. Same value, same purpose (bytes plan.ParseIndex refuses), same package — this is the duplicated-constant case the consistency lens flags: a small drift risk if one is ever tweaked (e.g. to cover a different parse failure) without the other following.",
+      "id": "c1",
+      "task": 2,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "internal/cli/plan_rounds_facts_test.go is a wholly new file added by this diff. It declares `const planRoundsIndexGarbage = `{\"schema\":1,`` at internal/cli/plan_rounds_facts_test.go:56, used at line 171 (`badIndex.index = planRoundsIndexGarbage`). This is byte-for-byte identical to the pre-existing package-scope constant `const indexGarbage = `{\"schema\":1,`` at internal/cli/deadline_facts_test.go:289, which carries an almost identical explanatory comment ('bytes plan.ParseIndex refuses, as against bytes that parse into a plan with nothing in it'). Both files are package `cli` with no build tags separating them (grep for //go:build/+build found nothing in either file), so both constants are compiled together and `indexGarbage` was already visible and reusable unqualified from plan_rounds_facts_test.go. The new file re-declares the same literal under a new name instead of reusing the existing one — a genuine duplicated-constant consistency issue.",
+      "citations": [
+        "internal/cli/plan_rounds_facts_test.go:56",
+        "internal/cli/plan_rounds_facts_test.go:171",
+        "internal/cli/deadline_facts_test.go:289"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1"
+  ]
+}

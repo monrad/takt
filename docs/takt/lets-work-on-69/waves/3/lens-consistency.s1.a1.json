@@ -1,0 +1,34 @@
+{
+  "lens": "consistency",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T18:07:41.564731723Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 519,
+      "title": "Trailing bare '§7.3' citation collides with the other document's own §7.3",
+      "detail": "Row 9 ends with '(fixed-point design §3, §8; §7.3)'. Everywhere else in this same diff, a bare '§N' means 'this document' and a cross-document reference is always spelled out ('fixed-point design §N') — e.g. the new §7.3 sentence at line 732-733 writes '(§7.2, fixed-point design §8)', self-reference first, cross-doc reference explicitly labelled second. Row 9 breaks that ordering: the bare '§7.3' is appended directly after 'fixed-point design §3, §8;' with no document reset, so it reads as continuing the fixed-point-design citation list. That matters here because docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md has its own real §7.3 ('follow-ups.json', line 242) — an unrelated topic. The intended referent (base design's own §7.3, Plan gate) is inferable from context, but the citation itself doesn't follow the convention this same wave establishes elsewhere, and this parenthetical wasn't part of the task's literal quoted text for row 9 — it was added on top of it.",
+      "task": 5
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 435,
+      "title": "Paragraph not re-wrapped to the document's column width",
+      "detail": "The rewritten `gate_review_capped` entry in the op-kinds vocabulary (lines 433-438) leaves two anomalously short lines mid-paragraph: line 435 ('`accept` (records `gate_overridden` at the current hash, §9,' ~62 chars) and line 437 ('gate, resetting the round' ~25 chars), sandwiched between lines wrapped to the document's usual ~95-100 character width (lines 433, 434, 436, 438). Every other paragraph touched by this diff (the §4.4 'Nine decisions' passage, §7.2, §7.3) was cleanly re-flowed to a consistent width; this one wasn't. The task instructions explicitly say to keep the document's line-wrapping.",
+      "task": 5
+    },
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "line": 339,
+      "title": "Amendment-site marker notation diverges from the prime convention used elsewhere",
+      "detail": "D3/D5/A4 get sibling rows named with a prime mark (D3′ at line 69, D5′ at line 72, A4′ at line 357) to mark the #69 amendment. The §11 testing table instead repeats the package name and appends '(#69)' to it ('`internal/decide` (#69)' at line 339) rather than using a parallel id-style marker. Both conventions are readable, but using two different marker styles for the same kind of thing (a sibling row added by the #69 amendment) across one document is inconsistent.",
+      "task": 5
+    }
+  ]
+}

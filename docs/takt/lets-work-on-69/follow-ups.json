@@ -1,0 +1,98 @@
+{
+  "items": [
+    {
+      "gate": "plan",
+      "severity": "major",
+      "file": "plan.md",
+      "line": 78,
+      "title": "Task 3 does not verify that the override reason is recorded",
+      "detail": "Spec §§5 and 7 require the plan-gate `gate_overridden` event to contain the user's reason. Task 3 checks that an empty reason fails and that the resulting event has the plan gate and current hash, but never asserts `Data[\"reason\"] == \"known gap\"`. The tests could pass if the reason were accepted by the CLI and then discarded.",
+      "source": "override",
+      "ts": "2026-08-30T16:53:48.039179329Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "major",
+      "file": "plan.md",
+      "line": 91,
+      "title": "Task 4's greps do not prove the prescribed sentence replacement",
+      "detail": "Each verification only searches for the new substring, while the prompt parity tests do not anchor this sentence. Both commands would pass if the new phrase were appended elsewhere and the false “the spec review” sentence remained, or if the options were changed. Require the complete expected gate sentence in both files and assert the obsolete wording is absent.",
+      "source": "override",
+      "ts": "2026-08-30T16:53:48.039179383Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "major",
+      "file": "plan.md",
+      "line": 100,
+      "title": "Task 5's base-design checks omit the cap threshold and precedence semantics",
+      "detail": "The row-9 check proves only that `ask gate_review(plan)` and `gate_review_capped` occur on one line; it does not require `PlanRounds ≥ maxAgentAttempts (3)`, that pending rework/reject/error comes first, or that normal review remains the fallback. Likewise, the §7.3 check only requires the gate id, not three rounds since the newest reset. The documented behavior could therefore be materially wrong while every verify command passes.",
+      "source": "override",
+      "ts": "2026-08-30T16:53:48.039179418Z"
+    },
+    {
+      "gate": "plan",
+      "severity": "minor",
+      "file": "plan.md",
+      "line": 25,
+      "title": "Task 1 does not verify the required PlanRounds documentation",
+      "detail": "The spec gives an explicit two-line field comment, but Task 1 only greps for `PlanRounds int`. Tests and lint do not prove that the required comment exists or identifies the plan gate and newest `gate_rounds_reset`; add an anchored check for that documentation.",
+      "source": "override",
+      "ts": "2026-08-30T16:53:48.039179452Z"
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 84,
+      "wave": 0,
+      "title": "gate_review_capped sentence edited in two files isn't added to crossHostInvariants",
+      "detail": "Task 4 edits the identical `gate_review_capped is a spec or plan review after three review rounds...` sentence in commands/takt.md:39 and hosts/copilot/skills/takt/SKILL.md:40, and the task note correctly observes crossHostInvariants (internal/prompt/prompt_test.go:84) doesn't cover it so no test edit is 'needed'. But that list exists precisely to catch one file drifting from the other on a hand-maintained sentence like this one (see the list's own doc comment at line 78-83). As written, if a future edit changes this sentence in only one of the two files, TestPromptNamesEveryOpGateStepAndReason and TestPromptInvariantsReadTheSameOnEveryHost would both still pass — the former only checks that the gate id token `gate_review_capped` appears, not the surrounding prose. This is a real, currently-unpinned gap that intersects the exact line this diff changed.",
+      "source": "internal",
+      "ts": "2026-08-30T17:06:42.508742634Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/decide/decide.go",
+      "line": 345,
+      "wave": 0,
+      "task": 1,
+      "title": "Order-is-load-bearing comment added only on the plan side",
+      "detail": "decidePlan's new cap check (decide.go:384-391) gets a four-line comment explaining why the needsRework check must precede the round-cap check. The identical shape in decideBrainstorm (decide.go:345-349), which decidePlan explicitly mirrors, carries no such comment. A future reader diffing the two blocks may wonder whether the spec-gate ordering is equally load-bearing but undocumented, or whether the two blocks have diverged. This matches what the task brief asked for (the spec branch's order is only 'implied' by shape), so it is not a defect, just a minor asymmetry worth being aware of if the two blocks are touched again.",
+      "source": "internal",
+      "ts": "2026-08-30T17:07:47.566894812Z"
+    },
+    {
+      "severity": "nit",
+      "file": "internal/decide/decide_plan_cap_test.go",
+      "line": 124,
+      "wave": 0,
+      "task": 1,
+      "title": "Option-count assertion doesn't verify option identity",
+      "detail": "TestPlanReviewRoundsAreCapped checks `len(choices) != 3` but never checks the actual Choice values/order (e.g. accept/retry/stop), so a bug in questionGateReviewCapped that returned three wrong options (or the wrong order) would still pass this test. This exactly mirrors the same weak assertion in the precedent TestSpecReviewRoundsAreCapped (internal/decide/decide_test.go:1099), so it's a pre-existing pattern rather than a new regression, but since decide_plan_cap_test.go is new code in this diff and free of the G7 no-edit constraint that applies to decide_test.go, it could have asserted `slices.Equal(choices, []string{\"accept\", \"retry\", \"stop\"})` (as another test does at decide_test.go:987 for a related gate) for a stronger guarantee.",
+      "source": "internal",
+      "ts": "2026-08-30T17:07:47.566895114Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 519,
+      "wave": 3,
+      "task": 5,
+      "title": "Trailing bare '§7.3' citation collides with the other document's own §7.3",
+      "detail": "Row 9 ends with '(fixed-point design §3, §8; §7.3)'. Everywhere else in this same diff, a bare '§N' means 'this document' and a cross-document reference is always spelled out ('fixed-point design §N') — e.g. the new §7.3 sentence at line 732-733 writes '(§7.2, fixed-point design §8)', self-reference first, cross-doc reference explicitly labelled second. Row 9 breaks that ordering: the bare '§7.3' is appended directly after 'fixed-point design §3, §8;' with no document reset, so it reads as continuing the fixed-point-design citation list. That matters here because docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md has its own real §7.3 ('follow-ups.json', line 242) — an unrelated topic. The intended referent (base design's own §7.3, Plan gate) is inferable from context, but the citation itself doesn't follow the convention this same wave establishes elsewhere, and this parenthetical wasn't part of the task's literal quoted text for row 9 — it was added on top of it.",
+      "source": "internal",
+      "ts": "2026-08-30T18:14:16.829894072Z"
+    },
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 663,
+      "wave": 3,
+      "task": 5,
+      "title": "Incidental unrequested wording tweak next to the required §7.2 rewrite",
+      "detail": "The task's §7.2 instruction is to rewrite the closing sentence ('It applies to the spec gate only…') so the round cap applies to both gates. The diff also silently changes 'and the round cap is' to 'and the round cap are' in the preceding, unrelated sentence (docs/.../.../design.md §3–§8 citation) — a change not called for by the task and not needed to satisfy any of the listed anchors/checks. Harmless, but it's an edit beyond the task's stated problem inside a file the task does govern precisely.",
+      "source": "internal",
+      "ts": "2026-08-30T18:14:16.829894269Z"
+    }
+  ]
+}

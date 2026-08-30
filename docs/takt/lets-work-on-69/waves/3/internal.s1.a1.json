@@ -1,0 +1,130 @@
+{
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T18:13:37.584773156Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/plans/2026-08-26-spec-gate-fixed-point.md",
+      "line": 15,
+      "title": "Implementation plan's Global Constraint still says the round cap is spec-gate-only",
+      "detail": "This plan's 'Global Constraints' section states: 'Spec gate only. The plan gate keeps today's behaviour entirely — decidePlan keeps calling needsRework unchanged, and no new event is ever written for it.' The wave's own diff amends the base design (§7.3) and the fixed-point design (D5′, §8) to extend the round cap to the plan gate, and internal/decide/decide.go now does write gate_review_capped events from decidePlan (PlanRounds \u003e= maxAgentAttempts). This plan document is not in the wave's amendment list (only the two docs/superpowers/specs/ files and the two prompt files were touched, per docs/takt/lets-work-on-69/plan.index.json), and as a completed, checkbox-driven implementation-plan artifact (all checkboxes unchecked, i.e. a historical record rather than a live reference) it may be intentionally out of scope — same convention as leaving the fixed-point design's D3/A4 text in place with an amendment rather than rewriting it. Flagging for awareness only; low confidence this needs a fix.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 435,
+      "title": "Paragraph not re-wrapped to the document's column width",
+      "detail": "The rewritten `gate_review_capped` entry in the op-kinds vocabulary (lines 433-438) leaves two anomalously short lines mid-paragraph: line 435 ('`accept` (records `gate_overridden` at the current hash, §9,' ~62 chars) and line 437 ('gate, resetting the round' ~25 chars), sandwiched between lines wrapped to the document's usual ~95-100 character width (lines 433, 434, 436, 438). Every other paragraph touched by this diff (the §4.4 'Nine decisions' passage, §7.2, §7.3) was cleanly re-flowed to a consistent width; this one wasn't. The task instructions explicitly say to keep the document's line-wrapping.",
+      "id": "c2",
+      "task": 5,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 519,
+      "title": "Trailing bare '§7.3' citation collides with the other document's own §7.3",
+      "detail": "Row 9 ends with '(fixed-point design §3, §8; §7.3)'. Everywhere else in this same diff, a bare '§N' means 'this document' and a cross-document reference is always spelled out ('fixed-point design §N') — e.g. the new §7.3 sentence at line 732-733 writes '(§7.2, fixed-point design §8)', self-reference first, cross-doc reference explicitly labelled second. Row 9 breaks that ordering: the bare '§7.3' is appended directly after 'fixed-point design §3, §8;' with no document reset, so it reads as continuing the fixed-point-design citation list. That matters here because docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md has its own real §7.3 ('follow-ups.json', line 242) — an unrelated topic. The intended referent (base design's own §7.3, Plan gate) is inferable from context, but the citation itself doesn't follow the convention this same wave establishes elsewhere, and this parenthetical wasn't part of the task's literal quoted text for row 9 — it was added on top of it.",
+      "id": "c3",
+      "task": 5,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 663,
+      "title": "Incidental unrequested wording tweak next to the required §7.2 rewrite",
+      "detail": "The task's §7.2 instruction is to rewrite the closing sentence ('It applies to the spec gate only…') so the round cap applies to both gates. The diff also silently changes 'and the round cap is' to 'and the round cap are' in the preceding, unrelated sentence (docs/.../.../design.md §3–§8 citation) — a change not called for by the task and not needed to satisfy any of the listed anchors/checks. Harmless, but it's an edit beyond the task's stated problem inside a file the task does govern precisely.",
+      "id": "c4",
+      "task": 5,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md",
+      "line": 339,
+      "title": "Amendment-site marker notation diverges from the prime convention used elsewhere",
+      "detail": "D3/D5/A4 get sibling rows named with a prime mark (D3′ at line 69, D5′ at line 72, A4′ at line 357) to mark the #69 amendment. The §11 testing table instead repeats the package name and appends '(#69)' to it ('`internal/decide` (#69)' at line 339) rather than using a parallel id-style marker. Both conventions are readable, but using two different marker styles for the same kind of thing (a sibling row added by the #69 amendment) across one document is inconsistent.",
+      "id": "c5",
+      "task": 5,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "docs/takt/lets-work-on-69/plan.index.json task id 5 (wave 3) lists exactly two files to touch: docs/superpowers/specs/2026-08-24-takt-design.md and docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md. docs/superpowers/plans/2026-08-26-spec-gate-fixed-point.md is not among them, and every one of its 92 checkbox items is unchecked (grep confirmed), consistent with it being a historical, already-superseded planning artifact this wave was never tasked to amend — the candidate's own low-confidence framing matches this.",
+      "citations": [
+        "docs/takt/lets-work-on-69/plan.index.json:110-113",
+        "docs/superpowers/plans/2026-08-26-spec-gate-fixed-point.md:15"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "false_positive",
+      "evidence": "Measured the actual lines: 435 ('`accept` (records `gate_overridden` at the current hash, §9, and carries the findings forward,') is ~94 chars, not the ~62 the candidate quotes (which stops mid-line at '§9,' and omits the rest of the actual line); 437 ('count for one more pass), `stop` (fixed-point design §8). `gate_review` — a') is ~75 chars and contains none of the text ('gate, resetting the round') the candidate attributes to it — that phrase is inside line 436, not 437. The unchanged context line docs/superpowers/specs/2026-08-24-takt-design.md:286 ('review round count for one more pass (fixed-point design §4, §8).', ~65 chars, untouched by this diff) shows short lines at sentence/paragraph boundaries are a pre-existing feature of this document's wrap style, not a defect introduced here.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:433-438",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:286"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "Grep for '; §' across the whole file returns only line 519's '(fixed-point design §3, §8; §7.3)' — this exact construction is unique to this diff. It inverts the ordering convention the same diff establishes two sections later at line 732-733: '(§7.2, fixed-point design §8)' — self-reference first (bare §), cross-doc reference second, comma-joined, doc name repeated. Row 9 instead appends a bare '§7.3' directly after 'fixed-point design §3, §8;' with a semicolon and no doc-name reset. docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:242 confirms that document has its own, unrelated §7.3 ('follow-ups.json'), so the ambiguity is real, not hypothetical, and no legend in the document states a 'bare §N is always this document' rule.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:519",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:732-733",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:242"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "docs/superpowers/specs/2026-08-24-takt-design.md:663 reads '...scoped pass is scoped, and the round cap are `docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md` §3–§8, not restated here.' — confirmed 'is'→'are' on this clause. Task 5's instruction (plan.index.json id 5, item 4) only calls for rewriting the closing 'It applies to the spec gate only...' sentence; none of task 5's verify greps reference this earlier clause's wording, so the tweak sits outside the task's stated problem, exactly as the candidate describes.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:663",
+        "docs/takt/lets-work-on-69/plan.index.json:109"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "false_positive",
+      "evidence": "The actual amendment marker text is identical prose at every one of the seven #69 sites: '*Amended by #69* (base design §7.3): ...' — confirmed at D3′ (line 69), D5′ (line 72), §3 (line 112), §8 (line 123), §11 (line 339), A4′ (line 357), §13 (line 151). The prime mark is only ever applied to the compact single-token decision/assumption IDs (D3, D5, A4), where 'D3′' reads naturally; §11's table keys on a Go package path ('internal/decide'), for which a prime suffix would be illegible, so it instead gets the same '(#69)' parenthetical used nowhere else as a substitute for a prime — a difference driven by the identifier's shape, not an inconsistent convention.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:339",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:69",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:72"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c3",
+    "c4"
+  ]
+}

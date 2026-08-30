@@ -1,0 +1,9 @@
+{
+  "task": 3,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Strengthened the plan-gate cap accept test to assert the carried finding's severity/file/line/title/detail and to pin the post-accept dispatch to the alignment-auditor in clauses mode, and made snapshotGateState a plain read that fails on any error; extracted three helpers to keep gocognit under its limit.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T17:38:18.521277956Z"
+}

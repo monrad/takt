@@ -1,0 +1,112 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 3,
+  "tasks": [
+    {
+      "task": 3,
+      "status": "rework",
+      "reason": "The tests largely cover the requested plan-cap behavior, but the change set violates the declared file scope and the fixture does not verify the required planner dispatch.",
+      "files_changed": [
+        "internal/cli/cmd_answer_plan_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func planCapFixture' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapAsksThenRetryReviewsAgain' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapAcceptOverridesAndMovesOn' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapStopKeepsTheGateOpen' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapAnswersLeaveTheSpecGateAlone' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func snapshotGateState' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "git diff --quiet main -- internal/cli/cmd_answer_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestPlanReviewRoundCap|TestSpecReviewRoundCap' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.185s",
+          "elapsed_ms": 1401
+        },
+        {
+          "command": "golangci-lint run ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 384
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "The tests largely cover the requested plan-cap behavior, but the change set violates the declared file scope and the fixture does not verify the required planner dispatch.",
+        "findings": [
+          {
+            "severity": "blocking",
+            "file": "docs/takt/lets-work-on-69/events.jsonl",
+            "line": 84,
+            "title": "Changes exist outside the task's declared file list",
+            "detail": "The worktree also modifies docs/takt/lets-work-on-69/events.jsonl and state.json and adds wave/task artifacts under docs/takt/lets-work-on-69/waves/2/. This task declares only internal/cli/cmd_answer_plan_test.go; remove or revert all unrelated tracked and untracked artifacts."
+          },
+          {
+            "severity": "major",
+            "file": "internal/cli/cmd_answer_plan_test.go",
+            "line": 40,
+            "title": "Fixture accepts any dispatch instead of requiring the planner",
+            "detail": "The fixture checks only op == \"dispatch\". Because record --agent planner validates artifacts without confirming the previously dispatched agent, these tests could still pass if next incorrectly dispatched another agent. Assert one dispatched agent whose agent field is \"planner\"."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "commit_sha": "8c7a16375a8a00f302b3b5a7884a3d983c63e611",
+  "closed_at": "2026-08-30T17:51:49.554683312Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

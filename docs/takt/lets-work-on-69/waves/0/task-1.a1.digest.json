@@ -1,0 +1,9 @@
+{
+  "task": 1,
+  "attempt": 1,
+  "status": "done",
+  "summary": "decidePlan now asks gate_review_capped once PlanRounds reaches maxAgentAttempts, placed after the rework branch so a pending verdict still wins, with the new Facts.PlanRounds field, a gate-agnostic capped-question doc comment, and two new tests in internal/decide/decide_plan_cap_test.go that leave decide_test.go untouched.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T16:58:24.355356283Z"
+}

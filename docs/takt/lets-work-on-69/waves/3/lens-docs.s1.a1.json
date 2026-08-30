@@ -1,0 +1,18 @@
+{
+  "lens": "docs",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T18:04:01.924951383Z",
+  "findings": [
+    {
+      "severity": "nit",
+      "file": "docs/superpowers/plans/2026-08-26-spec-gate-fixed-point.md",
+      "line": 15,
+      "title": "Implementation plan's Global Constraint still says the round cap is spec-gate-only",
+      "detail": "This plan's 'Global Constraints' section states: 'Spec gate only. The plan gate keeps today's behaviour entirely — decidePlan keeps calling needsRework unchanged, and no new event is ever written for it.' The wave's own diff amends the base design (§7.3) and the fixed-point design (D5′, §8) to extend the round cap to the plan gate, and internal/decide/decide.go now does write gate_review_capped events from decidePlan (PlanRounds \u003e= maxAgentAttempts). This plan document is not in the wave's amendment list (only the two docs/superpowers/specs/ files and the two prompt files were touched, per docs/takt/lets-work-on-69/plan.index.json), and as a completed, checkbox-driven implementation-plan artifact (all checkboxes unchecked, i.e. a historical record rather than a live reference) it may be intentionally out of scope — same convention as leaving the fixed-point design's D3/A4 text in place with an amendment rather than rewriting it. Flagging for awareness only; low confidence this needs a fix.",
+      "task": 0
+    }
+  ]
+}

@@ -185,7 +185,7 @@ func gateReviewAcceptAndStop() []op.Option {
 	}
 }
 
-// questionGateReviewCapped fills the "gate_review_capped" gate: the spec
+// questionGateReviewCapped fills the "gate_review_capped" gate: a spec or plan
 // review has taken maxAgentAttempts passes without the gate closing
 // (fixed-point design §8). Gate review is the one loop that cannot
 // self-limit, so this is where it stops and asks.

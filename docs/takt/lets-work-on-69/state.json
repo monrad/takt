@@ -1,0 +1,149 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "lets-work-on-69",
+  "topic": "lets work on #69",
+  "phase": "archived",
+  "created_at": "2026-08-30T15:14:01.445782654Z",
+  "branch": "monrad/review_capped",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "2f9c3dbf1bc0208cb91ef4a86e4151a86db7918c",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:de3cf62297d029e915ace8b5a9c3be3013bce4fbc0428c593b50ff19b35079a8",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/decide/decide.go",
+        "internal/decide/questions.go",
+        "internal/decide/decide_plan_cap_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "decidePlan now asks gate_review_capped once PlanRounds reaches maxAgentAttempts, placed after the rework branch so a pending verdict still wins, with the new Facts.PlanRounds field, a gate-agnostic capped-question doc comment, and two new tests in internal/decide/decide_plan_cap_test.go that leave decide_test.go untouched.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T16:58:24.355356283Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/cli/facts.go",
+        "internal/cli/plan_rounds_facts_test.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 2,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Replaced the duplicated `planRoundsIndexGarbage` constant with the pre-existing package-scope `indexGarbage`; left all `docs/takt/**` bookkeeping untouched per the brief's Rules, and confirmed via mutation check that the guard test pins the fill's placement.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T17:21:07.669052387Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 2,
+      "status": "waived",
+      "files": [
+        "internal/cli/cmd_answer_plan_test.go"
+      ],
+      "class": "test",
+      "attempt": 3,
+      "last_digest": {
+        "task": 3,
+        "attempt": 3,
+        "status": "done",
+        "summary": "Extracted `requireCappedPlanAsk` and called it from all four plan-cap tests, so each one now proves the initial `next` is a correctly scoped (`gate == \"plan\"`) and correctly counted (`attempts == 3`) capped ask before it answers.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T17:45:25.561496794Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "commands/takt.md",
+        "hosts/copilot/skills/takt/SKILL.md"
+      ],
+      "class": "mechanical",
+      "attempt": 1,
+      "last_digest": {
+        "task": 4,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Updated both hand-maintained prompt files with identical edit to gate_review_capped description, changing \"the spec review\" to \"a spec or plan review\" on lines 39 and 40 respectively. All verification checks pass.",
+        "blockers": "none",
+        "model": "haiku",
+        "recorded_at": "2026-08-30T16:56:42.715656214Z"
+      }
+    },
+    {
+      "id": 5,
+      "wave": 3,
+      "status": "done",
+      "files": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md"
+      ],
+      "class": "docs",
+      "attempt": 1,
+      "last_digest": {
+        "task": 5,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Amended both design documents (base design's 5 sites, fixed-point design's 7 sites plus supersession note) per the brief; all 19 grep verify checks and `task check` (build, race tests, lint, host parity) pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-30T18:00:33.192657831Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "5b6b474628f95cd6d0f23d94597189075c77c352",
+  "goals_checked_sha": "5b6b474628f95cd6d0f23d94597189075c77c352",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-30T18:20:10.492684309Z",
+    "pr_url": "https://github.com/monrad/takt/pull/75",
+    "applied": true
+  }
+}

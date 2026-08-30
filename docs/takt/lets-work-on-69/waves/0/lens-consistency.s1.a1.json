@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T17:03:42.948680851Z",
+  "findings": [
+    {
+      "severity": "nit",
+      "file": "internal/decide/decide.go",
+      "line": 345,
+      "title": "Order-is-load-bearing comment added only on the plan side",
+      "detail": "decidePlan's new cap check (decide.go:384-391) gets a four-line comment explaining why the needsRework check must precede the round-cap check. The identical shape in decideBrainstorm (decide.go:345-349), which decidePlan explicitly mirrors, carries no such comment. A future reader diffing the two blocks may wonder whether the spec-gate ordering is equally load-bearing but undocumented, or whether the two blocks have diverged. This matches what the task brief asked for (the spec branch's order is only 'implied' by shape), so it is not a defect, just a minor asymmetry worth being aware of if the two blocks are touched again.",
+      "task": 1
+    }
+  ]
+}
