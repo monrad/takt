@@ -42,5 +42,47 @@
       "span": "the design doc"
     }
   ],
-  "confirmed": true
+  "confirmed": true,
+  "verdicts": [
+    {
+      "id": "A1",
+      "verdict": "covered",
+      "evidence": "plan.md's Approach maps one task to each issue — Task 1 = #71 (internal/finish retro renderers), Task 2 = #74 (internal/finish/pr.go), Task 3 = #66 (host prompts + generator), Task 4 = #72 (stale prose) — and plan.index.json's four task entries carry the matching goals (G1-G3, G4, G5-G6, G7-G9) and verify steps for each."
+    },
+    {
+      "id": "A2",
+      "verdict": "covered",
+      "evidence": "plan.md's Waves and risks section runs tasks 1-3 as one wave and makes task 4 depend on all three so 'the suite gate sees the finished branch', and plan.index.json's task 4 depends_on [1,2,3] with the whole-branch verify (task test, task lint, task hosts:check) — one run, one closing gate, not split PRs."
+    },
+    {
+      "id": "A3",
+      "verdict": "widened",
+      "evidence": "Task 3 in plan.index.json is not a small reword: its files list is nine entries (commands/takt.md, hosts/copilot/skills/takt/SKILL.md, internal/hosts/skill.go, internal/hosts/skill_test.go, internal/tools/hostgen/main.go, internal/tools/hostgen/main_test.go, internal/prompt/prompt_test.go, internal/prompt/copilot_test.go, Taskfile.yml) and its description builds a whole new substitution-profile code generator with a declared-multiplicity error contract — substantially more than a small, one-per-feature fix."
+    },
+    {
+      "id": "A4",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 1's files are internal/finish/skeleton.go, internal/finish/retro.go, internal/finish/skeleton_test.go, internal/finish/retro_test.go (plus internal/cli/retro.go), and task 2's files are internal/finish/pr.go and internal/finish/pr_test.go."
+    },
+    {
+      "id": "A5",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 4's files list includes internal/cli/archive.go, with the description detailing applyAndStop's doc-comment rewrite."
+    },
+    {
+      "id": "A6",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 4's files list includes internal/cli/cmd_done.go, with the description repointing doneRetro's citation comment."
+    },
+    {
+      "id": "A7",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 3's files list includes commands/takt.md and hosts/copilot/skills/takt/SKILL.md, the two host prompts, with verify steps grepping both for the reworded invariant."
+    },
+    {
+      "id": "A8",
+      "verdict": "covered",
+      "evidence": "plan.index.json task 4's files list includes docs/superpowers/specs/2026-08-24-takt-design.md, with the description naming the four regions (§4.7, §7.5 step 5, and §5.1) to be restated."
+    }
+  ]
 }
