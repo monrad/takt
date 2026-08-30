@@ -109,3 +109,6 @@
 {"ts":"2026-08-30T18:14:16.8577229Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":0,"rework":[],"sha":"a72f109595c91b3875d496651f056bdc8ceb8a03","slice":1,"wave":3}}
 {"ts":"2026-08-30T18:14:21.448175286Z","type":"wave_cleared","data":{"wave":3}}
 {"ts":"2026-08-30T18:14:21.450801389Z","type":"phase","data":{"from":"execute","to":"finish"}}
+{"ts":"2026-08-30T18:14:40.894450153Z","type":"verify","data":{"commands":44,"passed":true,"sha":"5b6b474628f95cd6d0f23d94597189075c77c352"}}
+{"ts":"2026-08-30T18:18:57.937606681Z","type":"goal_check","data":{"achieved":8,"missed":0,"partial":0,"sha":"5b6b474628f95cd6d0f23d94597189075c77c352","waived":0}}
+{"ts":"2026-08-30T18:19:51.682730357Z","type":"retro","data":{"hash":"sha256:9baa3164a896bb77615d48976a0be7f9f88ada48bd13e7ef68e1ef0ccb6043de"}}

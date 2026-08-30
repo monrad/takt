@@ -1,0 +1,81 @@
+{
+  "sha": "5b6b474628f95cd6d0f23d94597189075c77c352",
+  "verdicts": [
+    {
+      "id": "G1",
+      "verdict": "achieved",
+      "evidence": "internal/decide/decide.go's decidePlan checks f.PlanRounds \u003e= maxAgentAttempts (3) after the needsRework branch and returns ask(gateReviewCapped, {gate: \"plan\", attempts: PlanRounds}) instead of exec \"takt review plan\". TestPlanReviewRoundsAreCapped in internal/decide/decide_plan_cap_test.go asserts PlanRounds=2 still execs takt review plan and PlanRounds=3 asks gate_review_capped with context {gate:\"plan\", attempts:3} and 3 choices. Ran `go test -race -count=1 ./internal/decide/...` — ok.",
+      "citations": [
+        "internal/decide/decide.go:359-393",
+        "internal/decide/decide_plan_cap_test.go:22-59"
+      ]
+    },
+    {
+      "id": "G2",
+      "verdict": "achieved",
+      "evidence": "In decidePlan the needsRework(f.PlanGate) branch (asking gate_review) comes before the f.PlanRounds \u003e= maxAgentAttempts check, with a comment explaining the ordering is deliberate. TestPendingPlanReworkVerdictOutranksTheRoundCap sets both f.PlanGate.Verdict=\"rework\" and f.PlanRounds=3 and asserts the decision is gate_review, not gate_review_capped. `go test -race -count=1 ./internal/decide/...` passes.",
+      "citations": [
+        "internal/decide/decide.go:369-388",
+        "internal/decide/decide_plan_cap_test.go:61-82"
+      ]
+    },
+    {
+      "id": "G3",
+      "verdict": "achieved",
+      "evidence": "internal/cli/facts.go's gatherGateFacts, inside the existing `if st.Config.Review.Plan \u0026\u0026 f.HasIndex \u0026\u0026 f.IndexValid \u0026\u0026 fileNonEmpty(...)` branch, sets f.PlanRounds = gate.Rounds(events, gate.Plan) right after computing f.PlanGate. internal/cli/plan_rounds_facts_test.go's TestGatherFactsCountsPlanRoundsPerGate runs a mixed spec/plan gate_reviewed and gate_rounds_reset events log and checks PlanRounds and SpecRounds are counted independently (per-gate, since-reset); TestGatherFactsLeavesPlanRoundsZeroOutsideTheGuard confirms the fill is inside the guard. `go test -race -count=1 -run TestGatherFacts ./internal/cli/` passes.",
+      "citations": [
+        "internal/cli/facts.go:210-219",
+        "internal/cli/plan_rounds_facts_test.go:213-233"
+      ]
+    },
+    {
+      "id": "G4",
+      "verdict": "achieved",
+      "evidence": "cmd_answer.go's answerGateReviewCapped is gate-agnostic: `which := pendingGateName(st)` reads the gate id out of the pending gate's own stored context, then accept calls overrideGate(bdir, which, reason) (records gate_overridden at the gate's hash with the reason, then carryFindings), retry appends bundle.AppendEvent(bdir, gate.EvRoundsReset, {gate: which}), stop returns keep=true leaving the gate open — the same applyAnswer switch and helpers the spec gate's gate_review case already uses. internal/cli/cmd_answer_plan_test.go has TestPlanReviewRoundCapAsksThenRetryReviewsAgain, TestPlanReviewRoundCapAcceptOverridesAndMovesOn, TestPlanReviewRoundCapStopKeepsTheGateOpen (one per choice) and TestPlanReviewRoundCapAnswersLeaveTheSpecGateAlone (negative test asserting the spec gate's receipt bytes and gate.Rounds(events, gate.Spec) are unchanged after answering the plan's capped gate); snapshotGateState is the helper it uses. All ran green: `go test -race -count=1 -run 'TestPlanReviewRoundCap|TestSpecReviewRoundCap' ./internal/cli/` — PASS on all 7 tests.",
+      "citations": [
+        "internal/cli/cmd_answer.go:144-155",
+        "internal/cli/cmd_answer.go:202-224",
+        "internal/cli/cmd_answer_plan_test.go:262-306"
+      ]
+    },
+    {
+      "id": "G5",
+      "verdict": "achieved",
+      "evidence": "commands/takt.md and hosts/copilot/skills/takt/SKILL.md both contain the identical sentence \"`gate_review_capped` is a spec or plan review after three review rounds without the gate closing — options `accept` (override with `--reason`), `retry` (reset the round count for one more pass), `stop`.\" confirmed by grep on both files. `go test -race -count=1 ./internal/prompt/...` passes (prompt-parity tests).",
+      "citations": [
+        "commands/takt.md:39",
+        "hosts/copilot/skills/takt/SKILL.md:40"
+      ]
+    },
+    {
+      "id": "G6",
+      "verdict": "achieved",
+      "evidence": "Base design §7.2 no longer contains \"the plan gate keeps today's behaviour entirely, including its uncapped rounds\" (grep -c 'including its uncapped' = 0) and instead states the round cap 'applies to both review gates — spec here, and the plan gate at §7.3'. §5.3 row 9 now mirrors row 6's structure (a rework/reject/error receipt → gate_review(plan); else PlanRounds \u003e= maxAgentAttempts → gate_review_capped; else exec takt review plan). §5.2's gate_review_capped definition reads 'a review gate's (spec or plan) review has run maxAgentAttempts...' and §7.3's new 'Plan gate —' paragraph states its own cap sentence citing fixed-point design §8. In the fixed-point design, all seven amendment sites named (D3, D5, §3 verdict rule, §8 cap section, §11 testing, A4, §13 out of scope) each keep their original sentence and gain an adjacent '*Amended by #69* (base design §7.3): ...' paragraph; the document's own opening note lists these as 'the seven sites below'. No unamended sentence in either document still asserts the plan gate is uncapped.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:519",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:433-435",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:719-732",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:1-6",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:68-72",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:94-96",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:283-284",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:339",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:356-357",
+        "docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md:365-366"
+      ]
+    },
+    {
+      "id": "G7",
+      "verdict": "achieved",
+      "evidence": "`git diff --quiet main -- internal/decide/decide_test.go` and `git diff --quiet main -- internal/cli/cmd_answer_test.go` both exit 0 — neither file changed from main. TestSpecReviewRoundsAreCapped and TestPendingReworkVerdictOutranksTheRoundCap pass unmodified: `go test -race -count=1 -run 'TestSpecReviewRoundsAreCapped|TestPendingReworkVerdictOutranksTheRoundCap' ./internal/decide/ -v` — both PASS.",
+      "citations": []
+    },
+    {
+      "id": "G8",
+      "verdict": "achieved",
+      "evidence": "Ran `task check` (build + test + lint + hosts:check) at HEAD: go build ./... succeeded, go test ./... -race -count=1 passed for every package, golangci-lint run ./... reported 0 issues, and hostgen --check reported no stale generated host files.",
+      "citations": []
+    }
+  ],
+  "at": "2026-08-30T18:18:57.93623397Z"
+}
