@@ -1,0 +1,26 @@
+{
+  "lens": "intent",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:17:53.384122664Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 857,
+      "title": "Design doc claims prose fills for sections it just said are fully machine-rendered",
+      "detail": "Step 3's rewrite says takt renders the What-shipped table, Decisions, the Not-proven seed, Follow-ups and the Numbers block verbatim (i.e., these are algorithmically produced), then in the very next sentence says 'the session copies the skeleton to retro.md and fills its \u003c!-- prose: … --\u003e slots with its own account, across all seven sections: What shipped, Decisions, What went well / what was hard, Not proven, Lessons, Follow-ups, Numbers' — naming Decisions, Follow-ups and Numbers among the sections whose prose slots get filled. This contradicts both the earlier clause in the same sentence group and task 4's own implementation: internal/brief/templates/run-retro.md explicitly states 'No prose slot here' for Decisions, and gives no prose-slot instruction for Follow-ups or Numbers (only What shipped, What went well/what was hard, Not proven and Lessons carry a prose slot per that template and per task 4's own description, which lists prose-slot content for only those four). The design doc should say the prose slots span the four sections that have one, not 'all seven'.",
+      "task": 8
+    },
+    {
+      "severity": "minor",
+      "file": "internal/brief/templates/run-retro.md",
+      "line": 23,
+      "title": "Lessons drops the illustrative examples task 4 pairs with it",
+      "detail": "Task 4's description groups 'What went well / what was hard' and 'Lessons' under one line of guidance: 'the session's OWN account of driving this run — the reviewer that contradicted itself, the waiver whose grounds the tree disproves, the tool that misbehaved.' The template gives that full example list only to What went well / what was hard (line 16-17) and gives Lessons a different, shorter line ('written for the next run in this repository', line 24-25) without the examples. This is a defensible editorial choice but is a narrower rendering of the paired instruction than the task text describes for Lessons specifically.",
+      "task": 4
+    }
+  ]
+}

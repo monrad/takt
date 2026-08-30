@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T14:14:14.898982761Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 106,
+      "title": "Archived-run warning propagation fix has no regression test",
+      "detail": "This diff changes `takt next` on an archived run to take the lock and print through r.emit (line 106) instead of the old plainOp (removed), specifically so a lost optional write (e.g. excludeWarning at line 169) is no longer dropped on an archived-run replay. No test in this wave or in the existing suite (internal/cli/cmd_next_test.go, internal/cli/archive_test.go) exercises the archived-replay path with a triggered warning to confirm it now appears in the reprinted op. Every existing test that calls `next` twice on an archived run (e.g. TestArchiveKeepStaysClean, TestArchivedMergeWaitsForThePrimaryToComeBack) runs in conditions where r.warnings is always empty, so a regression that silently drops the warning again (or double-appends it) would pass the whole suite undetected.",
+      "task": 7
+    }
+  ]
+}

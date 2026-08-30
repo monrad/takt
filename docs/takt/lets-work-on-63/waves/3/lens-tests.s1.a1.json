@@ -1,0 +1,26 @@
+{
+  "lens": "tests",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:25:45.060421379Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_done.go",
+      "line": 217,
+      "title": "unfilledProseSlot's unterminated-marker branch is never exercised",
+      "detail": "unfilledProseSlot has two return paths when a marker is found: one where a closing `--\u003e` exists (tested by TestDoneRetroRefusesUnfilledProseSlot) and one where it's missing (`j \u003c 0`, returns `rest, true` — the whole tail of the file as the 'slot'). No test writes a retro.md with a `\u003c!-- prose:` marker lacking a closing `--\u003e`, so this branch, and the resulting (arguably surprising) full-tail error message, is unverified.",
+      "task": 6
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_done.go",
+      "line": 201,
+      "title": "os.ReadFile error path in doneRetro untested",
+      "detail": "The new `b, err := os.ReadFile(p)` after the fileNonEmpty(p) check has no test forcing a read failure (e.g. permission denied) between the existence check and the read, so the new `fail(...)` branch at line 203 is never hit. This mirrors an existing untested pattern elsewhere in the file (e.g. doneGoals), so it's a pre-existing convention rather than a new regression, but it is new code added by this diff with zero coverage.",
+      "task": 6
+    }
+  ]
+}

@@ -55,6 +55,19 @@ func cmdDone(env Env) int {
 	if code != 0 {
 		return code
 	}
+	// The retro's own checks run before the replay decision, not inside
+	// doneStepWork with the others: a retro.md that hashes to what an
+	// earlier `done` recorded still has to be refused in the wrong phase,
+	// and a run that recorded a skeleton verbatim before the prose-slot
+	// guard existed must not be handed an `ignored` receipt for it. Every
+	// other step's checks are implied by its own replay condition — a
+	// matching hash means the artifact is there, and a recorded pull request
+	// URL means the disposition names one.
+	if *step == op.StepRetro {
+		if code = doneRetroChecks(env, tgt); code != 0 {
+			return code
+		}
+	}
 	replayed, rerr := doneAlready(tgt, *step, *prURL)
 	if rerr != nil {
 		return fail(env.Stderr, exitError, rerr.Error(), "")
@@ -71,7 +84,9 @@ func cmdDone(env Env) int {
 	return printJSON(env, map[string]any{keyStep: *step, "ok": true})
 }
 
-// doneStepWork runs one step's own checks and records its receipt.
+// doneStepWork runs one step's own checks and records its receipt. The
+// retro is the exception: cmdDone has already run its checks by the time
+// this is reached, because they must hold for a replay too.
 func doneStepWork(env Env, tgt *runTarget, step, prURL string) int {
 	switch step {
 	case op.StepBrainstorm:
@@ -79,7 +94,7 @@ func doneStepWork(env Env, tgt *runTarget, step, prURL string) int {
 	case op.StepGoals:
 		return doneGoals(env, tgt.bdir, tgt.st)
 	case op.StepRetro:
-		return doneRetro(env, tgt)
+		return doneRetro(tgt)
 	case op.StepPushPR:
 		return donePushPR(env, tgt, prURL)
 	}
@@ -178,19 +193,63 @@ func doneGoals(env Env, bdir string, st *bundle.State) int {
 }
 
 // doneRetro records the retrospective the session wrote (spec §7.5 step 3).
-// The phase is checked before the file, so a session that runs this early is
-// told what is actually wrong rather than being sent to write a
-// retrospective row 22 has not asked for yet (review M2).
-func doneRetro(env Env, tgt *runTarget) int {
-	if code := finishPhaseOnly(env, tgt.st, "done --step "+op.StepRetro); code != 0 {
-		return code
-	}
-	if !fileNonEmpty(filepath.Join(tgt.bdir, "retro.md")) {
-		return fail(env.Stderr, exitError, "retro.md is missing or empty",
-			"write the retrospective to "+filepath.Join(tgt.bdir, "retro.md")+" first")
-	}
+// The checks it needs are doneRetroChecks, which cmdDone has already run —
+// they guard a replay as well as a first recording, so they cannot live
+// here. doneAlready still hash-compares retro.md, so a rewritten one
+// re-records on an archived run as an ordinary bundle commit and an
+// unchanged one commits nothing (design §7.5 step 5 already contemplates
+// post-archive bundle writes).
+func doneRetro(tgt *runTarget) int {
 	_ = bundle.AppendEvent(tgt.bdir, op.StepRetro, map[string]any{keyHash: artifactHash(tgt.bdir, "retro.md")})
 	return 0
+}
+
+// doneRetroChecks refuses a `done --step retro` that must not be recorded.
+// The phase is checked before the file, so a session that runs this early is
+// told what is actually wrong rather than being sent to write a
+// retrospective row 22 has not asked for yet (review M2). The archived phase
+// is allowed alongside finish, so a `takt retro --rewrite` months later can
+// record the rewritten retrospective the same way (spec §7). The prose-slot
+// guard exists because the skeleton introduces the copy-it-verbatim failure
+// mode: a retro.md still carrying a `<!-- prose: … -->` marker has recorded
+// the render, not an account of the run.
+func doneRetroChecks(env Env, tgt *runTarget) int {
+	if code := finishOrArchivedOnly(env, tgt.st, "done --step "+op.StepRetro); code != 0 {
+		return code
+	}
+	p := filepath.Join(tgt.bdir, "retro.md")
+	b, err := os.ReadFile(p)
+	if err != nil || strings.TrimSpace(string(b)) == "" {
+		return fail(env.Stderr, exitError, "retro.md is missing or empty",
+			"write the retrospective to "+p+" first")
+	}
+	if slot, ok := unfilledProseSlot(b); ok {
+		return fail(env.Stderr, exitError,
+			"retro.md still contains an unfilled prose slot: "+slot,
+			"fill every `<!-- prose: … -->` slot the skeleton rendered")
+	}
+	return 0
+}
+
+// unfilledProseSlot reports the first `<!-- prose: … -->` marker still in b,
+// verbatim through its closing `-->`, so the error names the exact slot a
+// session left unfilled rather than only the fact that one remains. A marker
+// an edit broke open has no closing `-->`; the slot is then the rest of its
+// line, which still names it without pasting the tail of the file into an
+// error message.
+func unfilledProseSlot(b []byte) (string, bool) {
+	const marker = "<!-- prose:"
+	s := string(b)
+	i := strings.Index(s, marker)
+	if i < 0 {
+		return "", false
+	}
+	rest := s[i:]
+	if j := strings.Index(rest, "-->"); j >= 0 {
+		return rest[:j+len("-->")], true
+	}
+	line, _, _ := strings.Cut(rest, "\n")
+	return line, true
 }
 
 // donePushPR records the pull request the session opened. The URL is the

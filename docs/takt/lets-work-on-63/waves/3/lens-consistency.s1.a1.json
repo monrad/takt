@@ -1,0 +1,26 @@
+{
+  "lens": "consistency",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:28:29.19950879Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_verify.go",
+      "line": 64,
+      "title": "\"finish or archived\" predicate duplicated instead of shared",
+      "detail": "finishOrArchivedOnly (cmd_verify.go:65) hardcodes `st.Phase == bundle.PhaseFinish || st.Phase == bundle.PhaseArchived`, which is exactly the boolean already inlined at internal/cli/cmd_status.go:154 (`if st.Phase == bundle.PhaseFinish || st.Phase == bundle.PhaseArchived`). The diff had a natural opportunity to factor this into a shared predicate (e.g. a small `finishOrArchived(st) bool` used by both the gate function and cmd_status.go) instead of adding a second independent encoding of the same phase-pair rule.",
+      "task": 6
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_verify.go",
+      "line": 49,
+      "title": "Doc comment reads awkwardly where it cross-references the new helper",
+      "detail": "The updated finishPhaseOnly doc comment says \"Both refuse in the one shape finishOrArchivedOnly also uses for `done --step retro`, so a session learns it once\" — missing a connective (e.g. \"the one shape that finishOrArchivedOnly also uses\"), making the two sibling doc comments (finishPhaseOnly at line 44 and finishOrArchivedOnly at line 60) harder to read together as the single explanation they're meant to be.",
+      "task": 6
+    }
+  ]
+}

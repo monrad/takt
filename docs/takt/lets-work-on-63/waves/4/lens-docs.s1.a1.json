@@ -1,0 +1,18 @@
+{
+  "lens": "docs",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:48:20.799165892Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 369,
+      "title": "Spec table doesn't call out that retro --rewrite fails (not asks) on a held lock",
+      "detail": "The command table row says `takt retro --rewrite` \"takes the session lock (§4.6) as `next` does\", but §4.6 describes the lock's only documented behaviour on contention as `ask: owner` (take over / abort / read-only). The diff (internal/cli/cmd_next.go's new nextRun.lockBlocked/blockedBy, and internal/cli/cmd_retro.go's retroLockHeld) makes retro --rewrite diverge on exactly this point: a live holder makes it fail outright (exitError, naming the holder and hinting `takt unlock`), never asking. That divergence is well explained in the new code's doc comments, but the spec — which is otherwise very precise about command-specific exceptions (e.g. the push_pr no-op rule two rows above) — doesn't mention it, so a reader relying on the table/§4.6 alone would expect retro --rewrite to print the same owner-ask question next does.",
+      "task": 0
+    }
+  ]
+}

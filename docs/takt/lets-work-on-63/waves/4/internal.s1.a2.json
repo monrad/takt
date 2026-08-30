@@ -1,0 +1,67 @@
+{
+  "wave": 4,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T14:18:27.787662339Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "internal/cli/archive.go",
+      "line": 134,
+      "title": "applyAndStop doc comment contradicts this wave's own change to cmd_next.go",
+      "detail": "archive.go:130-135 still says \"The later call on an archived run takes no lock, so it passes plainOp.\" This diff deletes `plainOp` entirely from cmd_next.go and moves the archived-run branch in cmdNext to run after `r.acquireLock`, passing `r.emit` instead (see cmd_next.go's rewritten comments at the same location, e.g. \"applyAndStop releases the lock this call just took\"). `plainOp` no longer exists anywhere in internal/cli (grep confirms archive.go:135 is the only remaining reference), so the comment both names a deleted function and asserts the opposite of the new, intentional behaviour (the archived path now takes the lock, which is the whole point of task 7's fix — a concurrent rewrite must be able to shut out an unlocked archived `next`). This file wasn't in this task's file list, so the change to cmd_next.go's locking behaviour was not propagated to the neighbouring doc comment that describes the same code path.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_next.go",
+      "line": 106,
+      "title": "Archived-run warning propagation fix has no regression test",
+      "detail": "This diff changes `takt next` on an archived run to take the lock and print through r.emit (line 106) instead of the old plainOp (removed), specifically so a lost optional write (e.g. excludeWarning at line 169) is no longer dropped on an archived-run replay. No test in this wave or in the existing suite (internal/cli/cmd_next_test.go, internal/cli/archive_test.go) exercises the archived-replay path with a triggered warning to confirm it now appears in the reprinted op. Every existing test that calls `next` twice on an archived run (e.g. TestArchiveKeepStaysClean, TestArchivedMergeWaitsForThePrimaryToComeBack) runs in conditions where r.warnings is always empty, so a regression that silently drops the warning again (or double-appends it) would pass the whole suite undetected.",
+      "id": "c2",
+      "task": 7,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "archive.go's doc comment (untouched by this diff) says the later call on an archived run 'takes no lock, so it passes plainOp' (archive.go:134-135), but this diff deletes plainOp entirely and rewrites cmdNext so the archived branch now runs after r.acquireLock and calls `return applyAndStop(ctx, env, tgt, r.emit)` (cmd_next.go:102-106), with a comment at cmd_next.go:99-101 explicitly noting 'applyAndStop releases the lock this call just took'. The comment in archive.go both names a function (plainOp) that no longer exists anywhere in the package (grep confirms archive.go:135 is its only remaining occurrence) and asserts the opposite of the new intentional behavior (the archived path does take the lock).",
+      "citations": [
+        "internal/cli/archive.go:130-135",
+        "internal/cli/cmd_next.go:99-106"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "The diff changes the archived-run replay branch from `applyAndStop(ctx, env, tgt, plainOp(env))` to `applyAndStop(ctx, env, tgt, r.emit)` (cmd_next.go:106) specifically so a warning collected in acquireLock (r.warnings, set at cmd_next.go:169 via excludeWarning) survives onto the reprinted op. `breakExclude`, the only helper that triggers this warning, is used solely in cmd_next_test.go:1842 (a plain single-next warning test) and cmd_next_test.go:1869 (TestNextCarriesALostExcludeOntoTheArchiveStopOp, which exercises the *first* call that performs the archive from within r.loop, not the later-call branch at cmd_next.go:106). archive_test.go contains zero occurrences of 'warning' (confirmed by grep), and its two-call tests (e.g. TestArchivedMergeWaitsForThePrimaryToComeBack, archive_test.go:197-233, which calls d.nextOp() a second time while tgt.st.Phase is already Archived on disk — exactly the branch this diff changed) never break the exclude write, so r.warnings is always empty there. No test in this wave (cmd_retro_test.go, the only new test file) or the existing suite exercises the archived-replay branch with a triggered warning.",
+      "citations": [
+        "internal/cli/cmd_next.go:106",
+        "internal/cli/cmd_next.go:169",
+        "internal/cli/cmd_next_test.go:1863-1886",
+        "internal/cli/archive_test.go:197-233"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2"
+  ]
+}

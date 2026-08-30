@@ -1,0 +1,12 @@
+{
+  "gate": "spec",
+  "hash": "sha256:5842e2ad1efb7b19877bc586fc8123d5c4971fbfb1ecf52181452f16af022e89",
+  "verdict": "approve",
+  "reviewer": {
+    "provider": "copilot",
+    "model": "gpt-5.6-sol"
+  },
+  "findings": "reviews/spec.md",
+  "ts": "2026-08-29T02:19:47.504453729Z",
+  "skipped": null
+}

@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "attempt": 1,
+  "status": "done",
+  "summary": "takt retro --rewrite` re-derives the pair under the run lock and re-emits the retro run op in the finish and archived phases, with a held lock reported rather than written through; the lock's blocked arm is now a hook on `nextRun` so `next` is unchanged.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T13:41:22.324748379Z"
+}

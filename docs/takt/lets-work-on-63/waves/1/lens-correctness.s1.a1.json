@@ -1,0 +1,26 @@
+{
+  "lens": "correctness",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:18:46.769980865Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 350,
+      "title": "Free-text decision/not-proven/follow-up fields are not escaped for markdown line breaks or pipes",
+      "detail": "cellEscaper (skeleton.go:330-332) is applied to titles and SHAs inside the shipped table because 'an unescaped pipe would end the cell and a newline the row', but the same free-text fields rendered as single markdown lines elsewhere are not escaped: decisionLine (skeleton.go:350-366) writes Subject/Choice/Reason raw, notProven/withReason (skeleton.go:385-412) writes failure/goal/verify reasons raw, and followUpLine (skeleton.go:489-498) writes Title/Detail raw. Reason strings come from user- or agent-supplied free text (gate_answered reason, task_waived reason, goal_waived reason, bundle.Disposition.Reason, spec.Assumption fields) and FollowUp.Title/Detail come from review-lens findings; any of these containing a literal newline (or, for the table-adjacent bullet lines, a leading '- ' or '## ' sequence) will split what is supposed to be one bullet/line into multiple lines, corrupting the one-bullet-per-decision / one-line-per-item structure the renderer and its heading-adjacency invariants (see TestRenderSkeletonNeverLeavesAHeadingBare) assume. This is inconsistent with the escaping already judged necessary for the table.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 539,
+      "title": "json.MarshalIndent error is silently discarded based on an assumption that isn't fully airtight",
+      "detail": "renderNumbers discards the error from json.MarshalIndent(numbers{...}) with a comment asserting it 'cannot occur' because the struct holds only ints, strings, times and a map of them. time.Time.MarshalJSON does return an error when the year is outside [0,9999], so a corrupted or far-future/negative timestamp in WaveTiming (sourced from event logs) would silently produce an empty string, yielding an invalid (unclosed) ```json fence in the written retro skeleton rather than surfacing the error.",
+      "task": 3
+    }
+  ]
+}

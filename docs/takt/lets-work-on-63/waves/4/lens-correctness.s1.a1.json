@@ -1,0 +1,26 @@
+{
+  "lens": "correctness",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:46:57.050422543Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 54,
+      "title": "The run lock does not actually protect the archived-run race the feature exists to close",
+      "detail": "cmd_retro.go's doc comment (lines 54-60) justifies taking the run lock by saying 'a concurrent next on an archived run calls recommitArchive, which stages and commits whatever in the bundle is dirty — a commit that can land between the two writes and capture a half-updated pair … the lock is what does [close that]'. But cmd_next.go's cmdNext never acquires or even reads the session lock for an archived run: the archived branch (internal/cli/cmd_next.go:92-105, itself carrying the comment 'no lock is taken') calls recommitArchive and applyAndStop before any call to acquireLock — acquireLock is only reached in the non-archived branch further down. recommitArchive's bundleDirty check (internal/cli/bundleops.go:82-91) only asks git status, and applyAndStop unconditionally calls bundle.ClearSession (internal/cli/archive.go:144), wiping any lock a concurrent `retro --rewrite` currently holds. So if `takt retro --rewrite` is interrupted between writing finish/retro-inputs.json and finish/retro-skeleton.md (writeRetroArtifacts in internal/cli/retro.go writes them sequentially) while a concurrent `takt next` runs against the same archived run, recommitArchive will see the bundle dirty (only the first file rewritten) and commit exactly the half-updated pair the lock was supposed to prevent — with no lock check involved at all. This is precisely 'the motivating case' the task calls out (retro on an archived run), so the core correctness guarantee task 7 introduces the lock for does not hold.",
+      "task": 7
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 212,
+      "title": "A lock takeover during `retro --rewrite` can leave a tracked file (events.jsonl) modified with no commit",
+      "detail": "cmdRetro reuses nextRun.acquireLock unchanged apart from blockedBy/lockBlocked. If the lock cmd_retro finds is stale/orphaned (an expired heartbeat, or a holder recorded generated=true), acquireLock's takeover branch appends a `lock_taken` event via bundle.AppendEvent(r.bdir, ...) (cmd_next.go:212/216), which — unlike logs/session.json — is a tracked bundle file. cmd_retro never commits anything (per its own no-commit contract, verified by TestRetroRewriteWritesNoStateAndTakesNoCommit only against state.json/HEAD), so a rewrite that happens to take over a stale lock leaves events.jsonl modified and uncommitted in the working tree until some unrelated later command commits it. This is a narrow edge case not exercised by the wave's tests, but it means the 'no commit / nothing tracked is disturbed' framing in cmd_retro.go's doc comment (lines 22-25) is not quite true whenever a takeover occurs.",
+      "task": 7
+    }
+  ]
+}

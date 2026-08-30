@@ -257,6 +257,8 @@ var lineSafe = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ")
 // an input does not have to be threaded through the others.
 type RunData struct {
 	Slug, Topic, SpecPath, GoalsPath, Branch, Base, InputsPath, RetroPath string
+	// SkeletonPath is the rendered skeleton the retro step starts from.
+	SkeletonPath string
 	// PRTitle and PRBodyPath belong to the push_pr step: the title the pull
 	// request is opened with and the file its body is read from (#36).
 	PRTitle, PRBodyPath string

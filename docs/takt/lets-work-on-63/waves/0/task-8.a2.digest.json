@@ -1,0 +1,9 @@
+{
+  "task": 8,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Corrected §7.5 step 3 to name only the four prose-slot sections (matching the run-retro template) and aligned the new §5.1 `takt retro --rewrite` row on the document's established \"session lock\" term; all eleven verify greps pass.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T11:33:18.701708441Z"
+}

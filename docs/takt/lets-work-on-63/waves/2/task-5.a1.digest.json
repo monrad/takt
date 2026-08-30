@@ -1,0 +1,9 @@
+{
+  "task": 5,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Extracted the retro step into internal/cli/retro.go — one helper derives and atomically writes retro-inputs.json plus the new retro-skeleton.md, and one `retroRunOp` fills the op (now carrying `skeleton_path`) for both `next` and, later, `takt retro`.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-29T13:07:41.136949667Z"
+}

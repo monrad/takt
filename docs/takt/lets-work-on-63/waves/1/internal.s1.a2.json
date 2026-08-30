@@ -1,0 +1,87 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:57:39.423838156Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 133,
+      "title": "shippedTasks' skip-non-numeric-item branch has no test",
+      "detail": "shippedTasks (skeleton.go:128-146) explicitly skips any tasks-array item that isn't a float64 (`n, isNum := item.(float64); if !isNum { continue }`), per its own doc comment. No fixture in internal/finish/skeleton_test.go ever puts a non-numeric entry in a wave_committed event's tasks list, so this branch — and the resulting row's task count/order when a bogus entry is mixed with valid ids — is completely unexercised. A regression here (e.g. accidentally keeping the item with ID 0, or mis-indexing subsequent tasks) would not be caught by TestBuildShippedResolvesTitlesAndKeepsUnknownIdsBare or TestBuildShippedFloorsASliceLessCommitToOne, both of which only use well-formed float64 ids.",
+      "id": "c1",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 325,
+      "title": "sliceColumn carries a dead branch that can never fire given the codebase's own slice-floor invariant",
+      "detail": "sliceColumn (skeleton.go:325-337) builds a `seen map[int]int` and, for each key, checks both `k.slice \u003e 1` and (if that's false) `seen[k.wave] != k.slice`. But every production producer of a ShippedRow or WaveTiming goes through timingKeyOf (internal/finish/retro.go:305-310, `slice: max(int(sl), 1)`) — BuildShipped calls it directly (skeleton.go:111) and waveTimings does too (retro.go:328) — so k.slice is never \u003c 1 anywhere in the pipeline (verified: the only production assignment of RetroInputs.WaveTimings is `in.WaveTimings = waveTimings(events)` at retro.go:153, and the only ShippedRow constructor is BuildShipped; grepped the repo for `ShippedRow{` and `WaveTiming{` and found no other constructor, in tests or code, that supplies a slice below 1). Given that invariant, any two different slice values seen for the same wave must include one that is \u003e1, so the first `if k.slice \u003e 1 { return true }` always fires before the `seen` comparison could ever produce a different verdict — the `seen` map and its comparison are unreachable dead weight. The function's own doc comment even states the sufficient rule outright ('since slices are numbered from one, any number above it is a second slice by itself'), which describes the simpler `k.slice \u003e 1`-only check that would make sliceKeys/seen unnecessary; the code keeps the extra machinery anyway. This is exactly the kind of premature-generalisation/dead-fallback complexity the lens is meant to catch: an allocation, an extra loop-carried map and a second branch defending against a case the type's real producers structurally cannot create.",
+      "id": "c2",
+      "task": 3,
+      "lenses": [
+        "simplicity"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 567,
+      "title": "followUpLine's no-Detail path for full-severity follow-ups is untested",
+      "detail": "followUpLine (skeleton.go:564-573) only appends ' — \u003cdetail\u003e' when f.Detail != \"\". Every blocking/major fixture across all TestRenderSkeletonGolden subtests (fullRunFollowUps, unrulyIn) sets Detail on every full-severity entry, so the branch where a blocking or major follow-up has no Detail is never rendered/asserted. Since follow-ups routinely lack a detail in practice, a formatting bug in this path (e.g. a stray trailing '— ' or missing space) would ship into every retro document undetected.",
+      "id": "c3",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "shippedTasks (internal/finish/skeleton.go:126-144) types each tasks-array item as float64 and does `n, isNum := item.(float64); if !isNum { continue }` (lines 133-136) to skip anything else. Every fixture that builds a wave_committed event's tasks list in skeleton_test.go goes through the `committed()` helper (`raw = append(raw, float64(id))` for every id) or a literal `[]any{float64(2)}`/`[]any{float64(1)}` — no fixture in the diff's skeleton_test.go ever puts a non-float64 entry in a tasks list, and no other test file references shippedTasks/BuildShipped. The skip branch is real code with no mitigating test.",
+      "citations": [
+        "internal/finish/skeleton.go:133-136"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "sliceColumn (internal/finish/skeleton.go:325-337) has `if k.slice \u003e 1 { return true }` then `if s, ok := seen[k.wave]; ok \u0026\u0026 s != k.slice { return true }`. Every production constructor of ShippedRow (skeleton.go:111, via `k := timingKeyOf(e)`) and WaveTiming (internal/finish/retro.go:333, also via `k := timingKeyOf(e)`) gets its slice from timingKeyOf, which is `slice: max(int(sl), 1)` (retro.go:309) — always \u003e=1. Given that floor, the seen-map branch can only be reached when the current k.slice is not \u003e1, i.e. exactly 1, and any previously stored seen[wave] value must also be exactly 1 (else the \u003e1 check would have already returned true when it was stored) — so s always equals k.slice at that point and `s != k.slice` can never be true. The seen map and second branch are unreachable given the codebase's own slice-floor invariant.",
+      "citations": [
+        "internal/finish/skeleton.go:325-337",
+        "internal/finish/retro.go:305-310",
+        "internal/finish/retro.go:333",
+        "internal/finish/skeleton.go:109-116"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "followUpLine (internal/finish/skeleton.go:562-570) only appends ` — \u003cdetail\u003e` when `f.Detail != \"\"` (lines 567-569). Every blocking/major gate.FollowUp literal in the diff's skeleton_test.go sets Detail: fullRunFollowUps' three full-severity entries (lines ~735-741 of the diff) all carry Detail, and unrulyIn's single major entry (diff lines ~1039-1042) also carries Detail. No test — golden or otherwise — constructs a blocking/major FollowUp with an empty Detail, and grepping the repo finds no dedicated unit test for followUpLine or bucketFollowUps outside the golden-document tests.",
+      "citations": [
+        "internal/finish/skeleton.go:562-570"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3"
+  ]
+}

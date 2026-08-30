@@ -1,0 +1,9 @@
+{
+  "task": 8,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Updated docs/superpowers/specs/2026-08-24-takt-design.md — added `finish/retro-skeleton.md` to the §4.2 bundle layout, rewrote §7.5 step 3 to describe the skeleton/seven sections/disposition-absent-on-first-pass, and added the `takt retro --rewrite` row to the §5.1 command table.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:05:54.881236749Z"
+}

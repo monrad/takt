@@ -42,6 +42,14 @@ type nextRun struct {
 	genID   bool // takt invented r.session; nothing persisted it
 	force   bool
 	recover bool
+	// lockBlocked answers a lock a live other session holds, and is the one
+	// point at which a command that borrows [nextRun.acquireLock] may
+	// diverge from the way `takt next` takes the run: the fields above are
+	// what the lock is taken with, and this is all that changes when it
+	// cannot be. Nil is next's own answer, the owner ask, which offers the
+	// user a takeover; `takt retro --rewrite` is not an op loop and has no
+	// turn to spend on a gate, so it fails instead (spec §7).
+	lockBlocked func(held *bundle.Session) int
 	// warnings names the optional writes this call lost without failing —
 	// today only info/exclude (the warnings contract). Every op printed
 	// after the lock is taken carries them, which is what [nextRun.emit] is
@@ -50,17 +58,11 @@ type nextRun struct {
 }
 
 // opPrinter prints one op and returns the command's exit code. applyAndStop
-// takes one rather than printing for itself because it serves both the
-// post-lock archive and the pre-lock replay of an already-archived run, and
-// only the first of those can have lost anything.
+// takes one rather than printing for itself because it serves two callers:
+// the archive that ends a run, and every later `takt next` on the archived
+// run. Both reach it holding the lock, so both hand it [nextRun.emit], and
+// neither can drop a warning its call collected on the way there.
 type opPrinter func(op.Op) int
-
-// plainOp is the printer for a path that cannot have lost anything: an
-// already-archived run is answered before the lock is taken, so there is no
-// warning to carry.
-func plainOp(env Env) opPrinter {
-	return func(o op.Op) int { return printOp(env, o) }
-}
 
 // cmdNext implements the op trampoline (spec §5.1): take the session lock,
 // then decide, perform any side effect whose preconditions are now met, and
@@ -81,21 +83,18 @@ func cmdNext(env Env) int {
 	if code != 0 {
 		return code
 	}
-	// An archived run has nothing left to decide (spec §5.3 row 26), and no
-	// lock is taken: acquireLock would stamp a fresh holder on the run takt
-	// just released and rewrite state.json — a tracked file — leaving the
-	// worktree dirty with nothing to commit, every time anyone asks a
-	// finished run what is next. What the disposition asked of git is
-	// re-derived instead of remembered, so an archive whose merge could not
-	// be made — the primary worktree was busy, the merge conflicted — makes
-	// it here on a later call, and one that is fully done says so and does
-	// nothing.
-	if tgt.st.Phase == bundle.PhaseArchived {
-		if code = recommitArchive(ctx, env, tgt); code != 0 {
-			return code
-		}
-		return applyAndStop(ctx, env, tgt, plainOp(env))
-	}
+	// The lock is taken before the phase is looked at, so every path that can
+	// write to this bundle holds it — the archived one included. That path
+	// once ran unlocked, on the grounds that stamping a fresh holder on a run
+	// takt had just released would dirty a tracked file for nothing; the
+	// holder has lived in the untracked logs/session.json since state version
+	// 2, so it costs nothing, and `takt retro --rewrite` made it necessary.
+	// A rewrite replaces two tracked files in sequence and takes this same
+	// lock to make the pair a snapshot, and recommitArchive below commits
+	// whatever in the bundle is dirty — so an unlocked archived `next` could
+	// commit half a pair a rewrite was still writing, and applyAndStop's
+	// ClearSession would then discard the rewrite's lock as well. A lock only
+	// one of two writers respects is not one (spec §4.6, §7).
 	id, generated := sessionID(env.Getenv)
 	r := &nextRun{
 		env: env, ws: tgt.ws, slug: tgt.slug, bdir: tgt.bdir, st: tgt.st, now: timeNow(),
@@ -104,6 +103,19 @@ func cmdNext(env Env) int {
 	if lockCode, done := r.acquireLock(ctx); done {
 		return lockCode
 	}
+	// An archived run has nothing left to decide (spec §5.3 row 26). What the
+	// disposition asked of git is re-derived instead of remembered, so an
+	// archive whose merge could not be made — the primary worktree was busy,
+	// the merge conflicted — makes it here on a later call, and one that is
+	// fully done says so and does nothing. applyAndStop releases the lock
+	// this call just took, so an archived run still holds nothing once the
+	// call is over.
+	if tgt.st.Phase == bundle.PhaseArchived {
+		if code = recommitArchive(ctx, env, tgt); code != 0 {
+			return code
+		}
+		return applyAndStop(ctx, env, tgt, r.emit)
+	}
 	if code = r.healFinish(ctx); code != 0 {
 		return code
 	}
@@ -111,8 +123,9 @@ func cmdNext(env Env) int {
 }
 
 // acquireLock refreshes or takes the advisory lock recorded in the bundle's
-// untracked logs/session.json; a live other session yields the owner ask
-// (transient, not persisted). A holder that recorded generated=true is not a
+// untracked logs/session.json; a live other session yields whatever
+// [nextRun.blockedBy] answers — for `takt next`, the owner ask (transient,
+// not persisted). A holder that recorded generated=true is not a
 // live session — nothing persisted its id, so it can never present it again
 // — and is taken over silently; that is read off the holder's own record,
 // never guessed from the shape of its id (spec §4.6, review finding 1).
@@ -130,11 +143,7 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 	orphaned := held != nil && held.ID != r.session && held.Generated
 	outcome, next := bundle.Acquire(held, who, r.now, time.Duration(r.ws.Cfg.LockTTL), r.force || orphaned)
 	if outcome == bundle.LockBlocked {
-		q := decide.Question("owner", map[string]any{
-			keySlug: r.slug, "holder": held.ID, "host": held.Host,
-			"heartbeat": held.Heartbeat.Format(time.RFC3339),
-		})
-		return r.emit(q), true
+		return r.blockedBy(held), true
 	}
 	// Both rules that keep the bundle's untracked area out of git go in
 	// first, every time. A bundle created before they existed has a logs/
@@ -215,14 +224,32 @@ func (r *nextRun) acquireLock(ctx context.Context) (int, bool) {
 	return 0, false
 }
 
+// blockedBy answers a run a live other session is driving, and is the whole
+// of what a borrower of [nextRun.acquireLock] may decide for itself. `takt
+// next` is the op loop, so its answer is the owner ask: a transient question
+// naming the holder, whose `takeover` choice the user can take. A command
+// that is not a loop sets lockBlocked and answers in its own shape — for
+// `takt retro --rewrite`, an error, because there is no next call to hand a
+// gate to (spec §4.6, §7).
+func (r *nextRun) blockedBy(held *bundle.Session) int {
+	if r.lockBlocked != nil {
+		return r.lockBlocked(held)
+	}
+	return r.emit(decide.Question("owner", map[string]any{
+		keySlug: r.slug, "holder": held.ID, "host": held.Host,
+		"heartbeat": held.Heartbeat.Format(time.RFC3339),
+	}))
+}
+
 // emit prints one of this run's ops, carrying whatever optional write the
-// call lost. Every op a `takt next` that took the lock can print goes
-// through here — including the stop op the archive path builds in
-// archive.go, which is reached from r.archive and would otherwise drop a
-// warning on the one call that ends the run well. Routing them all through
-// one helper is what stops a future exit path from losing one; the only op
-// printed outside it belongs to an already-archived run, which is answered
-// before any lock is taken and so has nothing to report (plainOp).
+// call lost. Every op a `takt next` can print goes through here — including
+// the two the archive path builds in archive.go, the stop op that ends the
+// run and the one a later call on the archived run replays, which would
+// otherwise drop a warning on exactly the calls that end well. Routing them
+// all through one helper is what stops a future exit path from losing one.
+//
+// `takt retro --rewrite` prints its one op through here for the same
+// reason: it borrows acquireLock, so it can lose the same optional write.
 func (r *nextRun) emit(o op.Op) int {
 	if len(r.warnings) > 0 {
 		o.Warnings = append(slices.Clone(o.Warnings), r.warnings...)
@@ -983,21 +1010,20 @@ func (r *nextRun) run(o op.Op) int {
 		Slug: r.slug, Topic: r.st.Topic,
 		SpecPath: filepath.Join(r.bdir, "spec.md"), GoalsPath: filepath.Join(r.bdir, "goals.md"),
 		Branch: r.st.Branch, Base: r.st.Base,
-		RetroPath: filepath.Join(r.bdir, "retro.md"), InputsPath: finish.RetroInputsPath(r.bdir),
 	}
 	inputs := map[string]any{
 		keySlug: r.slug, "topic": r.st.Topic, "spec_path": data.SpecPath, "goals_path": data.GoalsPath,
 	}
 	switch o.Step {
 	case op.StepRetro:
-		// The inputs are re-derived on every call that emits this op: they
-		// are a pure function of what is on disk, so a repeated `next`
-		// writes the same bytes and hands back the same op (spec §5.4).
-		if err := r.writeRetroInputs(); err != nil {
-			return fail(r.env.Stderr, exitError, err.Error(), "")
+		// The retro op is filled whole by the helper `takt retro` shares
+		// with this branch, artifacts and all, so the two commands derive
+		// and emit exactly the same thing (spec §7).
+		filled, ferr := retroRunOp(o, r.bdir, r.st)
+		if ferr != nil {
+			return fail(r.env.Stderr, exitError, ferr.Error(), "")
 		}
-		inputs["inputs_path"] = data.InputsPath
-		inputs["retro_path"] = data.RetroPath
+		return r.emit(filled)
 	case op.StepPushPR:
 		// The body is re-derived on every call that emits this op, exactly
 		// as the retro inputs are: a replayed `next` writes the same bytes
@@ -1079,77 +1105,6 @@ func (r *nextRun) prGoals() ([]goals.Goal, error) {
 		return nil, err
 	}
 	return g.Items, nil
-}
-
-// writeRetroInputs re-derives finish/retro-inputs.json from the run's own
-// records, so the retro op always names a file that describes the run as it
-// stands (spec §7.5 step 3).
-func (r *nextRun) writeRetroInputs() error {
-	idx, err := readIndex(r.bdir)
-	if err != nil {
-		return err
-	}
-	events, err := bundle.ReadEvents(r.bdir)
-	if err != nil {
-		return err
-	}
-	closes, err := readCloses(r.bdir, r.st.Tasks)
-	if err != nil {
-		return err
-	}
-	v, err := finish.ReadVerify(r.bdir)
-	if err != nil {
-		return err
-	}
-	g, err := finish.ReadGoals(r.bdir)
-	if err != nil {
-		return err
-	}
-	fu, err := gate.ReadFollowUps(r.bdir)
-	if err != nil {
-		return err
-	}
-	var internals []wave.InternalRecord
-	for _, n := range waveNumbers(r.st.Tasks) {
-		recs, ierr := wave.AllInternalRecords(r.bdir, n)
-		if ierr != nil {
-			return ierr
-		}
-		internals = append(internals, recs...)
-	}
-	return finish.WriteRetroInputs(r.bdir,
-		finish.BuildRetroInputs(r.st, idx, events, closes, v, g, fu.Items, internals))
-}
-
-// waveNumbers is every wave number the run has tasks in, ascending and
-// deduplicated — the wave list readCloses and writeRetroInputs's internal
-// review gathering both walk.
-func waveNumbers(tasks []bundle.Task) []int {
-	var waves []int
-	for _, t := range tasks {
-		if !slices.Contains(waves, t.Wave) {
-			waves = append(waves, t.Wave)
-		}
-	}
-	slices.Sort(waves)
-	return waves
-}
-
-// readCloses collects every slice record of every wave the run has tasks in,
-// in wave then slice order; a wave that never wrote one is skipped rather
-// than reported, because a run can reach finish with a wave whose tasks were
-// all waived. A sliced wave contributes one record per slice, and the retro
-// wants all of them: each slice graded different tasks.
-func readCloses(bdir string, tasks []bundle.Task) ([]wave.CloseResult, error) {
-	out := make([]wave.CloseResult, 0, len(tasks))
-	for _, n := range waveNumbers(tasks) {
-		all, err := wave.AllCloses(bdir, n)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, all...)
-	}
-	return out, nil
 }
 
 // plannerSchema is quoted into the planner brief (spec §7.3). spec_hash is

@@ -1,0 +1,96 @@
+{
+  "wave": 3,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:28:22.956760537Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 884,
+      "title": "§7.5 step 5's \"archive commit is the run's last one\" / \"bundle directory... otherwise untouched once archived\" invariant is now false and no task updates it",
+      "detail": "Step 5 states \"commit `takt(\u003cslug\u003e): archive`. That commit is the run's last one\" (line 884) and later \"there is no write after the archive commit\" / \"the bundle directory is otherwise untouched once archived\" (lines 902-909), describing the only post-archive bundle-write mechanism as a later `next` sweeping dirty files into a *second archive commit*. This diff's `finishOrArchivedOnly` (internal/cli/cmd_verify.go:64) lets `done --step retro` run in `archived`, and `doneRetro`'s own doc comment (internal/cli/cmd_done.go:195-201) plus TestDoneRetroAcceptedInArchivedPhase (internal/cli/finish_test.go, asserting `git log -1` contains \"retro done\") confirm it lands its own distinct `\"retro done\"` bundle commit after the archive commit — a mechanism §7.5 step 5 does not describe and one that falsifies both the \"last commit\" and \"untouched once archived\" claims for every disposition, not just `keep`. cmd_done.go:200-201's own comment (\"design §7.5 step 5 already contemplates post-archive bundle writes\") asserts the design doc already covers this, but step 5 only contemplates the second-archive-commit sweep, not an independent `done`-issued commit. No task in this run's plan (docs/takt/lets-work-on-63/plan.md) is scoped to fix step 5's text — task 8 explicitly restricts its edits and verify checks to the `3. **Retro**`–`4. **Disposition**` span of step 3 (plan.md:92-97) — so this contradiction ships undocumented. (Already logged as a follow-up in docs/takt/lets-work-on-63/follow-ups.json at wave 3, but it remains unfixed as of this diff.)",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_done.go",
+      "line": 221,
+      "title": "doneRetroChecks' missing/empty-file branch has no test, and its semantics silently changed",
+      "detail": "doneRetroChecks (new in this diff) replaced the old fileNonEmpty(retro.md) check with an inline os.ReadFile + strings.TrimSpace(...) == \"\" check. This is a real behaviour change: fileNonEmpty only checks file size \u003e 0 (facts.go:41-44), so a whitespace-only retro.md previously passed this gate and would have been hashed/recorded; now it is refused as \"missing or empty\". None of the new tests (TestDoneRetroRefusesUnfilledProseSlot, TestDoneRetroRefusesARecordedRetroInExecute, TestDoneRetroAcceptedInArchivedPhase) or any existing test writes a missing/empty/whitespace-only retro.md while in the finish or archived phase, so this branch and its behaviour change are completely unexercised by the suite.",
+      "id": "c2",
+      "task": 6,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/finish_test.go",
+      "line": 306,
+      "title": "`got[\"ignored\"] != nil` assertions are tautological on the failure path",
+      "detail": "In TestDoneRetroRefusesUnfilledProseSlot (line 306) and TestDoneRetroRefusesARecordedRetroInExecute (line 346), the refusal assertions check `code != 1 || got[\"ignored\"] != nil`. `got` is unmarshalled only from stdout (cmd_init_test.go:17-33), while `fail()` writes exclusively to stderr (cli.go:158-161), so on any refusal (code 1) stdout is empty and `got` is nil — `got[\"ignored\"]` can never be non-nil here. The check adds no real coverage of the 'must not be marked ignored' intent; the actual no-new-receipt guarantee is (correctly) covered separately via countEvents before/after.",
+      "id": "c3",
+      "task": 6,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "Design doc §7.5 step 5 (docs/superpowers/specs/2026-08-24-takt-design.md:884) says the archive commit 'is the run's last one', and lines 902-909 say 'there is no write after the archive commit' and 'the bundle directory is otherwise untouched once archived', describing only a `takt next`-driven dirty-file sweep into a second `archive` commit. This diff's `finishOrArchivedOnly` (internal/cli/cmd_verify.go:64) lets `done --step retro` run when `st.Phase == bundle.PhaseArchived`, and `doneRetro`/`doneRetroChecks` (internal/cli/cmd_done.go:195-201, 216-219) plus `TestDoneRetroAcceptedInArchivedPhase` (internal/cli/finish_test.go, ending `if s := testutil.Git(t, d.root, \"log\", \"-1\", \"--format=%s\"); !strings.Contains(s, \"retro done\")`) show `cmdDone`'s own `commitBundle(ctx, tgt.ws, tgt.bdir, tgt.slug, *step+\" done\")` call (internal/cli/cmd_done.go:81) lands a distinct 'retro done' commit after archive — a mechanism separate from `recommitArchive`'s 'archive'-message sweep (internal/cli/archive.go:97-120). The doc comment at cmd_done.go:200-201 asserts 'design §7.5 step 5 already contemplates post-archive bundle writes,' but step 5's text names only the second-archive-commit sweep. Task 8's scope is confirmed restricted to the step-3 span (docs/takt/lets-work-on-63/plan.md:89-97), and this exact contradiction is already logged, unresolved, in docs/takt/lets-work-on-63/follow-ups.json:142-151 ('Design doc's §7.5 step 5 \"archive commit is the run's last one\" invariant is now false, and no task in the plan is scoped to fix it').",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:884",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:902-909",
+        "internal/cli/cmd_verify.go:64",
+        "internal/cli/cmd_done.go:195-201",
+        "internal/cli/cmd_done.go:81",
+        "docs/takt/lets-work-on-63/plan.md:89-97",
+        "docs/takt/lets-work-on-63/follow-ups.json:142-151"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "false_positive",
+      "evidence": "The claim that 'no ... existing test writes a missing ... retro.md while in the finish or archived phase' is contradicted by the pre-existing, unmodified TestRetroRunInputsAndDone: after driveToFinish (phase stays 'finish') and before retro.md is written, it runs `if code, _, _ := d.cmd(\"done\", \"--step\", \"retro\", \"--slug\", \"demo\"); code == 0 { t.Fatal(\"done retro needs retro.md\") }` (internal/cli/finish_test.go:510), which exercises exactly the `os.ReadFile` error half of doneRetroChecks' `err != nil || strings.TrimSpace(string(b)) == \"\"` branch (internal/cli/cmd_done.go:221-224) in the finish phase. The narrower true point — that a whitespace-only (non-zero-length) retro.md's behaviour silently changed from accepted (old `fileNonEmpty`, which only checks `fi.Size() \u003e 0`, facts.go:41-44) to refused, and that no test uses such whitespace-only content — is real, but the candidate's stated claim of total non-coverage of the branch is false.",
+      "citations": [
+        "internal/cli/finish_test.go:477-519",
+        "internal/cli/finish_test.go:510",
+        "internal/cli/cmd_done.go:216-224",
+        "internal/cli/facts.go:41-44"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "`fail` (internal/cli/cli.go:158-161) writes its JSON only to `w` (called as `env.Stderr` throughout cmd_done.go), never to stdout. `runIn` (internal/cli/cmd_init_test.go:17-33) only unmarshals `got` from `out.Bytes()` when `out.Len() \u003e 0`; on a refusal nothing is written to stdout, so `got` stays nil, and indexing a nil map (`got[\"ignored\"]`) yields the zero value, so `got[\"ignored\"] != nil` is always false whenever `code == 1`. The two cited assertions — `if code != 1 || got[\"ignored\"] != nil { t.Fatalf(...) }` — appear verbatim in TestDoneRetroRefusesUnfilledProseSlot and TestDoneRetroRefusesARecordedRetroInExecute at internal/cli/finish_test.go:1068 and :1108 (the candidate's cited '306'/'346' are the diff file's own line numbers, not finish_test.go's, but the code and both test names match exactly). Both tests separately assert the real no-new-receipt guarantee via countEvents before/after (finish_test.go:1066/1074 and the analogous lines in the execute-phase test), confirming the `got[\"ignored\"]` half adds nothing.",
+      "citations": [
+        "internal/cli/cli.go:158-161",
+        "internal/cli/cmd_init_test.go:17-33",
+        "internal/cli/finish_test.go:1068",
+        "internal/cli/finish_test.go:1108",
+        "internal/cli/finish_test.go:1066-1076"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c3"
+  ]
+}

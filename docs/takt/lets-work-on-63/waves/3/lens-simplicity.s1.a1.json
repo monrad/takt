@@ -1,0 +1,18 @@
+{
+  "lens": "simplicity",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:25:11.866431358Z",
+  "findings": [
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_done.go",
+      "line": 49,
+      "title": "Redundant []byte→string conversions in unfilledProseSlot",
+      "detail": "unfilledProseSlot converts b to a string twice (line 49 `strings.Index(string(b), marker)` and line 53 `rest := string(b)[i:]`), each allocating a full copy of retro.md's contents. bytes.Index (already available without adding an import beyond \"bytes\") or a single `s := string(b)` at the top would avoid the duplicate conversion. Retro.md is small so this has no real cost, but it's an easy simplification the diff didn't take.",
+      "task": 6
+    }
+  ]
+}

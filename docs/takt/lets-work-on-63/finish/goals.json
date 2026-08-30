@@ -1,0 +1,126 @@
+{
+  "sha": "473c503284eef1ff5647d49069bcafcf0eb603f0",
+  "verdicts": [
+    {
+      "id": "G1",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/finish/... -run 'TestRenderSkeletonGolden|TestRenderSkeletonIsPure' -v passed, including golden subtests for full run, empty run, minors only, no internal_review, no wave_timings, skipped verification and unruly free text, plus a purity check comparing two renders of the same input.",
+      "citations": [
+        "internal/finish/skeleton_test.go:157-182",
+        "internal/finish/skeleton_test.go:187-195"
+      ]
+    },
+    {
+      "id": "G2",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/finish/... -run TestBuildShipped passed. TestBuildShippedResolvesTitlesAndKeepsUnknownIdsBare asserts a reworked/retried wave (0/1/1 and 0/1/2) and a backfilled event both render rows, and that task id 6 (absent from the index) renders bare as '| 2 | 1 | 1 | 6 | eee5555 |'. BuildShipped(events []bundle.Event, idx plan.Index) resolves titles once from plan.Index.",
+      "citations": [
+        "internal/finish/skeleton_test.go:200-226",
+        "internal/finish/skeleton.go:100-105"
+      ]
+    },
+    {
+      "id": "G3",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/cli/ -run TestRetroArtifactsReplayByteIdentical passed; writeRetroArtifacts is the single function (called from retroRunOp, itself called by both cmd_next.go and cmd_retro.go) that writes retro-skeleton.md and retro-inputs.json together.",
+      "citations": [
+        "internal/cli/retro.go:66",
+        "internal/cli/finish_test.go:538"
+      ]
+    },
+    {
+      "id": "G4",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/cli/ -run TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty passed; the test asserts a --reason is carried, a reasonless answer omits the 'reason' key entirely, and a legacy event appended without a reason key reads back with no reason key.",
+      "citations": [
+        "internal/cli/cmd_answer_test.go:232-282"
+      ]
+    },
+    {
+      "id": "G5",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/spec/... -v passed, including TestParseAssumptionsWellFormed, TestParseAssumptionsReorderedColumns and the TestParseAssumptionsTolerant table (short data row, no section, no separator row, malformed separator, missing header, heading-but-no-table, etc.), all returning an empty slice rather than an error.",
+      "citations": [
+        "internal/spec/assumptions_test.go:60-87",
+        "internal/spec/assumptions_test.go:88-104",
+        "internal/spec/assumptions_test.go:203-272"
+      ]
+    },
+    {
+      "id": "G6",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/finish/... -run TestBuildDecisionsSourcesAndOmissions passed: produces one Decision per source (gate answer with reason, task_waived, goal_waived, disposition, spec user-confirmed assumption), confirms a reasonless and a legacy-shaped gate answer contribute nothing, that a nil state/disposition renders 'not yet chosen' in the golden skeleton, and a chosen disposition renders its choice.",
+      "citations": [
+        "internal/finish/skeleton_test.go:261-311"
+      ]
+    },
+    {
+      "id": "G7",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/brief/... -run TestRunRetroTemplateNamesTheSkeletonAndSevenSections passed. The template instructs starting from {{.SkeletonPath}} and filling \u003c!-- prose: --\u003e slots, lists the seven headings, scopes 'grounded in the inputs' to the Numbers section, invites the session's own account, warns against inventing an account on a fresh-session rewrite, and 'dispatch→commit' is absent (confirmed by grep).",
+      "citations": [
+        "internal/brief/templates/run-retro.md:1-37",
+        "internal/brief/brief_test.go:189-229"
+      ]
+    },
+    {
+      "id": "G8",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/cli/ -run 'TestRetroRewriteEmitsTheOpAndWritesBothFiles|TestRetroWithoutRewriteIsAUsageError|TestRetroRefusesEarlierPhases|TestRetroRewriteWorksOnAnArchivedRun|TestRetroRefusesAHeldLock' -v all passed, covering the op shape, the missing-flag usage error, the refused earlier phase, the archived-phase success and the held-lock refusal.",
+      "citations": [
+        "internal/cli/cmd_retro_test.go:82-101",
+        "internal/cli/cmd_retro_test.go:102-114",
+        "internal/cli/cmd_retro_test.go:115-156",
+        "internal/cli/cmd_retro_test.go:157-177",
+        "internal/cli/cmd_retro_test.go:178-230"
+      ]
+    },
+    {
+      "id": "G9",
+      "verdict": "achieved",
+      "evidence": "go test ./internal/cli/ -run 'TestDoneRetroAcceptedInArchivedPhase|TestDoneRetroRefusesARecordedRetroInExecute|TestDoneRetroRefusesUnfilledProseSlot' -v all passed: retro is accepted in the archived phase, refused in execute (stderr names 'finish or archived phase (now execute)'), and refuses a retro.md still holding an unfilled \u003c!-- prose: --\u003e slot (including a terminated-marker edge case and the doneAlready replay path).",
+      "citations": [
+        "internal/cli/finish_test.go:1026-1077",
+        "internal/cli/finish_test.go:1101-1117",
+        "internal/cli/finish_test.go:1119-1154"
+      ]
+    },
+    {
+      "id": "G10",
+      "verdict": "achieved",
+      "evidence": "retroRunOp in internal/cli/retro.go is called from both cmd_next.go (line 1022) and cmd_retro.go (line 88); the full existing next-side retro test (TestRetroRunInputsAndDone) still passes alongside cmd_retro_test.go's coverage of the same helper.",
+      "citations": [
+        "internal/cli/retro.go:17-27",
+        "internal/cli/cmd_next.go:1022",
+        "internal/cli/cmd_retro.go:88"
+      ]
+    },
+    {
+      "id": "G11",
+      "verdict": "achieved",
+      "evidence": "Read docs/superpowers/specs/2026-08-24-takt-design.md: finish/retro-skeleton.md is listed in the §4.2 bundle layout, the §5.1 command table has a `takt retro --rewrite` row, and §7.5 step 3 describes the seven-section retro, the skeleton, and the disposition rendering 'not yet chosen' since decideFinish emits the retro before branch_finish.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:197-199",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:369",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:852-863"
+      ]
+    },
+    {
+      "id": "G12",
+      "verdict": "achieved",
+      "evidence": "commands/takt.md and hosts/copilot/skills/takt/SKILL.md both describe the retro run row identically: 'copy `inputs.skeleton_path` to `inputs.retro_path`, fill every `\u003c!-- prose: … --\u003e` slot...'; internal/prompt/prompt_test.go asserts this exact wording is present in both files. go test ./internal/prompt/... passed.",
+      "citations": [
+        "commands/takt.md:31",
+        "hosts/copilot/skills/takt/SKILL.md:32",
+        "internal/prompt/prompt_test.go:95-99"
+      ]
+    },
+    {
+      "id": "G13",
+      "verdict": "achieved",
+      "evidence": "Ran all three checks myself: `go test ./... -race -count=1` exited 0 across all packages; `golangci-lint run ./...` reported '0 issues'; `task hosts:check` (go run ./internal/tools/hostgen --check) exited 0.",
+      "citations": []
+    }
+  ],
+  "at": "2026-08-30T14:38:22.193683258Z"
+}

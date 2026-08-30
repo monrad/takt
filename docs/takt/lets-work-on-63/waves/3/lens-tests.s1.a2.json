@@ -1,0 +1,26 @@
+{
+  "lens": "tests",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:46:53.377299508Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_done.go",
+      "line": 221,
+      "title": "doneRetroChecks' missing/empty-file branch has no test, and its semantics silently changed",
+      "detail": "doneRetroChecks (new in this diff) replaced the old fileNonEmpty(retro.md) check with an inline os.ReadFile + strings.TrimSpace(...) == \"\" check. This is a real behaviour change: fileNonEmpty only checks file size \u003e 0 (facts.go:41-44), so a whitespace-only retro.md previously passed this gate and would have been hashed/recorded; now it is refused as \"missing or empty\". None of the new tests (TestDoneRetroRefusesUnfilledProseSlot, TestDoneRetroRefusesARecordedRetroInExecute, TestDoneRetroAcceptedInArchivedPhase) or any existing test writes a missing/empty/whitespace-only retro.md while in the finish or archived phase, so this branch and its behaviour change are completely unexercised by the suite.",
+      "task": 6
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/finish_test.go",
+      "line": 306,
+      "title": "`got[\"ignored\"] != nil` assertions are tautological on the failure path",
+      "detail": "In TestDoneRetroRefusesUnfilledProseSlot (line 306) and TestDoneRetroRefusesARecordedRetroInExecute (line 346), the refusal assertions check `code != 1 || got[\"ignored\"] != nil`. `got` is unmarshalled only from stdout (cmd_init_test.go:17-33), while `fail()` writes exclusively to stderr (cli.go:158-161), so on any refusal (code 1) stdout is empty and `got` is nil — `got[\"ignored\"]` can never be non-nil here. The check adds no real coverage of the 'must not be marked ignored' intent; the actual no-new-receipt guarantee is (correctly) covered separately via countEvents before/after.",
+      "task": 6
+    }
+  ]
+}

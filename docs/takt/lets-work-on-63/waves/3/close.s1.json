@@ -1,0 +1,119 @@
+{
+  "wave": 3,
+  "slice": 1,
+  "attempt": 2,
+  "tasks": [
+    {
+      "task": 6,
+      "status": "rework",
+      "reason": "Core retro behavior is implemented correctly, but the change set includes files outside the declared scope and slightly alters the existing non-empty-file semantics.",
+      "files_changed": [
+        "internal/cli/cmd_done.go",
+        "internal/cli/cmd_verify.go",
+        "internal/cli/finish_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func finishOrArchivedOnly' internal/cli/cmd_verify.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'finishOrArchivedOnly' internal/cli/cmd_done.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'prose:' internal/cli/cmd_done.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestDoneRetroAcceptedInArchivedPhase' internal/cli/finish_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestDoneRetroRefusesUnfilledProseSlot' internal/cli/finish_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestDoneRetro|TestRetro|TestFinish' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.469s",
+          "elapsed_ms": 3530
+        },
+        {
+          "command": "go test -race -count=1 ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t7.662s",
+          "elapsed_ms": 7881
+        },
+        {
+          "command": "golangci-lint run ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 577
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "Core retro behavior is implemented correctly, but the change set includes files outside the declared scope and slightly alters the existing non-empty-file semantics.",
+        "findings": [
+          {
+            "severity": "major",
+            "file": "docs/takt/lets-work-on-63/events.jsonl",
+            "line": 96,
+            "title": "Change set modifies files outside the task's declared scope",
+            "detail": "The worktree also modifies events.jsonl, follow-ups.json, state.json, waves/2/close.s1.json, and adds reviews/wave-3 and waves/3 files. The task declares only internal/cli/cmd_done.go, internal/cli/cmd_verify.go, and internal/cli/finish_test.go; unrelated run-state artifacts must be excluded from the submitted patch."
+          },
+          {
+            "severity": "minor",
+            "file": "internal/cli/cmd_done.go",
+            "line": 221,
+            "title": "Retro validation replaces rather than preserves fileNonEmpty semantics",
+            "detail": "The task requires retaining the fileNonEmpty check and then reading retro.md. Combining os.ReadFile with strings.TrimSpace newly rejects non-empty whitespace-only files and reports all read errors, including permission errors or a directory path, as “missing or empty.” Preserve fileNonEmpty, then read the file separately and surface a genuine read error consistently before scanning for the prose marker."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "internal/cli/finish_test.go",
+          "line": 306,
+          "title": "`got[\"ignored\"] != nil` assertions are tautological on the failure path",
+          "detail": "In TestDoneRetroRefusesUnfilledProseSlot (line 306) and TestDoneRetroRefusesARecordedRetroInExecute (line 346), the refusal assertions check `code != 1 || got[\"ignored\"] != nil`. `got` is unmarshalled only from stdout (cmd_init_test.go:17-33), while `fail()` writes exclusively to stderr (cli.go:158-161), so on any refusal (code 1) stdout is empty and `got` is nil — `got[\"ignored\"]` can never be non-nil here. The check adds no real coverage of the 'must not be marked ignored' intent; the actual no-new-receipt guarantee is (correctly) covered separately via countEvents before/after.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "commit_sha": "d46ec06ec0414e3fe6134f237c58cd1b9323d512",
+  "closed_at": "2026-08-30T13:31:27.346771601Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

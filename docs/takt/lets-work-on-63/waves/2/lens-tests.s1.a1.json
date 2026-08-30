@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:12:43.854541494Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/retro.go",
+      "line": 303,
+      "title": "New spec.md read error path in writeRetroArtifacts has no test",
+      "detail": "writeRetroArtifacts now reads spec.md and returns its error directly (retro.go:303-306), a code path that did not exist before this diff (the moved writeRetroInputs never touched spec.md). The finish_test.go file already has an established convention for exercising exactly this kind of 'broken bundle' failure (assertNextFailsNaming, used for missing/malformed goals.md and unreadable finish/goals.json in TestPushPRBodyListsGoalVerdicts), but no analogous case renames/removes spec.md before reaching the retro op to confirm the error surfaces and names the file the way the sibling checks do. Since the comment above the read explicitly documents the return-on-error choice as deliberate, a quick assertNextFailsNaming-style case would close the gap; as is, this branch is only exercised by inspection, not by any test in the wave.",
+      "task": 5
+    }
+  ]
+}

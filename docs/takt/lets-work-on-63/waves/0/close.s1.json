@@ -1,0 +1,190 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 3,
+  "tasks": [
+    {
+      "task": 1,
+      "status": "rework",
+      "reason": "The core parser works, but it can return rows from a later table after encountering the explicitly malformed header/separator shape that must invalidate the section.",
+      "files_changed": [
+        "internal/spec/assumptions.go",
+        "internal/spec/assumptions_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func ParseAssumptions' internal/spec/assumptions.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func TestParseAssumptionsWellFormed' internal/spec/assumptions_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func TestParseAssumptionsReorderedColumns' internal/spec/assumptions_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'separator' internal/spec/assumptions_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 ./internal/spec/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/spec\t1.010s",
+          "elapsed_ms": 1166
+        },
+        {
+          "command": "golangci-lint run ./internal/spec/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\n0 issues.",
+          "elapsed_ms": 355
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "The core parser works, but it can return rows from a later table after encountering the explicitly malformed header/separator shape that must invalidate the section.",
+        "findings": [
+          {
+            "severity": "major",
+            "file": "internal/spec/assumptions.go",
+            "line": 69,
+            "title": "Invalid separator does not invalidate the parse",
+            "detail": "When a pipe-separated header is not followed by a valid separator, the parser continues scanning. If a valid table appears later in the same section, its rows are returned, despite the contract requiring a header not followed by a valid markdown separator to yield an empty slice. Return empty once an apparent assumptions header has an invalid separator, and add a regression case containing a later valid table so the existing end-of-input tests cannot pass accidentally."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "major",
+          "file": "internal/spec/assumptions.go",
+          "line": 74,
+          "title": "No test distinguishes 'stop at first table' from 'skip to a later valid table' when a table's headers are malformed",
+          "detail": "ParseAssumptions breaks out of the scan entirely (line 76: `if !ok { break }`) once it finds a header row with a valid separator whose column names don't match — per the doc comment this is intentional: the parser reads only the 'first markdown table' under the heading, even if that table is malformed, and must not fall through to a later well-formed table in the same section. The existing 'missing source header' subtest in TestParseAssumptionsTolerant (assumptions_test.go:431) only has one candidate table in its fixture, so it exercises the `!ok` branch but cannot distinguish `break` from `continue`: both produce the same empty result there. No fixture anywhere in the suite places a second, genuinely well-formed table (valid header names) after a first table with a bad header name in the same section, so this documented 'first table wins, even when malformed' contract is unverified — a regression that made the parser fall through to the next table would pass every existing test.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    },
+    {
+      "task": 8,
+      "status": "done",
+      "files_changed": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "verify": [
+        {
+          "command": "sed -n '/^  finish\\/retro-inputs.json/,/^```/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'retro-skeleton.md'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "sed -n '/^### 5.1 /,/^### 5.2 /p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'takt retro --rewrite'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^### 5.1 /,/^### 5.2 /p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'writes no state'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 4
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'retro-skeleton.md'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'What shipped'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'Not proven'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'Numbers'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'wave_committed'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'prose'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'not yet chosen'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "sed -n '/^3\\. \\*\\*Retro\\*\\*/,/^4\\. \\*\\*Disposition\\*\\*/p' docs/superpowers/specs/2026-08-24-takt-design.md | grep -q 'archived'",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The documentation change fully matches the requested scope and substance: the bundle layout adds the skeleton, §7.5 step 3 defines all seven retro sections and required rendering/completion semantics, and §5.1 documents the rewrite command with locking, phase, usage-error, and no-state behavior. No task-specific issues found.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "commit_sha": "1f18bcff10eb3bf85309ef8f2c682436d4c1586c",
+  "closed_at": "2026-08-29T12:00:46.961805145Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

@@ -71,7 +71,7 @@ func cmdAnswer(env Env) int {
 	if keep {
 		return printJSON(env, map[string]any{keyGate: *g, keyChoice: *choice, "kept": true})
 	}
-	if err = clearGate(tgt.bdir, tgt.st, *choice); err != nil {
+	if err = clearGate(tgt.bdir, tgt.st, *choice, *reason); err != nil {
 		return fail(env.Stderr, exitError, err.Error(), "")
 	}
 	if _, _, err = commitBundle(ctx, tgt.ws, tgt.bdir, tgt.slug, "gate "+*g+": "+*choice); err != nil {

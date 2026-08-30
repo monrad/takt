@@ -1,0 +1,289 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T12:28:40.826722302Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 106,
+      "title": "Legacy slice-less wave_committed events never tested for the documented floor-to-1 behaviour",
+      "detail": "BuildShipped's doc comment and the task brief both call out that a commit's slice is 'floored to 1 exactly as timingKeyOf does', covering an event written before slices existed (missing 'slice' key, decodes to 0). The test helper `committed(w, sl, a int, ...)` in internal/finish/skeleton_test.go:30 always supplies an explicit slice, and no fixture omits the key or passes 0/absent slice data. This backward-compatibility path — explicitly named as required behaviour — has zero coverage.",
+      "id": "c1",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 182,
+      "title": "BuildDecisions' nil *bundle.State guard untested",
+      "detail": "`if st != nil \u0026\u0026 st.Disposition != nil` guards against a nil State pointer, but every test call passes a non-nil *bundle.State (either with or without a Disposition); none passes st == nil. A regression that panics or misbehaves on a nil State (a legitimate input per the signature) would not be caught.",
+      "id": "c2",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/finish/skeleton.go",
+      "line": 230,
+      "title": "Idempotency citation diverges from the sibling doc comment it mirrors",
+      "detail": "RenderSkeleton's doc comment cites \"(design §5.4)\" for the claim \"re-emitting the retro op is free\", but BuildRetroInputs's doc comment in the same package (internal/finish/retro.go:128) makes the identical claim and cites \"(spec §5.4)\". The skeleton.go comment says it states the property \"as BuildRetroInputs's doc does\", so the two should share one citation form rather than two for the same rule.",
+      "id": "c3",
+      "task": 3,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 328,
+      "title": "Markdown table cell escaping (cellEscaper) is untested",
+      "detail": "cell()/cellEscaper exists specifically to protect the What-shipped table from a task title or SHA containing '|' or a newline, but no test fixture ever includes such a character in a title or SHA. If the escaping regresses (e.g. only single-char replace, or breaks the table structure), TestRenderSkeletonGolden and friends would not detect it since none of the fixtures need escaping.",
+      "id": "c4",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/finish/skeleton.go",
+      "line": 337,
+      "title": "Placeholder disposition line sits out of source order",
+      "detail": "BuildDecisions places a real disposition in source-order position 4 (after goal waivers, before spec_assumption rows), but renderDecisions always appends the 'not yet chosen' placeholder after every rendered bullet, including spec_assumption ones. So on a run with spec-assumption decisions but no disposition yet, the placeholder trails the assumptions; once the disposition is actually chosen in a later pass, it will instead appear before them. The task text does not mandate a position for the placeholder, so this is very low-impact, but it is a real positional inconsistency across the two states of the same section.",
+      "id": "c5",
+      "task": 3,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 350,
+      "title": "Free-text decision/not-proven/follow-up fields are not escaped for markdown line breaks or pipes",
+      "detail": "cellEscaper (skeleton.go:330-332) is applied to titles and SHAs inside the shipped table because 'an unescaped pipe would end the cell and a newline the row', but the same free-text fields rendered as single markdown lines elsewhere are not escaped: decisionLine (skeleton.go:350-366) writes Subject/Choice/Reason raw, notProven/withReason (skeleton.go:385-412) writes failure/goal/verify reasons raw, and followUpLine (skeleton.go:489-498) writes Title/Detail raw. Reason strings come from user- or agent-supplied free text (gate_answered reason, task_waived reason, goal_waived reason, bundle.Disposition.Reason, spec.Assumption fields) and FollowUp.Title/Detail come from review-lens findings; any of these containing a literal newline (or, for the table-adjacent bullet lines, a leading '- ' or '## ' sequence) will split what is supposed to be one bullet/line into multiple lines, corrupting the one-bullet-per-decision / one-line-per-item structure the renderer and its heading-adjacency invariants (see TestRenderSkeletonNeverLeavesAHeadingBare) assume. This is inconsistent with the escaping already judged necessary for the table.",
+      "id": "c6",
+      "task": 3,
+      "lenses": [
+        "correctness"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 397,
+      "title": "in.Verify.Skipped branch of notProven never exercised",
+      "detail": "The task spec requires the Not proven section to seed from `in.Verify when Overridden != \"\" or Skipped` (skeleton.go:395-401). No fixture in internal/finish/skeleton_test.go ever sets VerifyRecord.Skipped = true; only Overridden is covered (fullRun's Verify at diff-relative test line ~649). The literal 'verification — skipped, the run had no commands to run' string and its whole code path are untested — a regression or typo there would not be caught.",
+      "id": "c7",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 475,
+      "title": "otherSeverities / unknown-severity counting path untested",
+      "detail": "countsLine/otherSeverities is written to count any follow-up severity beyond the known blocking/major/minor/nit set ('Anything else a reviewer wrote is counted too, under its own name'), but no test fixture uses an unrecognised Severity value, so this defensive branch and its sort-for-determinism guarantee are never exercised.",
+      "id": "c8",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/finish/skeleton.go",
+      "line": 508,
+      "title": "'task omitted when 0' formatting never asserted for a fully-rendered follow-up line",
+      "detail": "followUpWhere's `if f.Task != 0 { where += \"/task %d\" }` (task-omission rule from the brief) is only exercised by a Severity:\"nit\" fixture (skeleton_test.go, fullRun FollowUps, Wave: new(1) with no Task) — but nit/minor items never go through followUpLine/followUpWhere at all, only through the count line (bucketFollowUps only sends blocking/major to `full`). No blocking or major fixture has Wave set with Task==0, so the actual rendered text for a wave-only (no task) blocking/major follow-up is never checked against a golden.",
+      "id": "c9",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 529,
+      "title": "Numbers block's nil-to-empty-slice WaveTimings substitution untested",
+      "detail": "`timings := in.WaveTimings; if timings == nil { timings = []WaveTiming{} }` only matters when in.Internal != nil and len(in.WaveTimings) == 0 (so the early 'none' return is skipped) — a case that would otherwise marshal `\"wave_timings\": null`. No golden fixture combines a non-nil Internal with a genuinely absent WaveTimings, so this substitution (json:[] vs null) is never checked.",
+      "id": "c10",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton.go",
+      "line": 539,
+      "title": "json.MarshalIndent error is silently discarded based on an assumption that isn't fully airtight",
+      "detail": "renderNumbers discards the error from json.MarshalIndent(numbers{...}) with a comment asserting it 'cannot occur' because the struct holds only ints, strings, times and a map of them. time.Time.MarshalJSON does return an error when the year is outside [0,9999], so a corrupted or far-future/negative timestamp in WaveTiming (sourced from event logs) would silently produce an empty string, yielding an invalid (unclosed) ```json fence in the written retro skeleton rather than surfacing the error.",
+      "id": "c11",
+      "task": 3,
+      "lenses": [
+        "correctness"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/finish/skeleton_test.go",
+      "line": 261,
+      "title": "Bare int literals for FollowUp.Wave/Task where the neighbouring package names them",
+      "detail": "internal/gate/followup_test.go establishes named constants (waveZero, waveOne, taskTwo) for gate.FollowUp{Wave: new(...), Task: ...} fixtures. skeleton_test.go's minorsOnlyIn/fullRun fixtures instead write `Wave: new(0)`, `Wave: new(1)`, `Task: 1`, `Task: 4` inline (lines 261-... and the fullRun FollowUps slice around line 96-101), a minor stylistic divergence from the convention the sibling package set for the same struct fields.",
+      "id": "c12",
+      "task": 3,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "timingKeyOf (used by BuildShipped) floors a missing/legacy slice value to 1: 'sl, _ := e.Data[keySlice].(float64) ... slice: max(int(sl), 1)' (internal/finish/retro.go:301-309). BuildShipped calls it directly at skeleton.go:106 ('k := timingKeyOf(e)'), so a slice-less legacy wave_committed event is a real input path. But the only event-construction helper in the test file, 'func committed(w, sl, a int, sha string, ids ...int) bundle.Event' (skeleton_test.go:30-41), always sets 'slice': float64(sl) explicitly, and every wave_committed fixture in fullRunEvents() goes through this helper with an explicit sl argument. No fixture omits the slice key or passes a decoded-zero slice, so the floor-to-1 branch is never exercised.",
+      "citations": [
+        "internal/finish/skeleton.go:106",
+        "internal/finish/retro.go:301",
+        "internal/finish/skeleton_test.go:30"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "skeleton.go:182 reads 'if st != nil \u0026\u0026 st.Disposition != nil {' inside BuildDecisions, a defensive nil-pointer guard. Grepping all call sites in skeleton_test.go shows every call passes a non-nil *bundle.State: 'st := \u0026bundle.State{Disposition: \u0026bundle.Disposition{...}}' (line 111, used at line 122 for fullRun), 'st := \u0026bundle.State{Disposition: ...}' (line 206), and 'finish.BuildDecisions(events, \u0026bundle.State{}, as)' (line 240, a non-nil pointer to a zero-value State). No call site passes a literal nil, so the 'st != nil' half of the guard is never taken down the false branch.",
+      "citations": [
+        "internal/finish/skeleton.go:182",
+        "internal/finish/skeleton_test.go:240"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "false_positive",
+      "evidence": "The literal phrase 'as BuildRetroInputs's doc does' does not appear anywhere in skeleton.go's RenderSkeleton comment — it is not in the source. More importantly, this task's own spec.md already establishes 'design §5.4' as the correct citation for this exact claim: 'a replayed `next` writes the same bytes and re-emitting the retro op is free (design §5.4)' (docs/takt/lets-work-on-63/spec.md:75), which skeleton.go:230 matches verbatim. retro.go:128's '(spec §5.4)' is pre-existing code from an earlier task era where 'spec' was used as the bare name for the global takt-design.md (see docs/superpowers/plans/2026-08-26-takt-hardening.md and 2026-08-25-takt-op-loop.md, which use 'spec §5.4' the same way); it is untouched by this diff. The apparent divergence reflects two documents/eras, not a copy-paste inconsistency introduced by this change, and the new code is internally consistent with its own spec.md.",
+      "citations": [
+        "internal/finish/skeleton.go:230",
+        "internal/finish/retro.go:128",
+        "docs/takt/lets-work-on-63/spec.md:75"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "cellEscaper/cell (skeleton.go:325-330) exist specifically to protect table cells from '|' and '\\n'. Every Title/SHA fixture in skeleton_test.go is plain text with no special characters: task titles at lines 72-76 ('Add the flag', 'Wire it up', ...), SHAs 'aaa1111'..'eee5555', ShippedTask titles 'One'/'Two' (line 571-572). No fixture anywhere in the file includes a '|' or newline in a title or SHA, so cellEscaper's actual replacement behavior is never exercised by any golden or unit test.",
+      "citations": [
+        "internal/finish/skeleton.go:325",
+        "internal/finish/skeleton_test.go:72"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "renderDecisions (skeleton.go:335-343) renders every decision in ds first, then unconditionally appends the '- disposition: not yet chosen' line after the loop when no DecisionDisposition is present — so the placeholder always lands last, after any spec_assumption bullets. But BuildDecisions (skeleton.go:181-194) appends a real disposition decision to `out` immediately after goal waivers and before the spec_assumption loop, confirmed by the test's expected order at skeleton_test.go:223-230 (disposition at index 3, spec_assumption at index 4). So a run with spec-assumption decisions and no disposition yet renders the placeholder after them, but once chosen, the real disposition line renders before them — the two states place the same conceptual line in different positions, and no test checks this exact ordering interaction (all goldens either have disposition+assumptions together in the 'has disposition' order, or no assumptions at all in the placeholder cases).",
+      "citations": [
+        "internal/finish/skeleton.go:337",
+        "internal/finish/skeleton.go:181",
+        "internal/finish/skeleton_test.go:223"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "decisionLine (skeleton.go:348-364), withReason (skeleton.go:404-410, used by notProven), and followUpLine (skeleton.go:487-496) all concatenate free-text fields (d.Reason, d.Subject, d.Choice, reason, f.Title, f.Detail) directly into the output string with no escaping, unlike cell()/cellEscaper (skeleton.go:325-330) which is applied only to table cells (SHA, task titles) 'because an unescaped pipe would end the cell and a newline the row'. Reason/Title/Detail fields (e.g. gate.FollowUp.Title/Detail, defined with no newline restriction at internal/gate/followup.go:36-37) come from free text and are not run through cellEscaper or any equivalent, so an embedded newline or leading '## '/'- ' would split the intended single bullet/line — the same class of corruption cellEscaper exists to prevent, but unaddressed outside the table.",
+      "citations": [
+        "internal/finish/skeleton.go:348",
+        "internal/finish/skeleton.go:487",
+        "internal/gate/followup.go:36"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "notProven's Verify.Skipped branch reads 'if in.Verify.Skipped { out = append(out, \"verification — skipped, the run had no commands to run\") }' (skeleton.go:397-399). The only VerifyRecord fixture in skeleton_test.go is 'Verify: \u0026finish.VerifyRecord{SHA: \"ddd4444\", Overridden: \"the flake is upstream\"}' (skeleton_test.go:94), which never sets Skipped to true. No other test constructs a VerifyRecord with Skipped: true, so this branch and its literal string are never executed by any test.",
+      "citations": [
+        "internal/finish/skeleton.go:397",
+        "internal/finish/skeleton_test.go:94"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "otherSeverities (skeleton.go:473-484) only adds a severity to its output when 'sev' is not already in countedSeverities ({\"minor\",\"nit\"}); every FollowUp fixture in skeleton_test.go uses only 'blocking', 'major', 'minor', or 'nit' as Severity (e.g. lines 96-104, 260-262), all of which are either in fullSeverities or countedSeverities. No fixture uses an unrecognised severity string, so the loop body that appends to `out` and the subsequent slices.Sort call are never exercised beyond an always-empty slice.",
+      "citations": [
+        "internal/finish/skeleton.go:475",
+        "internal/finish/skeleton_test.go:96"
+      ]
+    },
+    {
+      "id": "c9",
+      "verdict": "confirmed",
+      "evidence": "followUpWhere's task-omission branch is 'if f.Task != 0 { where += fmt.Sprintf(\"/task %d\", f.Task) }' (skeleton.go:508-510), reached only via followUpLine, which bucketFollowUps only calls for blocking/major severities. fullRun's FollowUps (skeleton_test.go:96-104) has a blocking item with Wave nil (Gate-only path) and a major item with Wave set AND Task:4 (the non-zero branch); the one Wave-set-Task-zero fixture is Severity:\"nit\" (line 102), which bucketFollowUps routes to the count line, never through followUpLine/followUpWhere. So the rendered text for a wave-only (no task) blocking/major line is never checked against any golden.",
+      "citations": [
+        "internal/finish/skeleton.go:508",
+        "internal/finish/skeleton_test.go:102"
+      ]
+    },
+    {
+      "id": "c10",
+      "verdict": "confirmed",
+      "evidence": "renderNumbers substitutes a nil in.WaveTimings with an empty slice only after the 'in.Internal == nil \u0026\u0026 len(in.WaveTimings) == 0' early-return is skipped (skeleton.go:525-532), i.e. only relevant when Internal != nil and WaveTimings is nil. The only InternalReview fixture in the file is in fullRun (skeleton_test.go:105-109), which also sets a non-nil, non-empty WaveTimings (line 89), so len(in.WaveTimings) is already \u003e0 there and the nil-check is moot. No fixture pairs a non-nil Internal with an absent/nil WaveTimings, so the null-vs-[] substitution is never observed in a golden.",
+      "citations": [
+        "internal/finish/skeleton.go:529",
+        "internal/finish/skeleton_test.go:105"
+      ]
+    },
+    {
+      "id": "c11",
+      "verdict": "confirmed",
+      "evidence": "The comment at skeleton.go:533-536 claims the MarshalIndent error 'cannot occur' because '[json.MarshalIndent] fails only on channels, funcs, complex numbers, cycles and other types none of those fields can hold' — but this reasoning ignores that a type implementing json.Marshaler (as time.Time does) can fail independently of its underlying kind: time.Time.MarshalJSON returns an error for a year outside [0,9999]. WaveTiming (internal/finish/retro.go:98-104) holds three time.Time fields sourced from event-log timestamps, so the blanket 'cannot occur' claim is not accurate for all possible inputs, even though the failure is very unlikely in normal operation.",
+      "citations": [
+        "internal/finish/skeleton.go:533",
+        "internal/finish/skeleton.go:537",
+        "internal/finish/retro.go:102"
+      ]
+    },
+    {
+      "id": "c12",
+      "verdict": "confirmed",
+      "evidence": "internal/gate/followup_test.go:15-19 defines named constants ('waveZero = 0', 'waveOne = 1', 'taskTwo = 2') and uses them for gate.FollowUp{Wave: new(waveZero), Task: taskTwo, ...} (line 106) and similar. skeleton_test.go instead writes bare literals for the same fields: '{Severity: \"minor\", Wave: new(0), Task: 1, Title: \"a stale comment\"}' (skeleton_test.go:99, repeated at line 261) and '{Severity: \"major\", Wave: new(1), Task: 4, ...}' (line 100) — no named constants are used, a real (if purely stylistic) divergence from the sibling package's established convention for the same struct fields.",
+      "citations": [
+        "internal/finish/skeleton_test.go:261",
+        "internal/gate/followup_test.go:15"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12"
+  ]
+}

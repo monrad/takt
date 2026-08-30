@@ -195,6 +195,8 @@ external directory serves many repos. A bundle is `<dir>/<slug>/`.
                                               from `no_verification`'s *specify* (§7.5 step 1)
   finish/goals.json                          goal-assessor verdicts (and waivers) at the checked HEAD
   finish/retro-inputs.json                   inputs `next` re-derives for the `retro` run op (§7.5 step 3)
+  finish/retro-skeleton.md                   the deterministic retro sections `next` renders beside the
+                                              inputs; the session copies it to retro.md (§7.5 step 3)
   alignment.json                             confirmed clauses + verdicts
   logs/                                      reviewer stdout/stderr (gitignored); also
                                               logs/wave-<n>.s<slice>.a<attempt>.diff, the slice's diff the
@@ -364,6 +366,7 @@ only bundle is archived reports "no active run" to a bare command rather than an
 also how a choice carries its argument where it needs one: `no_verification`'s *specify* has no flag of
 its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt done --step <id> [--url <pr-url>]` | Marks an LLM-side `run` step complete (brainstorm, goals, retro, push_pr). For `goals`, freezes `goals.md` (hash). `push_pr` requires `--url`. A `done` for a step already closed against the same artifact is a no-op (`ignored: true`); `push_pr` is the one exception — a repeat with the *same* URL is the no-op, a *different* URL (a re-opened or replaced pull request) is a new `done`, since the URL is `push_pr`'s only artifact. |
+| `takt retro --rewrite` | Re-derives `finish/retro-inputs.json` and `finish/retro-skeleton.md` and re-emits the retro run op, in the `finish` and `archived` phases; takes the session lock (§4.6) as `next` does and writes no state. Without `--rewrite`: usage error. |
 | `takt close-wave` | The long half of a wave (§7.4): scope verify, verify commands, reviews, commit. Launched by the session in the background from an `exec` op. |
 | `takt review spec\|plan [--skip --reason "…"] [--force]` | Runs the gate review headless and writes the receipt (`exec` op). `--skip` records an evidenced skip (§9) instead of running. At a hash that already has a receipt with a reviewer's verdict (approve, rework, reject) the command returns that receipt with "cached": true, runs nothing and commits nothing; --force re-runs. An error verdict or an evidenced skip never counts as an answer. |
 | `takt verify` | Runs the union of all tasks' verify commands (plus any the user supplied through `no_verification`'s *specify*) at HEAD; records `finish/verify.json` and, on pass, `verified_sha`. `exec` op. |
@@ -846,8 +849,20 @@ slice, which keeps every commit verified.
    the retry quotes the rejection reasons, and after three rejections since the last reset the run asks
    (`agent_invalid`) instead of retrying again. A valid record ends the streak (an
    `<agent>_attempts_reset` with reason `"recorded"`).
-3. **Retro** (`run retro`): the session writes `retro.md` from `inputs` (the plan summary, wave
-   timings, failures and retries, review findings count, goal verdicts). `done --step retro`.
+3. **Retro** (`run retro`): `next` re-derives `finish/retro-inputs.json` and renders
+   `finish/retro-skeleton.md`, the deterministic half of a seven-section retro — a *What shipped*
+   table with one row per `wave_committed` event (backfills and retried commits included),
+   *Decisions* (gate answers carrying a reason, waivers, and the spec's user-confirmed
+   assumptions), the *Not proven* seed, *Follow-ups* bucketed into blocking and major in full with
+   minors and nits as counts pointing at `follow-ups.json`, and the *Numbers* block verbatim. The
+   session copies the skeleton to `retro.md` and fills its `<!-- prose: … -->` slots with its own
+   account. Four of the seven sections carry a slot — *What shipped*, *What went well / what was
+   hard*, *Not proven* and *Lessons*; *Decisions*, *Follow-ups* and *Numbers* are rendered whole and
+   are not written over. The disposition is absent on the first pass — this step precedes
+   `branch_finish` (step 4) — so *Decisions* renders the literal `disposition: not yet chosen`
+   line; only a post-archive `takt retro --rewrite` shows the choice once made. `done --step retro`
+   closes the step (also accepted once the run is `archived`, and refuses an unfilled
+   `<!-- prose: … -->` slot).
 4. **Disposition** (`ask branch_finish`): options depend on `branch_adopted`:
    - not adopted: **merge** into `base` · **pr** · **keep** · **discard**.
    - adopted: **pr** · **keep** — the branch belongs to the user; `merge` and `discard` are never offered.

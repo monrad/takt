@@ -1,0 +1,9 @@
+{
+  "verdict": "approve",
+  "summary": "The contradictory legacy-rendering sentence is removed. Sections 4, 5.1, G6, and the assumptions table now consistently state that reasonless and legacy gate answers contribute no decision.",
+  "findings": null,
+  "provider": "copilot",
+  "model": "gpt-5.6-sol",
+  "hash": "sha256:5842e2ad1efb7b19877bc586fc8123d5c4971fbfb1ecf52181452f16af022e89",
+  "round": 3
+}

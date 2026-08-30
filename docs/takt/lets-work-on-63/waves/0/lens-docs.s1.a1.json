@@ -1,0 +1,26 @@
+{
+  "lens": "docs",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:22:08.366477614Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/spec/assumptions.go",
+      "line": 2,
+      "title": "Package doc comment cites the wrong document's section 5.2",
+      "detail": "The new package comment reads '(design §5.2)'. Throughout the rest of the codebase (internal/config/config.go, internal/gate/gate.go, internal/plan/index.go, internal/backend/backend.go, internal/cli/cli.go:35, internal/cli/record_reviewer.go, internal/decide/decide.go, internal/brief/brief.go, etc.) both 'spec §N' and 'design §N' are the established shorthand for docs/superpowers/specs/2026-08-24-takt-design.md's own numbered sections, and every existing citation I checked (§12, §9, §7.3, §8, §6.1, §5.4, §4.3, §11, §5.1) matches that document's actual heading at that number. In that document, §5.2 is 'Op kinds' — unrelated to assumptions parsing. The section that actually describes this package is §5.2 of this run's own ephemeral docs/takt/lets-work-on-63/spec.md ('internal/spec — the assumptions table'), which is a different document and not the one the pre-existing convention points to. A future maintainer following the codebase's own citation convention would open the wrong document and find nothing about assumptions there.",
+      "task": 1
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/bundleops.go",
+      "line": 252,
+      "title": "clearGate doc comment cites the wrong document's section 4, inside the same package that already uses the convention correctly",
+      "detail": "The new sentence 'the answer a Decision the retro can render (spec §4)' points at docs/superpowers/specs/2026-08-24-takt-design.md §4 ('The run bundle': directory layout, state.json, events.jsonl, path rules, session lock, git) — nothing about Decisions or reasons. The rule being described ('a reasonless answer is process, not a decision') actually lives in §4 of this run's own local docs/takt/lets-work-on-63/spec.md ('The skeleton renderer'), a different, ephemeral document. This is the same miscitation pattern as internal/spec/assumptions.go:2, and it's especially visible here because internal/cli/cli.go:35 (same package) already uses 'spec §5.1' correctly to mean the design doc — so the package now contains two incompatible meanings for the same citation shorthand. The pattern recurs in test comments too (internal/brief/brief_test.go:190 '(spec §6)', internal/cli/cmd_answer_test.go:228 'spec §5.1') but those are lower-stakes than the two production doc comments.",
+      "task": 2
+    }
+  ]
+}

@@ -92,6 +92,11 @@ var crossHostInvariants = []string{
 	"gh pr create --base <base> --title '<title>' --body-file <path>",
 	// the never-cd-into-the-bundle invariant (Invariants, #37)
 	"Inspect bundle files by absolute path — never `cd` into the bundle",
+	// the retro run step's skeleton-copy clause (op table, `run` bullet,
+	// lets-work-on-63 #63): pins the full sentence, not just its opening
+	// fragment, so the two prompts cannot drift on leaving the rendered
+	// sections alone or on where the numbers live.
+	"copy `inputs.skeleton_path` to `inputs.retro_path`, fill every `<!-- prose: … -->` slot, and leave the rendered sections as they are; the numbers live at `inputs.inputs_path`",
 }
 
 // TestPromptInvariantsReadTheSameOnEveryHost pins #15's third gap:

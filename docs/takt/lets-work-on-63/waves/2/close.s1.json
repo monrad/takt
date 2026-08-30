@@ -1,0 +1,147 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "tasks": [
+    {
+      "task": 5,
+      "status": "done",
+      "files_changed": [
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go",
+        "internal/cli/retro.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func writeRetroArtifacts' internal/cli/retro.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'WriteSkeleton' internal/cli/retro.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'skeleton_path' internal/cli/retro.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -c 'writeRetroArtifacts' internal/cli/retro.go | grep -qx 2",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "ls internal/cli/*.go | grep -v _test | xargs grep -l 'writeRetroArtifacts' | wc -l | grep -qx 1",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 5
+        },
+        {
+          "command": "grep -c 'writeRetroInputs' internal/cli/cmd_next.go | grep -qx 0",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestRetroArtifactsReplayByteIdentical' internal/cli/finish_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestRetro' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.347s",
+          "elapsed_ms": 1556
+        },
+        {
+          "command": "go test -race -count=1 ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t7.421s",
+          "elapsed_ms": 7644
+        },
+        {
+          "command": "golangci-lint run ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\n0 issues.",
+          "elapsed_ms": 371
+        }
+      ],
+      "review": {
+        "verdict": "approve",
+        "summary": "The change matches the task: retro artifact derivation and writing are centralized in the sole-caller helper, the next-side retro branch delegates to it, the op includes skeleton_path, and replay coverage verifies byte-identical inputs, skeleton, and op output. No correctness, scope, or security issues found.",
+        "findings": [],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      },
+      "internal": [
+        {
+          "severity": "minor",
+          "file": "internal/cli/cmd_next.go",
+          "line": 982,
+          "title": "Dead RunData/inputs construction on the retro path",
+          "detail": "run() unconditionally builds `data := brief.RunData{...}` and `inputs := map[string]any{...}` (lines 982-989) before the switch. Before this diff those were used by the StepRetro case too (it fell through to the shared brief.Render call at the bottom using this same `data`). After the diff, the StepRetro case (lines 991-999) calls retroRunOp(o, r.bdir, r.st), which builds its own separate, nearly-identical brief.RunData (internal/cli/retro.go:30-36, same Slug/Topic/SpecPath/GoalsPath/Branch/Base fields derived from st/bdir) and returns early via r.emit(filled) — so the outer `data` and `inputs` built at the top of run() are now allocated and then discarded, unused, whenever o.Step == op.StepRetro. This is a small duplication the extraction introduced: the same RunData fields are now computed independently in two places rather than the retro path reusing the one already built by its caller, which is exactly the kind of double-derivation the task's 'derived once, never twice' framing was meant to avoid (even though it only guarantees that for writeRetroArtifacts, not for this RunData literal). No functional bug — just wasted computation and a second place that must be kept in sync if SpecPath/GoalsPath derivation ever changes.",
+          "lenses": [
+            "simplicity"
+          ]
+        },
+        {
+          "severity": "nit",
+          "file": "internal/cli/finish_test.go",
+          "line": 480,
+          "title": "inputs_path vs skeleton_path assertions use different shapes for the same kind of value",
+          "detail": "TestRetroRunInputsAndDone checks inputs_path with `!filepath.IsAbs(p) || !fileExists(p)` (line 469) but checks skeleton_path with an exact literal equality `sk != filepath.Join(bdir, \"finish\", \"retro-skeleton.md\")` plus fileExists (line 480). Both are absolute paths to a written artifact named in the same op; the second is a stronger check (which is fine) but the two adjacent assertions read as if they're testing different things when they're testing the same shape of value.",
+          "lenses": [
+            "consistency"
+          ]
+        },
+        {
+          "severity": "minor",
+          "file": "internal/cli/retro.go",
+          "line": 30,
+          "title": "RunData's common fields are constructed twice for the retro step",
+          "detail": "nextRun.run builds a brief.RunData with Slug/Topic/SpecPath/GoalsPath/Branch/Base (internal/cli/cmd_next.go:982-986) before the switch, then for op.StepRetro discards it entirely and calls retroRunOp, which rebuilds the identical six fields from bdir/st (internal/cli/retro.go:30-36) plus the three retro-only paths. The duplication is presumably required so retroRunOp can be shared with the future cmdRetro caller, but it means the same field derivation (e.g. filepath.Join(bdir, \"spec.md\")) now lives in two places for one op; if either construction changes independently the two would drift for the retro step specifically. Not a behaviour bug today, but a real duplicated-construction risk worth a comment or a shared field-building helper.",
+          "lenses": [
+            "consistency"
+          ]
+        },
+        {
+          "severity": "minor",
+          "file": "internal/cli/retro.go",
+          "line": 303,
+          "title": "New spec.md read error path in writeRetroArtifacts has no test",
+          "detail": "writeRetroArtifacts now reads spec.md and returns its error directly (retro.go:303-306), a code path that did not exist before this diff (the moved writeRetroInputs never touched spec.md). The finish_test.go file already has an established convention for exercising exactly this kind of 'broken bundle' failure (assertNextFailsNaming, used for missing/malformed goals.md and unreadable finish/goals.json in TestPushPRBodyListsGoalVerdicts), but no analogous case renames/removes spec.md before reaching the retro op to confirm the error surfaces and names the file the way the sibling checks do. Since the comment above the read explicitly documents the return-on-error choice as deliberate, a quick assertNextFailsNaming-style case would close the gap; as is, this branch is only exercised by inspection, not by any test in the wave.",
+          "lenses": [
+            "tests"
+          ]
+        }
+      ]
+    }
+  ],
+  "review_findings": 0,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": true,
+  "commit_sha": "c9fe45f59503a2e34055dccfeac5d4d1e054f788",
+  "closed_at": "2026-08-29T13:16:42.360294553Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [],
+  "review_errors": []
+}

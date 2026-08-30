@@ -1,0 +1,42 @@
+{
+  "lens": "tests",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:17:39.767054332Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/spec/assumptions.go",
+      "line": 65,
+      "title": "parseTable abandons the whole table on the first pipe-containing line, untested",
+      "detail": "parseTable's loop (lines 65-82) treats the very first line in the section that contains `|` as the definitive table header; if that line's next line isn't a valid separator it returns nil immediately (line 72-74) instead of continuing to look for the real table further down. A section whose prose (between the heading and the actual table) contains a stray `|` — e.g. an inline code example like `use `a | b`` — would silently drop a well-formed table that follows it, contrary to the doc comment 'reads the first markdown table'. No test in assumptions_test.go exercises prose-with-a-pipe preceding the real table, so this branch's behaviour (intended tolerance vs. a bug) is unverified.",
+      "task": 1
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/cmd_answer_test.go",
+      "line": 232,
+      "title": "reason-threading only tested for two of the many gates that now carry it",
+      "detail": "clearGate's new reason parameter (internal/cli/bundleops.go:254-268) is threaded from cmdAnswer (internal/cli/cmd_answer.go:74) for every gate handled by applyAnswer — gate_review, gate_review_capped, wave_failures, review_error, verification_failed, no_verification, goals_unmet, branch_finish. The task text explicitly calls out 'no_verification's specify' as exercising 'the spec's single rule', yet TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty (the only new test for this behaviour) checks gate_answered's reason field solely for gate_review_capped/accept and gate_review/revise. The other five gate paths that also call clearGate with a caller-supplied reason (e.g. no_verification's specify, which internal/cli/finish_test.go:180 already answers with --reason \"test -f a.go\" but never inspects the resulting event) are untested for this new field.",
+      "task": 2
+    },
+    {
+      "severity": "minor",
+      "file": "internal/spec/assumptions_test.go",
+      "line": 68,
+      "title": "reordered/case-insensitive tests compare against a live re-invocation of the function under test",
+      "detail": "TestParseAssumptionsReorderedColumns (lines 58-73, comparison at 68-72) and TestParseAssumptionsHeadingIsCaseInsensitiveWithTrailingText (lines 139-151, comparison at 147-149) assert `slices.Equal(got, spec.ParseAssumptions([]byte(wellFormed)))` rather than against an independent literal expectation. Run in isolation (e.g. `go test -run TestParseAssumptionsReorderedColumns`), a ParseAssumptions that always returned nil would satisfy both equally and the test would pass vacuously; the gap is closed only because TestParseAssumptionsWellFormed happens to assert the literal content in the same package run.",
+      "task": 1
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_answer_test.go",
+      "line": 270,
+      "title": "legacy-event assertion doesn't exercise the changed code",
+      "detail": "The final block of TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty (lines 270-281) calls bundle.AppendEvent/bundle.ReadEvents directly with a hand-built map that never had a \"reason\" key — it never goes through clearGate. It re-confirms a pre-existing bundle-package invariant (JSON without a key doesn't grow one on read) rather than testing task 2's actual change, despite the surrounding comment framing it as covering backward compatibility of the new field.",
+      "task": 2
+    }
+  ]
+}

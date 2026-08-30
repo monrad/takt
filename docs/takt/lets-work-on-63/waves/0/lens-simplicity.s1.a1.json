@@ -1,0 +1,18 @@
+{
+  "lens": "simplicity",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:14:08.079417144Z",
+  "findings": [
+    {
+      "severity": "nit",
+      "file": "internal/spec/assumptions.go",
+      "line": 399,
+      "title": "Slightly indirect column-matching loop for a fixed 4-field case",
+      "detail": "match() builds a slice of anonymous {name string; into *int} structs and loops over it to fill four fixed fields (question/decision/rationale/source) via pointer indirection. With exactly four fixed, known column names and one call site, four plain map lookups (`q, ok := at[\"question\"]`, etc.) would read at least as clearly without the pointer-into-struct indirection. Not a functional problem, just generic-looking machinery for a single concrete shape.",
+      "task": 1
+    }
+  ]
+}

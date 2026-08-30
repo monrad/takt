@@ -1,0 +1,112 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:16:37.991267179Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 982,
+      "title": "Dead RunData/inputs construction on the retro path",
+      "detail": "run() unconditionally builds `data := brief.RunData{...}` and `inputs := map[string]any{...}` (lines 982-989) before the switch. Before this diff those were used by the StepRetro case too (it fell through to the shared brief.Render call at the bottom using this same `data`). After the diff, the StepRetro case (lines 991-999) calls retroRunOp(o, r.bdir, r.st), which builds its own separate, nearly-identical brief.RunData (internal/cli/retro.go:30-36, same Slug/Topic/SpecPath/GoalsPath/Branch/Base fields derived from st/bdir) and returns early via r.emit(filled) — so the outer `data` and `inputs` built at the top of run() are now allocated and then discarded, unused, whenever o.Step == op.StepRetro. This is a small duplication the extraction introduced: the same RunData fields are now computed independently in two places rather than the retro path reusing the one already built by its caller, which is exactly the kind of double-derivation the task's 'derived once, never twice' framing was meant to avoid (even though it only guarantees that for writeRetroArtifacts, not for this RunData literal). No functional bug — just wasted computation and a second place that must be kept in sync if SpecPath/GoalsPath derivation ever changes.",
+      "id": "c1",
+      "task": 5,
+      "lenses": [
+        "simplicity"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/finish_test.go",
+      "line": 480,
+      "title": "inputs_path vs skeleton_path assertions use different shapes for the same kind of value",
+      "detail": "TestRetroRunInputsAndDone checks inputs_path with `!filepath.IsAbs(p) || !fileExists(p)` (line 469) but checks skeleton_path with an exact literal equality `sk != filepath.Join(bdir, \"finish\", \"retro-skeleton.md\")` plus fileExists (line 480). Both are absolute paths to a written artifact named in the same op; the second is a stronger check (which is fine) but the two adjacent assertions read as if they're testing different things when they're testing the same shape of value.",
+      "id": "c2",
+      "task": 5,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/retro.go",
+      "line": 30,
+      "title": "RunData's common fields are constructed twice for the retro step",
+      "detail": "nextRun.run builds a brief.RunData with Slug/Topic/SpecPath/GoalsPath/Branch/Base (internal/cli/cmd_next.go:982-986) before the switch, then for op.StepRetro discards it entirely and calls retroRunOp, which rebuilds the identical six fields from bdir/st (internal/cli/retro.go:30-36) plus the three retro-only paths. The duplication is presumably required so retroRunOp can be shared with the future cmdRetro caller, but it means the same field derivation (e.g. filepath.Join(bdir, \"spec.md\")) now lives in two places for one op; if either construction changes independently the two would drift for the retro step specifically. Not a behaviour bug today, but a real duplicated-construction risk worth a comment or a shared field-building helper.",
+      "id": "c3",
+      "task": 5,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/retro.go",
+      "line": 303,
+      "title": "New spec.md read error path in writeRetroArtifacts has no test",
+      "detail": "writeRetroArtifacts now reads spec.md and returns its error directly (retro.go:303-306), a code path that did not exist before this diff (the moved writeRetroInputs never touched spec.md). The finish_test.go file already has an established convention for exercising exactly this kind of 'broken bundle' failure (assertNextFailsNaming, used for missing/malformed goals.md and unreadable finish/goals.json in TestPushPRBodyListsGoalVerdicts), but no analogous case renames/removes spec.md before reaching the retro op to confirm the error surfaces and names the file the way the sibling checks do. Since the comment above the read explicitly documents the return-on-error choice as deliberate, a quick assertNextFailsNaming-style case would close the gap; as is, this branch is only exercised by inspection, not by any test in the wave.",
+      "id": "c4",
+      "task": 5,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "cmd_next.go:982-989 unconditionally builds `data := brief.RunData{...}` and `inputs := map[string]any{...}` before the switch. The op.StepRetro case (991-999) calls `filled, ferr := retroRunOp(o, r.bdir, r.st)` and then `return r.emit(filled)` immediately — it never reads `data` or `inputs` again, so both are computed and discarded whenever o.Step == op.StepRetro. retroRunOp (retro.go:30-36) independently rebuilds the same six fields (Slug/Topic/SpecPath/GoalsPath/Branch/Base) from st/bdir. No functional bug, but the described dead computation and duplicated derivation are real.",
+      "citations": [
+        "internal/cli/cmd_next.go:982",
+        "internal/cli/cmd_next.go:991",
+        "internal/cli/cmd_next.go:999",
+        "internal/cli/retro.go:30"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "finish_test.go:469 checks inputs_path with `if !filepath.IsAbs(p) || !fileExists(p) {` (a relative shape/absoluteness + existence check), while finish_test.go:480 checks skeleton_path with `if sk != filepath.Join(bdir, \"finish\", \"retro-skeleton.md\") || !fileExists(sk) {` (an exact-path equality + existence check). Both assert an absolute path to a written artifact from the same op, using two different assertion shapes, as claimed.",
+      "citations": [
+        "internal/cli/finish_test.go:469",
+        "internal/cli/finish_test.go:480"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "cmd_next.go:982-986 builds a brief.RunData with Slug/Topic/SpecPath/GoalsPath/Branch/Base derived from r.slug/r.st/r.bdir, unconditionally, before the switch. retro.go:30-36 (retroRunOp) rebuilds the identical six fields from st/bdir independently (plus three retro-only paths) rather than reusing the caller's already-built struct. This is a genuine duplicated field derivation for the retro step, distinct from the artifact-derivation the file's own comment (retro.go:21-25) guarantees is done once.",
+      "citations": [
+        "internal/cli/cmd_next.go:982",
+        "internal/cli/retro.go:30"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "writeRetroArtifacts reads spec.md and returns the error directly with no wrapping: `b, err := os.ReadFile(filepath.Join(bdir, \"spec.md\")); if err != nil { return err }` (retro.go:99-101), preceded by a comment explicitly justifying the deliberate, non-best-effort choice (retro.go:62-65). Grepping finish_test.go shows only two retro tests (TestRetroRunInputsAndDone, TestRetroArtifactsReplayByteIdentical) and neither renames/removes spec.md the way TestPushPRBodyListsGoalVerdicts does for goals.md via assertNextFailsNaming (finish_test.go:727-741, used at lines 780/789/797); no test exercises this new spec.md-read failure path. (Note: the candidate's cited line 'retro.go:303' is the line number from the raw diff file, not the actual repository file, where this code is at line 99 — the substance of the claim still holds.)",
+      "citations": [
+        "internal/cli/retro.go:99",
+        "internal/cli/retro.go:62",
+        "internal/cli/finish_test.go:727"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4"
+  ]
+}

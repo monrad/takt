@@ -244,8 +244,14 @@ func openGate(bdir string, st *bundle.State, o op.Op, now time.Time) error {
 	return bundle.AppendEvent(bdir, "gate_opened", map[string]any{keyGate: o.Gate})
 }
 
-// clearGate resolves the pending gate with the user's choice.
-func clearGate(bdir string, st *bundle.State, choice string) error {
+// clearGate resolves the pending gate with the user's choice, recording
+// reason only when the caller gave one — the map-key equivalent of
+// omitempty, so an answer given without a reason writes exactly the bytes
+// it writes today and an event written before this field existed decodes
+// identically to one written after with no reason. The reason is what makes
+// the answer a Decision the retro can render (spec §4): a reasonless answer
+// is process, not a decision.
+func clearGate(bdir string, st *bundle.State, choice, reason string) error {
 	id := ""
 	if st.PendingGate != nil {
 		id = st.PendingGate.ID
@@ -254,7 +260,11 @@ func clearGate(bdir string, st *bundle.State, choice string) error {
 	if err := bundle.SaveState(bdir, st); err != nil {
 		return err
 	}
-	return bundle.AppendEvent(bdir, "gate_answered", map[string]any{keyGate: id, keyChoice: choice})
+	data := map[string]any{keyGate: id, keyChoice: choice}
+	if reason != "" {
+		data[keyReason] = reason
+	}
+	return bundle.AppendEvent(bdir, "gate_answered", data)
 }
 
 // printOp writes the op and returns 0.

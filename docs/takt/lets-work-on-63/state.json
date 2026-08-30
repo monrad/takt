@@ -1,0 +1,235 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "lets-work-on-63",
+  "topic": "lets work on #63",
+  "phase": "archived",
+  "created_at": "2026-08-29T02:03:22.443364702Z",
+  "branch": "monrad/better-retroes",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "7d72a259a473984f0f838b107ad3e8312b218944",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:c900d87214746ed0fcbee5edd45cdae8123816d0cbd480cb4d075f372d177143",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "waived",
+      "files": [
+        "internal/spec/assumptions.go",
+        "internal/spec/assumptions_test.go"
+      ],
+      "class": "implement",
+      "attempt": 3,
+      "last_digest": {
+        "task": 1,
+        "attempt": 3,
+        "status": "done",
+        "summary": "Fixed the heading test in `internal/spec`'s row loop so a pipe-separated data row beginning with `#` (e.g. `#63 | Yes | … | user-confirmed`) is parsed as data rather than truncating the table, split the ATX-heading and `## `-section predicates apart, and added two regression tests covering both directions.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:50:28.090934587Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/cli/bundleops.go",
+        "internal/cli/cmd_answer.go",
+        "internal/cli/cmd_answer_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "clearGate` now takes `choice, reason string`, records `reason` only when non-empty (map-key omitempty), and `cmd_answer.go` passes `*reason`; added `TestGateAnsweredCarriesReasonAndOmitsItWhenEmpty` covering a reasoned answer, a reasonless answer, and a hand-appended legacy event, all asserting via `bundle.ReadEvents`.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T11:06:05.774979238Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 1,
+      "status": "done",
+      "files": [
+        "internal/finish/skeleton.go",
+        "internal/finish/skeleton_test.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 3,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Rewrote internal/finish/skeleton.go and its tests, addressing every review finding — timings-aware slice-column detection, line folding for all free text, the literal `disposition: not yet chosen` line in source-order position, always-rendered reasons, a handled JSON marshal error, and coverage for the legacy slice-less commit, nil state, skipped verification, empty wave_timings, wave-only follow-ups and unknown severities.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T12:46:55.070876059Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/brief/templates/run-retro.md",
+        "internal/brief/brief.go",
+        "internal/brief/brief_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 4,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Rewrote run-retro.md around the skeleton (seven named sections, numbers-only \"grounded in the inputs\", no-invention rule, no dispatch→commit), added RunData.SkeletonPath, and added the dedicated table-driven test covering headings and all five load-bearing instructions.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-29T11:07:13.648759535Z"
+      }
+    },
+    {
+      "id": 5,
+      "wave": 2,
+      "status": "done",
+      "files": [
+        "internal/cli/retro.go",
+        "internal/cli/cmd_next.go",
+        "internal/cli/finish_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 5,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Extracted the retro step into internal/cli/retro.go — one helper derives and atomically writes retro-inputs.json plus the new retro-skeleton.md, and one `retroRunOp` fills the op (now carrying `skeleton_path`) for both `next` and, later, `takt retro`.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T13:07:41.136949667Z"
+      }
+    },
+    {
+      "id": 6,
+      "wave": 3,
+      "status": "waived",
+      "files": [
+        "internal/cli/cmd_done.go",
+        "internal/cli/cmd_verify.go",
+        "internal/cli/finish_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 2,
+      "last_digest": {
+        "task": 6,
+        "attempt": 2,
+        "status": "done",
+        "summary": "done --step retro` now runs its phase and prose-slot guards before the replay short-circuit, so it is accepted in `archived`, still refused in `execute` (even for a matching receipt), and refuses an unfilled `\u003c!-- prose:` slot; the reviewer's nits on double conversion, the untested read-error branch and the unterminated-marker branch are also resolved.",
+        "blockers": "none — except the `finish or archived` predicate shared with internal/cli/cmd_status.go:154, which is outside this task's declared files and left for a follow-up.",
+        "model": "opus",
+        "recorded_at": "2026-08-29T13:43:20.807476122Z"
+      }
+    },
+    {
+      "id": 7,
+      "wave": 4,
+      "status": "waived",
+      "files": [
+        "internal/cli/cmd_retro.go",
+        "internal/cli/cli.go",
+        "internal/cli/cmd_retro_test.go",
+        "internal/cli/cmd_next.go"
+      ],
+      "class": "implement",
+      "attempt": 2,
+      "last_digest": {
+        "task": 7,
+        "attempt": 2,
+        "status": "done",
+        "summary": "takt retro --rewrite` now shares one lock with an archived `takt next`, which acquires it before recommitting, so a rewrite's two writes can no longer be committed half-done; the usage wording, closure inlining, takeover-event note, and the two untested branches are also addressed.",
+        "blockers": "none (out-of-scope leftover: internal/cli/archive.go:135's doc comment about \"takes no lock, so it passes plainOp\" is now stale and needs a one-line fix in a task that owns that file)",
+        "model": "opus",
+        "recorded_at": "2026-08-30T14:08:17.30681848Z"
+      }
+    },
+    {
+      "id": 8,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "class": "docs",
+      "attempt": 2,
+      "last_digest": {
+        "task": 8,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Corrected §7.5 step 3 to name only the four prose-slot sections (matching the run-retro template) and aligned the new §5.1 `takt retro --rewrite` row on the document's established \"session lock\" term; all eleven verify greps pass.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-29T11:33:18.701708441Z"
+      }
+    },
+    {
+      "id": 9,
+      "wave": 5,
+      "status": "done",
+      "files": [
+        "commands/takt.md",
+        "hosts/copilot/skills/takt/SKILL.md",
+        "internal/prompt/prompt_test.go"
+      ],
+      "class": "bounded",
+      "attempt": 1,
+      "last_digest": {
+        "task": 9,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Updated the retro run-step clause identically in commands/takt.md and SKILL.md to name the skeleton copy, and added the full prescribed sentence as a new cross-host invariant in prompt_test.go; all verify commands (grep checks, go test ./... -race, golangci-lint, task hosts:check) pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-30T14:24:46.967143225Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "473c503284eef1ff5647d49069bcafcf0eb603f0",
+  "goals_checked_sha": "473c503284eef1ff5647d49069bcafcf0eb603f0",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-30T14:41:22.38824668Z",
+    "pr_url": "https://github.com/monrad/takt/pull/65",
+    "applied": true
+  }
+}

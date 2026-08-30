@@ -1,0 +1,9 @@
+{
+  "task": 6,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Added `finishOrArchivedOnly` (internal/cli/cmd_verify.go) and swapped it into `doneRetro` (internal/cli/cmd_done.go), which now also refuses retro.md containing an unfilled `\u003c!-- prose:` slot; added `TestDoneRetroRefusesUnfilledProseSlot` and `TestDoneRetroAcceptedInArchivedPhase` and adjusted the execute-phase table test's expected message in internal/cli/finish_test.go — all target/full `internal/cli` tests and `golangci-lint run ./internal/cli/...` pass clean.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:22:48.407028247Z"
+}

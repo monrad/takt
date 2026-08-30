@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T11:41:42.373089677Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/spec/assumptions_test.go",
+      "line": 372,
+      "title": "No test for the documented 'data rows until a blank line or the next heading' termination — and the implementation likely discards a fully valid table when trailing content follows without a blank line",
+      "detail": "rows() (internal/spec/assumptions.go:138-157) treats every non-blank, non-'#' line after the header as a data row, and internal/spec/assumptions.go:146 discards the *entire* table (`return []Assumption{}`) if that line has fewer than c.width cells. Since section() only cuts the body at the next `## ` heading (not at a blank line), any trailing prose immediately after the table's last row but still inside the same section — and not preceded by a blank line — will be read as a short 'data row' and wipe out all previously-parsed valid rows. The task's own description of the parser ('read the first markdown table: … then data rows until a blank line or the next heading') implies well-formed rows already read should survive such trailing content, but no test exercises a table followed by non-blank, non-heading, non-table content before the next `## ` heading (or EOF). TestParseAssumptionsWellFormed only happens to hit the blank-line path incidentally via the trailing '\\n' in the Go raw string literal, not via an explicit case with genuine trailing prose in the same section, so this discard-on-trailing-content path is untested and the resulting behaviour (losing valid rows) goes unverified.",
+      "task": 1
+    }
+  ]
+}
