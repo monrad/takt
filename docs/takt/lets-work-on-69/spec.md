@@ -31,9 +31,9 @@ without closing, instead of reviewing a fourth time (design §7.2, fixed-point d
 
 ## 2. What changes
 
-One branch in `decidePlan`, one fact that feeds it, and the documentation that currently
-says the cap is the spec gate's alone. No new gate id, no new event type, no new question,
-no new answer path.
+One branch in `decidePlan`, one fact that feeds it, and the **two** design documents that
+currently say the cap is the spec gate's alone — the base design and the fixed-point design
+it defers to (§6.1). No new gate id, no new event type, no new question, no new answer path.
 
 ## 3. The decision
 
@@ -108,9 +108,38 @@ Three rounds and three *revise* offers before the cap — the same budget the sp
 | design §5.2 events | the round-cap clause reads as the spec gate's ("its round cap"); make it the review gates' |
 | design §7.2 | the closing sentence "It applies to the spec gate only — the plan gate (§7.3) keeps today's behaviour entirely, including its uncapped rounds" is now false. The fixed point's other halves — *revise* closing the gate on the edit alone, and the scoped confirming pass — stay spec-only; the round cap does not |
 | design §7.3 | the plan gate gets its own sentence: three rounds since the newest reset, then `gate_review_capped` |
+| `internal/decide/questions.go:188` | `questionGateReviewCapped`'s doc comment says "the **spec** review has taken `maxAgentAttempts` passes". Its rendered text is already gate-agnostic; the comment is not, and shipping the plan gate through it makes the comment false |
 
 The design document is the repository's account of the decision table; leaving §7.2's
 sentence standing would leave it asserting the opposite of the behaviour it describes.
+
+### 6.1 The fixed-point design must be superseded, not left standing
+
+`docs/superpowers/specs/2026-08-26-spec-gate-fixed-point-design.md` is the **second**
+authoritative record here — the base design cites it as the account of the cap and does not
+restate it. It says the opposite of this change in six places:
+
+| site | text |
+|---|---|
+| D3 (line 63) | "Applies to the **spec gate only**. The plan gate keeps today's behaviour entirely, including its uncapped rounds." — `source: user` |
+| D5 (line 65) | "Review rounds **at the spec gate** are capped at `maxAgentAttempts` (3)" |
+| §3 (line 84) | "The plan gate is untouched: `decidePlan` keeps calling `needsRework` exactly as it does now." |
+| §8 (line 268) | the cap is stated only as `SpecRounds >= maxAgentAttempts` in `decideBrainstorm` |
+| §11 (line 324) | the `internal/decide` test row asserts "plan gate unchanged" |
+| A4 (line 341) | "The plan gate's uncapped rounds are tolerable (D3). Untouched. If it becomes the next bottleneck, D5's cap is the cheapest thing to extend to it — it needs no semantic change." |
+| §13 (line 350) | out of scope: "Any change to the plan gate…" |
+
+**How they are amended.** The document is the record of a decision that was taken, and A4
+already names this change as the expected next step — so it is *superseded in place*, not
+rewritten. Each site keeps its original text and gains a short marked amendment naming #69
+and pointing at base design §7.3, plus one `> Superseded in part` note under the title so a
+reader meets the amendment before D3. D3's spec-only scoping stands for everything except
+the round cap; §3's verdict rule (revise-closes-on-edit, the scoped confirming pass) stays
+spec-only and is not touched. A4's answer is no longer "untouched" but "extended by #69,
+which needed no semantic change — as predicted".
+
+The alternative — deleting the superseded sentences — would destroy the reasoning that
+makes the cap's shape legible, and would leave A4's prediction unresolved.
 
 ## 7. Testing
 
@@ -118,7 +147,8 @@ sentence standing would leave it asserting the opposite of the behaviour it desc
 |---|---|
 | `TestPlanReviewRoundsAreCapped` (`internal/decide`) | `PlanRounds = 2` → `ActExec`; `= 3` → `ask gate_review_capped` with `gate: "plan"`, `attempts: 3`, three choices |
 | `TestPendingPlanReworkVerdictOutranksTheRoundCap` (`internal/decide`) | `PlanGate.Verdict = "rework"` **and** `PlanRounds = 3` → `gate_review`, not the capped gate. The cap test alone cannot tell the two checks apart, since it never sets a verdict |
-| `cmd_answer` test (`internal/cli`) | *retry* on a pending capped **plan** gate appends `gate_rounds_reset` with `gate: "plan"` — mirrors the spec case at `cmd_answer_test.go:84` |
+| `cmd_answer` tests (`internal/cli`) | all three answers on a pending capped **plan** gate, since only *retry* has a spec-gate precedent to lean on (`cmd_answer_test.go:84`): *retry* appends `gate_rounds_reset{gate: "plan"}`; *accept* records `gate_overridden` for the **plan** gate at the **plan** hash with the reason, and carries the plan findings forward; *stop* leaves the gate open and clears nothing |
+| `cmd_answer` negative test (`internal/cli`) | answering the capped plan gate writes nothing to the **spec** gate — the two receipts and the two round counts stay independent |
 | existing spec-gate cap tests | must pass untouched: this adds a branch, it does not move one |
 
 ## 8. Out of scope
@@ -142,3 +172,5 @@ sentence standing would leave it asserting the opposite of the behaviour it desc
 | Does *retry* reset both gates' counts? | Only the answered gate's | `gate_rounds_reset` carries `{gate}` and `gate.Rounds` filters on it; nothing shared exists to reset | assumed |
 | Does the capped question need plan-specific wording? | No | `questionGateReviewCapped` already renders the gate name and `reviews/<gate>.md` from context | assumed |
 | Does the cap fire when plan review is disabled? | No | The whole branch sits inside `st.Config.Review.Plan`; a run with plan review off never reaches it | assumed |
+| How is the fixed-point design's D3 ("spec gate only — including its uncapped rounds") handled? | Superseded in place: original text kept, each of the seven sites marked with an amendment naming #69 | It is the record of a decision that was taken, and its own A4 predicted this extension. Deleting the sentences would destroy the reasoning that makes the cap legible | assumed |
+| Does D3's spec-only scoping fall entirely? | No — only its round-cap half | §3's verdict rule (revise closing on the edit alone, the scoped confirming pass) stays spec-only, exactly as §8 of this spec says | assumed |

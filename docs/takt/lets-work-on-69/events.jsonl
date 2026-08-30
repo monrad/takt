@@ -4,3 +4,4 @@
 {"ts":"2026-08-30T15:27:18.637773567Z","type":"gate_reviewed","data":{"findings":3,"gate":"spec","hash":"sha256:135b09183f017fea166cf29cf4078c08bdcfdb4e4293ab95112908c70d4448f7","provider":"copilot","verdict":"rework"}}
 {"ts":"2026-08-30T15:27:24.226528576Z","type":"gate_opened","data":{"gate":"gate_review"}}
 {"ts":"2026-08-30T15:28:46.867815897Z","type":"gate_answered","data":{"choice":"revise","gate":"gate_review"}}
+{"ts":"2026-08-30T15:29:54.896269246Z","type":"goals_amended","data":{"count":8,"new":"sha256:de3cf62297d029e915ace8b5a9c3be3013bce4fbc0428c593b50ff19b35079a8","old":"sha256:fa8591dac9a42d90336110f147686092d5ecada083f82adc673d481ed449ee1c"}}
