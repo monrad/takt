@@ -1,0 +1,185 @@
+{
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:54:58.041726323Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 369,
+      "title": "Spec table doesn't call out that retro --rewrite fails (not asks) on a held lock",
+      "detail": "The command table row says `takt retro --rewrite` \"takes the session lock (§4.6) as `next` does\", but §4.6 describes the lock's only documented behaviour on contention as `ask: owner` (take over / abort / read-only). The diff (internal/cli/cmd_next.go's new nextRun.lockBlocked/blockedBy, and internal/cli/cmd_retro.go's retroLockHeld) makes retro --rewrite diverge on exactly this point: a live holder makes it fail outright (exitError, naming the holder and hinting `takt unlock`), never asking. That divergence is well explained in the new code's doc comments, but the spec — which is otherwise very precise about command-specific exceptions (e.g. the push_pr no-op rule two rows above) — doesn't mention it, so a reader relying on the table/§4.6 alone would expect retro --rewrite to print the same owner-ask question next does.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_next.go",
+      "line": 212,
+      "title": "A lock takeover during `retro --rewrite` can leave a tracked file (events.jsonl) modified with no commit",
+      "detail": "cmdRetro reuses nextRun.acquireLock unchanged apart from blockedBy/lockBlocked. If the lock cmd_retro finds is stale/orphaned (an expired heartbeat, or a holder recorded generated=true), acquireLock's takeover branch appends a `lock_taken` event via bundle.AppendEvent(r.bdir, ...) (cmd_next.go:212/216), which — unlike logs/session.json — is a tracked bundle file. cmd_retro never commits anything (per its own no-commit contract, verified by TestRetroRewriteWritesNoStateAndTakesNoCommit only against state.json/HEAD), so a rewrite that happens to take over a stale lock leaves events.jsonl modified and uncommitted in the working tree until some unrelated later command commits it. This is a narrow edge case not exercised by the wave's tests, but it means the 'no commit / nothing tracked is disturbed' framing in cmd_retro.go's doc comment (lines 22-25) is not quite true whenever a takeover occurs.",
+      "id": "c2",
+      "task": 7,
+      "lenses": [
+        "correctness"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 39,
+      "title": "Usage-error message breaks the established '\u003cverb\u003e needs \u003cflag\u003e' wording",
+      "detail": "Every sibling usage-required-flag message in this package omits the 'takt' prefix — cmd_answer.go:42 'answer needs --gate and --choice', cmd_waive.go:29 'waive needs --task N and --reason', cmd_init.go:163 'init needs a topic'. cmd_retro.go:39 instead reads 'takt retro needs --rewrite', the only one of this family to include the binary name. Purely cosmetic (the test only checks for the substring '--rewrite'), but it's a divergent shape for the same kind of message across the CLI.",
+      "id": "c3",
+      "task": 7,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 54,
+      "title": "The run lock does not actually protect the archived-run race the feature exists to close",
+      "detail": "cmd_retro.go's doc comment (lines 54-60) justifies taking the run lock by saying 'a concurrent next on an archived run calls recommitArchive, which stages and commits whatever in the bundle is dirty — a commit that can land between the two writes and capture a half-updated pair … the lock is what does [close that]'. But cmd_next.go's cmdNext never acquires or even reads the session lock for an archived run: the archived branch (internal/cli/cmd_next.go:92-105, itself carrying the comment 'no lock is taken') calls recommitArchive and applyAndStop before any call to acquireLock — acquireLock is only reached in the non-archived branch further down. recommitArchive's bundleDirty check (internal/cli/bundleops.go:82-91) only asks git status, and applyAndStop unconditionally calls bundle.ClearSession (internal/cli/archive.go:144), wiping any lock a concurrent `retro --rewrite` currently holds. So if `takt retro --rewrite` is interrupted between writing finish/retro-inputs.json and finish/retro-skeleton.md (writeRetroArtifacts in internal/cli/retro.go writes them sequentially) while a concurrent `takt next` runs against the same archived run, recommitArchive will see the bundle dirty (only the first file rewritten) and commit exactly the half-updated pair the lock was supposed to prevent — with no lock check involved at all. This is precisely 'the motivating case' the task calls out (retro on an archived run), so the core correctness guarantee task 7 introduces the lock for does not hold.",
+      "id": "c4",
+      "task": 7,
+      "lenses": [
+        "correctness"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 61,
+      "title": "The generated-session-id path through cmdRetro's nextRun construction is untested",
+      "detail": "cmd_retro.go:61-64 wires `sessionID(env.Getenv)`'s `generated` bool into `nextRun.genID`. Every test in cmd_retro_test.go runs with `TAKT_SESSION` explicitly set (via finishRun's driver env `{\"TAKT_SESSION\": \"S\"}` or TestRetroRewriteTargetsARunByDir's own env map), so `generated` is always false. No test invokes `retro --rewrite` with TAKT_SESSION unset, so the genID=true branch of this new wiring — which affects what gets recorded in the session file for future takeover decisions — is never exercised for this command.",
+      "id": "c5",
+      "task": 7,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 73,
+      "title": "retroRunOp's error branch in cmdRetro is never exercised",
+      "detail": "cmd_retro.go:73-75 (`if err != nil { return fail(env.Stderr, exitError, err.Error(), \"\") }`) is new code with no test that drives it. None of the cmd_retro_test.go cases make writeRetroArtifacts/retroRunOp fail (e.g. by removing spec.md or corrupting finish/verify.json before `retro --rewrite`), so this fail path — including its message format and exit code — is untested. The pattern mirrors an already-exercised branch in cmd_next.go:1021-1022, which lowers the risk, but the new call site itself has no coverage.",
+      "id": "c6",
+      "task": 7,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 89,
+      "title": "Single-use closure factory could be inlined",
+      "detail": "retroLockHeld(env, slug) is called from exactly one place (cmd_retro.go:64) to build the lockBlocked closure. Extracting it into a named top-level function adds one level of indirection for a single caller; an anonymous closure at the construction site would read the same and drop one hop. Not a real problem — the extraction keeps the divergence rationale in its own doc comment, consistent with the file's prose-heavy commenting style — so this is polish only.",
+      "id": "c7",
+      "task": 7,
+      "lenses": [
+        "simplicity"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "cmd_next.go's archived branch never takes the lock: 'if tgt.st.Phase == bundle.PhaseArchived { if code = recommitArchive(ctx, env, tgt); code != 0 { return code }; return applyAndStop(ctx, env, tgt, plainOp(env)) }' (cmd_next.go:101-105), and its own doc comment at cmd_next.go:92-100 says 'no lock is taken' by design. recommitArchive only asks git: 'out, err := repo.Run(ctx, \"status\", \"--porcelain\", \"--\", rel); return out != \"\", nil' (bundleops.go:86-90) — no session-lock read anywhere. applyAndStop unconditionally calls bundle.ClearSession (archive.go:144), and ClearSession is 'os.Remove(SessionPath(bundleDir))' with no ownership check (bundle/session.go:69-75). writeRetroArtifacts writes the pair sequentially — 'if err = finish.WriteRetroInputs(bdir, in); err != nil { return err }; return finish.WriteSkeleton(bdir, ...)' (retro.go:108-111). So a concurrent `next`/`done` on an archived run is not blocked by the lock cmd_retro.go:54-60 claims closes this window; the plan's own risk note (docs/takt/lets-work-on-63/plan.md:117-121) asserts the lock is what prevents this capture, but the code shows it does not check it.",
+      "citations": [
+        "internal/cli/cmd_next.go:92-106",
+        "internal/cli/archive.go:136-144",
+        "internal/cli/bundleops.go:82-91",
+        "internal/cli/retro.go:108-111",
+        "internal/cli/cmd_retro.go:54-60"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "cmd_retro.go builds nextRun with no force set and reuses acquireLock unchanged (cmd_retro.go:61-65). In acquireLock, an orphaned live-looking holder (Generated:true) is taken over via force (bundle/lock.go:31-44, LockForced), and the takeover switch appends a tracked-file event when the acquirer's own id is not generated: 'case orphaned: _ = bundle.AppendEvent(r.bdir, \"lock_taken\", ...)' (cmd_next.go:211-214). AppendEvent opens events.jsonl (bundle top-level, tracked) with O_APPEND and writes immediately (bundle/events.go:20,26-41) — unlike untracked logs/session.json. cmd_retro.go's own doc comment says 'No state is written and no commit is taken' (cmd_retro.go:22-25), and TestRetroRewriteWritesNoStateAndTakesNoCommit only diffs state.json and HEAD (cmd_retro_test.go:412-435), never checking events.jsonl. No test in cmd_retro_test.go sets up an orphaned/generated holder, so this path is real and unexercised.",
+      "citations": [
+        "internal/cli/cmd_retro.go:61-65",
+        "internal/cli/cmd_next.go:139-140,207-218",
+        "internal/bundle/lock.go:31-44",
+        "internal/bundle/events.go:20-41",
+        "internal/cli/cmd_retro.go:22-25"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "cmd_retro.go:39 reads 'takt retro needs --rewrite', while every sibling usage message omits the binary name: 'answer needs --gate and --choice' (cmd_answer.go:42), 'waive needs --task N and --reason' (cmd_waive.go:29), 'init needs a topic' (cmd_init.go:163). This is a real, verifiable wording divergence, cosmetic only.",
+      "citations": [
+        "internal/cli/cmd_retro.go:39",
+        "internal/cli/cmd_answer.go:42",
+        "internal/cli/cmd_waive.go:29",
+        "internal/cli/cmd_init.go:163"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "sessionID(env.Getenv) feeds nextRun.genID at cmd_retro.go:61-64. Every test that reaches this line sets TAKT_SESSION explicitly — finishRun's driver env {\"TAKT_SESSION\":\"S\"} (finish_test.go:64, reused by atRetroOp) and TestRetroRewriteTargetsARunByDir's own env map {\"TAKT_SESSION\": \"S\", ...} (cmd_retro_test.go:254) — so sessionID always returns generated=false (workspace.go:67-77) for every retro test; the generated=true branch of this wiring is never exercised for cmdRetro.",
+      "citations": [
+        "internal/cli/cmd_retro.go:61-64",
+        "internal/cli/workspace.go:67-77",
+        "internal/cli/cmd_retro_test.go:254"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "cmd_retro.go:73-75 ('o, err := retroRunOp(...); if err != nil { return fail(...) }') has no test driving retroRunOp/writeRetroArtifacts to fail. The only os.Remove in cmd_retro_test.go deletes the retro pair itself (line 87-ish), which retroRunOp regenerates rather than errors on; no test corrupts spec.md, finish/verify.json, plan.index.json, etc. before a rewrite, and retroRunOp has only two callers in the whole tree (cmd_next.go:1020 and cmd_retro.go:69), with the cmd_retro.go call site's failure path uncovered.",
+      "citations": [
+        "internal/cli/cmd_retro.go:73-75",
+        "internal/cli/cmd_retro_test.go:87"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "The spec's command table says retro --rewrite 'takes the session lock (§4.6) as `next` does and writes no state' (docs/superpowers/specs/2026-08-24-takt-design.md:369), and §4.6 (lines 308-328) documents the blocked-lock outcome only as `next`'s owner ask ('next returns ask: owner ... take over with --force / abort / read-only', line 317). Nowhere in the spec is retro's actual divergent behavior — an outright error via retroLockHeld naming the holder (cmd_retro.go:82-95) — stated; the table is otherwise explicit about command-specific exceptions (e.g. push_pr's repeat-URL rule, line 368), making the omission a real, checkable gap even though this diff itself does not touch the spec file.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:369",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:308-328",
+        "internal/cli/cmd_retro.go:82-95"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "retroLockHeld(env, slug) (cmd_retro.go:89-95) is defined and called from exactly one site, cmd_retro.go:64 ('lockBlocked: retroLockHeld(env, tgt.slug)'); grep across the repo finds no other caller. The factual claim — a single-use named factory that an inlined closure at the call site would equally serve — is accurate, and the candidate itself grades it as non-blocking polish.",
+      "citations": [
+        "internal/cli/cmd_retro.go:64",
+        "internal/cli/cmd_retro.go:89-95"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7"
+  ]
+}

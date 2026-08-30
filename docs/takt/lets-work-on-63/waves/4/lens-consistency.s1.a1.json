@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:48:31.302593599Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 39,
+      "title": "Usage-error message breaks the established '\u003cverb\u003e needs \u003cflag\u003e' wording",
+      "detail": "Every sibling usage-required-flag message in this package omits the 'takt' prefix — cmd_answer.go:42 'answer needs --gate and --choice', cmd_waive.go:29 'waive needs --task N and --reason', cmd_init.go:163 'init needs a topic'. cmd_retro.go:39 instead reads 'takt retro needs --rewrite', the only one of this family to include the binary name. Purely cosmetic (the test only checks for the substring '--rewrite'), but it's a divergent shape for the same kind of message across the CLI.",
+      "task": 7
+    }
+  ]
+}

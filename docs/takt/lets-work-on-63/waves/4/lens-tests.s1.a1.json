@@ -1,0 +1,26 @@
+{
+  "lens": "tests",
+  "wave": 4,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:47:24.482081824Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 73,
+      "title": "retroRunOp's error branch in cmdRetro is never exercised",
+      "detail": "cmd_retro.go:73-75 (`if err != nil { return fail(env.Stderr, exitError, err.Error(), \"\") }`) is new code with no test that drives it. None of the cmd_retro_test.go cases make writeRetroArtifacts/retroRunOp fail (e.g. by removing spec.md or corrupting finish/verify.json before `retro --rewrite`), so this fail path — including its message format and exit code — is untested. The pattern mirrors an already-exercised branch in cmd_next.go:1021-1022, which lowers the risk, but the new call site itself has no coverage.",
+      "task": 7
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_retro.go",
+      "line": 61,
+      "title": "The generated-session-id path through cmdRetro's nextRun construction is untested",
+      "detail": "cmd_retro.go:61-64 wires `sessionID(env.Getenv)`'s `generated` bool into `nextRun.genID`. Every test in cmd_retro_test.go runs with `TAKT_SESSION` explicitly set (via finishRun's driver env `{\"TAKT_SESSION\": \"S\"}` or TestRetroRewriteTargetsARunByDir's own env map), so `generated` is always false. No test invokes `retro --rewrite` with TAKT_SESSION unset, so the genID=true branch of this new wiring — which affects what gets recorded in the session file for future takeover decisions — is never exercised for this command.",
+      "task": 7
+    }
+  ]
+}

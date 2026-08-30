@@ -158,6 +158,26 @@
       "detail": "Step 5 states \"commit `takt(\u003cslug\u003e): archive`. That commit is the run's last one\" (line 884) and later \"there is no write after the archive commit\" / \"the bundle directory is otherwise untouched once archived\" (lines 902-909), describing the only post-archive bundle-write mechanism as a later `next` sweeping dirty files into a *second archive commit*. This diff's `finishOrArchivedOnly` (internal/cli/cmd_verify.go:64) lets `done --step retro` run in `archived`, and `doneRetro`'s own doc comment (internal/cli/cmd_done.go:195-201) plus TestDoneRetroAcceptedInArchivedPhase (internal/cli/finish_test.go, asserting `git log -1` contains \"retro done\") confirm it lands its own distinct `\"retro done\"` bundle commit after the archive commit — a mechanism §7.5 step 5 does not describe and one that falsifies both the \"last commit\" and \"untouched once archived\" claims for every disposition, not just `keep`. cmd_done.go:200-201's own comment (\"design §7.5 step 5 already contemplates post-archive bundle writes\") asserts the design doc already covers this, but step 5 only contemplates the second-archive-commit sweep, not an independent `done`-issued commit. No task in this run's plan (docs/takt/lets-work-on-63/plan.md) is scoped to fix step 5's text — task 8 explicitly restricts its edits and verify checks to the `3. **Retro**`–`4. **Disposition**` span of step 3 (plan.md:92-97) — so this contradiction ships undocumented. (Already logged as a follow-up in docs/takt/lets-work-on-63/follow-ups.json at wave 3, but it remains unfixed as of this diff.)",
       "source": "internal",
       "ts": "2026-08-30T13:28:22.95759054Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 369,
+      "wave": 4,
+      "title": "Spec table doesn't call out that retro --rewrite fails (not asks) on a held lock",
+      "detail": "The command table row says `takt retro --rewrite` \"takes the session lock (§4.6) as `next` does\", but §4.6 describes the lock's only documented behaviour on contention as `ask: owner` (take over / abort / read-only). The diff (internal/cli/cmd_next.go's new nextRun.lockBlocked/blockedBy, and internal/cli/cmd_retro.go's retroLockHeld) makes retro --rewrite diverge on exactly this point: a live holder makes it fail outright (exitError, naming the holder and hinting `takt unlock`), never asking. That divergence is well explained in the new code's doc comments, but the spec — which is otherwise very precise about command-specific exceptions (e.g. the push_pr no-op rule two rows above) — doesn't mention it, so a reader relying on the table/§4.6 alone would expect retro --rewrite to print the same owner-ask question next does.",
+      "source": "internal",
+      "ts": "2026-08-30T13:54:58.042416084Z"
+    },
+    {
+      "severity": "major",
+      "file": "internal/cli/archive.go",
+      "line": 134,
+      "wave": 4,
+      "title": "applyAndStop doc comment contradicts this wave's own change to cmd_next.go",
+      "detail": "archive.go:130-135 still says \"The later call on an archived run takes no lock, so it passes plainOp.\" This diff deletes `plainOp` entirely from cmd_next.go and moves the archived-run branch in cmdNext to run after `r.acquireLock`, passing `r.emit` instead (see cmd_next.go's rewritten comments at the same location, e.g. \"applyAndStop releases the lock this call just took\"). `plainOp` no longer exists anywhere in internal/cli (grep confirms archive.go:135 is the only remaining reference), so the comment both names a deleted function and asserts the opposite of the new, intentional behaviour (the archived path now takes the lock, which is the whole point of task 7's fix — a concurrent rewrite must be able to shut out an unlocked archived `next`). This file wasn't in this task's file list, so the change to cmd_next.go's locking behaviour was not propagated to the neighbouring doc comment that describes the same code path.",
+      "source": "internal",
+      "ts": "2026-08-30T14:18:27.788408265Z"
     }
   ]
 }

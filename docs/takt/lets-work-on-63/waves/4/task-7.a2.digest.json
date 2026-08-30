@@ -1,0 +1,9 @@
+{
+  "task": 7,
+  "attempt": 2,
+  "status": "done",
+  "summary": "takt retro --rewrite` now shares one lock with an archived `takt next`, which acquires it before recommitting, so a rewrite's two writes can no longer be committed half-done; the usage wording, closure inlining, takeover-event note, and the two untested branches are also addressed.",
+  "blockers": "none (out-of-scope leftover: internal/cli/archive.go:135's doc comment about \"takes no lock, so it passes plainOp\" is now stale and needs a one-line fix in a task that owns that file)",
+  "model": "opus",
+  "recorded_at": "2026-08-30T14:08:17.30681848Z"
+}

@@ -162,7 +162,7 @@
     {
       "id": 7,
       "wave": 4,
-      "status": "pending",
+      "status": "waived",
       "files": [
         "internal/cli/cmd_retro.go",
         "internal/cli/cli.go",
@@ -170,7 +170,16 @@
         "internal/cli/cmd_next.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 7,
+        "attempt": 2,
+        "status": "done",
+        "summary": "takt retro --rewrite` now shares one lock with an archived `takt next`, which acquires it before recommitting, so a rewrite's two writes can no longer be committed half-done; the usage wording, closure inlining, takeover-event note, and the two untested branches are also addressed.",
+        "blockers": "none (out-of-scope leftover: internal/cli/archive.go:135's doc comment about \"takes no lock, so it passes plainOp\" is now stale and needs a one-line fix in a task that owns that file)",
+        "model": "opus",
+        "recorded_at": "2026-08-30T14:08:17.30681848Z"
+      }
     },
     {
       "id": 8,
@@ -205,17 +214,54 @@
     }
   ],
   "active_wave": {
-    "n": 3,
+    "n": 4,
     "slice": 1,
     "attempt": 2,
-    "started_at": "2026-08-29T13:34:41.927471822Z",
+    "started_at": "2026-08-30T13:57:50.735811368Z",
     "session_id": "dcc38050-c2a1-44c6-a9d7-69b497b8c1e6",
     "tasks": [
-      6
+      7
     ],
     "baseline": []
   },
-  "pending_gate": null,
+  "pending_gate": {
+    "id": "wave_failures",
+    "opened_at": "2026-08-30T14:21:59.268064488Z",
+    "payload": {
+      "op": "ask",
+      "narration": "wave 4 has failed or blocked tasks",
+      "gate": "wave_failures",
+      "question": "Wave 4: failed [], blocked [], rework exhausted [7], rework pending []. How do you want to proceed?",
+      "options": [
+        {
+          "choice": "retry",
+          "label": "Retry the failed tasks (Recommended)",
+          "description": "Re-dispatch them with the failure context appended (model escalates one tier)."
+        },
+        {
+          "choice": "waive",
+          "label": "Waive selected tasks",
+          "description": "`takt waive --task N --reason …` per task, then `takt next`."
+        },
+        {
+          "choice": "stop",
+          "label": "Stop",
+          "description": "End the turn with the wave open."
+        }
+      ],
+      "context": {
+        "blocked": [],
+        "exhausted": [
+          7
+        ],
+        "failed": [],
+        "rework": [],
+        "slug": "lets-work-on-63",
+        "wave": 4
+      },
+      "answer": "takt answer --gate wave_failures --choice \u003cchoice\u003e --slug lets-work-on-63"
+    }
+  },
   "verified_sha": null,
   "goals_checked_sha": null,
   "disposition": null
