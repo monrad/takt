@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "lets-work-on-60-and-62",
   "topic": "lets work on #60 and #62",
-  "phase": "finish",
+  "phase": "archived",
   "created_at": "2026-08-29T02:07:54.750660636Z",
   "branch": "monrad/6062",
   "branch_adopted": true,
@@ -220,6 +220,6 @@
     "choice": "pr",
     "at": "2026-08-30T14:37:54.532409229Z",
     "pr_url": "https://github.com/monrad/takt/pull/64",
-    "applied": false
+    "applied": true
   }
 }
