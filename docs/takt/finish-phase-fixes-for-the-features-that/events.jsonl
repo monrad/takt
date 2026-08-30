@@ -77,3 +77,4 @@
 {"ts":"2026-08-30T23:18:11.915257917Z","type":"gate_opened","data":{"gate":"branch_finish"}}
 {"ts":"2026-08-30T23:21:22.073714819Z","type":"disposition","data":{"choice":"pr","reason":""}}
 {"ts":"2026-08-30T23:21:22.074623102Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
+{"ts":"2026-08-30T23:22:27.753649937Z","type":"pr_pushed","data":{"url":"https://github.com/monrad/takt/pull/76"}}
