@@ -139,3 +139,4 @@
 {"ts":"2026-08-30T14:36:50.229706546Z","type":"gate_opened","data":{"gate":"branch_finish"}}
 {"ts":"2026-08-30T14:37:54.545549787Z","type":"disposition","data":{"choice":"pr","reason":""}}
 {"ts":"2026-08-30T14:37:54.546727875Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
+{"ts":"2026-08-30T14:38:46.82771929Z","type":"pr_pushed","data":{"url":"https://github.com/monrad/takt/pull/64"}}
