@@ -165,3 +165,6 @@
 {"ts":"2026-08-30T14:38:22.195824989Z","type":"goal_check","data":{"achieved":13,"missed":0,"partial":0,"sha":"473c503284eef1ff5647d49069bcafcf0eb603f0","waived":0}}
 {"ts":"2026-08-30T14:38:22.196313055Z","type":"goals_attempts_reset","data":{"reason":"recorded"}}
 {"ts":"2026-08-30T14:40:42.641067414Z","type":"retro","data":{"hash":"sha256:8c73ae79cccedf208c7b69dfeaf3866dbdf2b7b9ca015e43435a5c0a51d099cb"}}
+{"ts":"2026-08-30T14:40:47.576022036Z","type":"gate_opened","data":{"gate":"branch_finish"}}
+{"ts":"2026-08-30T14:41:22.400882671Z","type":"disposition","data":{"choice":"pr","reason":""}}
+{"ts":"2026-08-30T14:41:22.40176228Z","type":"gate_answered","data":{"choice":"pr","gate":"branch_finish"}}
