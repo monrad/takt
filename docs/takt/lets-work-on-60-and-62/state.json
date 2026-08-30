@@ -129,7 +129,7 @@
     {
       "id": 5,
       "wave": 3,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/decide/decide.go",
         "internal/decide/questions.go",
@@ -138,7 +138,16 @@
         "internal/cli/reviewer_facts_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 5,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Added `TestReviewErrorToleratesAMalformedBackendsContext` to internal/decide/decide_test.go covering all four of `backendDeadlines`' defensive guards including the bare-key-no-deadline rendering (mutation-checked, 100% coverage); assessed the \"undeclared workflow artifacts\" finding as a false positive about takt's own bookkeeping and left the facts.go/config duplication for a task that has internal/config in scope.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T13:59:26.685015591Z"
+      }
     },
     {
       "id": 6,
@@ -195,13 +204,13 @@
     }
   ],
   "active_wave": {
-    "n": 2,
+    "n": 3,
     "slice": 1,
     "attempt": 2,
-    "started_at": "2026-08-29T13:34:40.851983519Z",
+    "started_at": "2026-08-30T13:54:24.465547713Z",
     "session_id": "b533a4ff-7183-49ac-a2c8-b71a174a7098",
     "tasks": [
-      4
+      5
     ],
     "baseline": []
   },

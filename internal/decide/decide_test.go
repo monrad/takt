@@ -1133,3 +1133,271 @@ func TestCappedGateIsInTheVocabulary(t *testing.T) {
 		t.Fatal("every gate Decide can emit must be in Vocab so the prompt parity tests see it")
 	}
 }
+
+// altBackendTimeout is a deadline no default holds, so a rendering that
+// quoted a constant instead of the fact it was given shows up as a mismatch.
+const altBackendTimeout = 20 * time.Minute
+
+// reviewErrorDecision is row 16 with the reviewer chain the caller names: a
+// wave whose every task reported and whose close recorded a review error, so
+// Decide asks the review_error gate.
+func reviewErrorDecision(t *testing.T, chain []decide.ReviewerBackend) decide.Decision {
+	t.Helper()
+	st := execState()
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: t0, SessionID: "S", Tasks: []int{1, 2}}
+	f := facts()
+	f.Wave.Recorded = map[int]bool{1: true, 2: true}
+	f.Wave.Close = &decide.CloseFacts{ReviewErrors: []int{2}}
+	f.ReviewerBackends = chain
+	d := mustDecide(t, st, f)
+	if d.Action != decide.ActAsk || d.Op.Gate != "review_error" {
+		t.Fatalf("a close that recorded a review error asks review_error: %+v", d)
+	}
+	return d
+}
+
+// retryOption is the one option of a rendered gate whose text this spec
+// section grows.
+func retryOption(t *testing.T, o *op.Op) op.Option {
+	t.Helper()
+	for _, opt := range o.Options {
+		if opt.Choice == "retry" {
+			return opt
+		}
+	}
+	t.Fatalf("the gate must offer retry: %+v", o.Options)
+	return op.Option{}
+}
+
+// TestReviewErrorNamesTheBackendTimeouts is spec A3 and goal G5: a user who
+// hits this gate should not have to read the source to learn what the review
+// deadline was or which key raises it. The three shapes are the three the
+// chain can actually take once gatherFacts has skipped the entries config has
+// no key for — several backends, one, and none at all — and the last is the
+// one that must degrade to the literal key rather than invent a deadline.
+//
+// Everything else about the gate is asserted unchanged in every row: the
+// narration, the question and the option set are what they were, because this
+// section grows one description and nothing else.
+func TestReviewErrorNamesTheBackendTimeouts(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		chain    []decide.ReviewerBackend
+		contains []string
+		absent   []string
+	}{
+		{
+			name: "every configured backend that has a key",
+			chain: []decide.ReviewerBackend{
+				{Name: "copilot", Timeout: factBackendTimeout},
+				{Name: "claude", Timeout: factBackendTimeout},
+			},
+			contains: []string{"backends.copilot.timeout", "backends.claude.timeout", "15m", ".takt.json"},
+			absent:   []string{"backends.<name>.timeout"},
+		},
+		{
+			name:     "one entry, the rest skipped for having no key",
+			chain:    []decide.ReviewerBackend{{Name: "claude", Timeout: altBackendTimeout}},
+			contains: []string{"backends.claude.timeout", "20m", ".takt.json"},
+			absent:   []string{"backends.copilot.timeout", "backends.<name>.timeout", "fake"},
+		},
+		{
+			name:     "no backend with a key at all",
+			chain:    nil,
+			contains: []string{"backends.<name>.timeout", ".takt.json"},
+			absent:   []string{"(now ", "m0s", "backends.claude.timeout", "backends.copilot.timeout"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			d := reviewErrorDecision(t, c.chain)
+			desc := retryOption(t, d.Op).Description
+			if !strings.HasPrefix(desc, "Re-run `takt close-wave`.") {
+				t.Errorf("the retry option still says what retrying does: %q", desc)
+			}
+			assertHolds(t, desc, c.contains, c.absent)
+			assertReviewErrorUnchanged(t, d.Op)
+		})
+	}
+}
+
+// assertHolds checks one rendered string against what it must name and what
+// it must not.
+func assertHolds(t *testing.T, got string, contains, absent []string) {
+	t.Helper()
+	for _, want := range contains {
+		if !strings.Contains(got, want) {
+			t.Errorf("retry description %q must name %q", got, want)
+		}
+	}
+	for _, unwanted := range absent {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("retry description %q must not hold %q", got, unwanted)
+		}
+	}
+}
+
+// assertReviewErrorUnchanged checks everything about the gate spec A3 leaves
+// alone: only the retry option's description grows.
+func assertReviewErrorUnchanged(t *testing.T, o *op.Op) {
+	t.Helper()
+	if o.Narration != "a task review errored" {
+		t.Errorf("narration is unchanged: %q", o.Narration)
+	}
+	if !strings.Contains(o.Question, "The reviewer failed for task(s) [2]") {
+		t.Errorf("the question is unchanged: %q", o.Question)
+	}
+	if got := choices(*o); got != "retry,skip,stop" {
+		t.Errorf("the option set is unchanged: %v", got)
+	}
+	if o.Answer != "takt answer --gate review_error --choice <choice> --slug demo" {
+		t.Errorf("the answer command is unchanged: %q", o.Answer)
+	}
+}
+
+// TestReviewErrorRendersIdenticallyAfterAContextRoundTrip is the persistence
+// half of the same section, stated as what actually happens rather than as a
+// claim about a re-render path: `takt next` persists the rendered op as the
+// gate payload and re-emits those stored bytes verbatim, so Question runs
+// exactly once per gate — on the in-memory context. What has to survive is
+// therefore the *shape*: the entries are built as []any of map[string]any,
+// which is what decoding produces, so a context that has been through JSON
+// renders the same option text as the one that never left memory. A []any of
+// a concrete struct or map type would render once and then quietly stop
+// naming anything.
+func TestReviewErrorRendersIdenticallyAfterAContextRoundTrip(t *testing.T) {
+	t.Parallel()
+	d := reviewErrorDecision(t, []decide.ReviewerBackend{
+		{Name: "copilot", Timeout: factBackendTimeout},
+		{Name: "claude", Timeout: altBackendTimeout},
+	})
+	raw, err := json.Marshal(d.Op.Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err = json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	again := decide.Question("review_error", decoded)
+	if !slices.Equal(d.Op.Options, again.Options) {
+		t.Fatalf("a decoded context must render the same options:\nfirst  %+v\nsecond %+v",
+			d.Op.Options, again.Options)
+	}
+	if !strings.Contains(retryOption(t, &again).Description, "backends.copilot.timeout") {
+		t.Fatalf("the decoded rendering must still name the keys: %q", retryOption(t, &again).Description)
+	}
+}
+
+// The two shapes the retry option's description takes, spelled out once so
+// the malformed rows below can assert the whole rendering rather than a
+// substring: the "named but no deadline" form is a claim about formatting —
+// a bare key and no "(now …)" — and a Contains check would not notice an
+// empty suffix rendered beside it.
+const (
+	retryNamesNothing = "Re-run `takt close-wave`. If the review timed out, " +
+		"raising `backends.<name>.timeout` in `.takt.json` is the fix."
+	retryNamesPrefix = "Re-run `takt close-wave`. If the review timed out, " +
+		"raising the deadline in `.takt.json` is the fix: "
+)
+
+// reviewErrorTaskID is the task the hand-built contexts below say the review
+// errored for, matching the task id assertReviewErrorUnchanged expects in the
+// question text.
+const reviewErrorTaskID = 2
+
+// reviewErrorContext is the gate context decideActiveWave builds, with the
+// `backends` entry replaced by whatever the caller wants to hand the
+// renderer — or, for a nil argument, left out of the map entirely. Every
+// other entry is well formed, so a row that renders differently does so
+// because of its `backends` value alone.
+func reviewErrorContext(backends any) map[string]any {
+	ctx := map[string]any{
+		"slug":  "demo",
+		"tasks": []any{reviewErrorTaskID},
+		"error": "see waves/0/close.s1.json",
+	}
+	if backends != nil {
+		ctx["backends"] = backends
+	}
+	return ctx
+}
+
+// TestReviewErrorToleratesAMalformedBackendsContext covers the guards the
+// renderer keeps for a `backends` entry that is not the shape decide writes.
+// Nothing in takt produces these contexts today — Question is called once per
+// gate, on the map decide just built — but the map is also what the persisted
+// gate payload decodes to, so the guards are what stops a future writer of
+// that payload from turning a wrong shape into a panic or an invented key.
+// Every row is fed by hand, because a well-formed build can never reach them.
+//
+// The rows are the four guards: a value that is not a list, an element that
+// is not a map, an element with no usable key, and — the one that renders
+// rather than skips — a key whose deadline is missing, so it is named bare.
+func TestReviewErrorToleratesAMalformedBackendsContext(t *testing.T) {
+	t.Parallel()
+	const claudeKey, copilotKey = "backends.claude.timeout", "backends.copilot.timeout"
+	wellFormed := map[string]any{"key": copilotKey, "timeout": "15m0s"}
+	namedCopilot := retryNamesPrefix + "`" + copilotKey + "` (now 15m0s)."
+	cases := []struct {
+		name     string
+		backends any
+		want     string
+	}{{
+		name:     "the entry is absent",
+		backends: nil,
+		want:     retryNamesNothing,
+	}, {
+		name:     "the entry is not a list",
+		backends: copilotKey,
+		want:     retryNamesNothing,
+	}, {
+		// The regression this guard exists for: a builder that returned a
+		// typed slice would render once and then, decoded, name nothing.
+		name:     "the entry is a typed slice, which decoding never produces",
+		backends: []map[string]any{wellFormed},
+		want:     retryNamesNothing,
+	}, {
+		name:     "an element that is not a map is skipped",
+		backends: []any{claudeKey, true, wellFormed},
+		want:     namedCopilot,
+	}, {
+		name: "an element with no usable key is skipped",
+		backends: []any{
+			map[string]any{"timeout": "9m0s"},
+			map[string]any{"key": "", "timeout": "9m0s"},
+			map[string]any{"key": true, "timeout": "9m0s"},
+			wellFormed,
+		},
+		want: namedCopilot,
+	}, {
+		name:     "a key whose deadline is missing is named bare",
+		backends: []any{map[string]any{"key": copilotKey}},
+		want:     retryNamesPrefix + "`" + copilotKey + "`.",
+	}, {
+		name: "an empty or non-string deadline is named bare too",
+		backends: []any{
+			map[string]any{"key": copilotKey, "timeout": ""},
+			map[string]any{"key": claudeKey, "timeout": true},
+		},
+		want: retryNamesPrefix + "`" + copilotKey + "`, `" + claudeKey + "`.",
+	}, {
+		name:     "a list where nothing survives the skips names no key at all",
+		backends: []any{claudeKey, true, map[string]any{}, map[string]any{"key": ""}},
+		want:     retryNamesNothing,
+	}}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			q := decide.Question("review_error", reviewErrorContext(c.backends))
+			if got := retryOption(t, &q).Description; got != c.want {
+				t.Errorf("retry description = %q, want %q", got, c.want)
+			}
+			// A malformed payload costs the deadline, never the gate: the
+			// question a user answers is the same one.
+			assertReviewErrorUnchanged(t, &q)
+		})
+	}
+}

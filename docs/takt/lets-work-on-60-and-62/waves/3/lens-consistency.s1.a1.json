@@ -1,0 +1,18 @@
+{
+  "lens": "consistency",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T13:48:44.785149894Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/facts.go",
+      "line": 127,
+      "title": "reviewerBackends re-walks the same chain-skip loop ReviewBudgetTimeout already owns",
+      "detail": "internal/config/config.go:113-126 (Backends.ReviewBudgetTimeout) already contains 'for _, name := range b.Reviewer { d, ok := b.Timeout(name); if !ok { continue } ... }' to walk the reviewer chain and drop entries with no config key. internal/cli/facts.go:127-137 (reviewerBackends) reimplements the identical walk-and-skip shape to build the ordered []decide.ReviewerBackend list instead of extending config.Backends with one shared iterator (e.g. a method returning the ordered {name, timeout} pairs) that both ReviewBudgetTimeout and reviewerBackends could consume. The two callers produce different outputs (max vs. ordered list) so this is not a bug, but it is the same predicate — 'a chain entry counts only if Backends.Timeout reports true' — encoded twice in two packages.",
+      "task": 5
+    }
+  ]
+}

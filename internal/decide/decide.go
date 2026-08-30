@@ -32,6 +32,16 @@ const (
 	ctxAgent     = "agent"
 	ctxAttempts  = "attempts"
 	ctxProblems  = "problems"
+	ctxBackends  = "backends"
+)
+
+// The two keys of one entry of the review_error gate's `backends` context
+// list. Both values are pre-rendered strings, so the payload `takt next`
+// persists for that gate round-trips through JSON byte-identically and the
+// re-render reads back exactly what the first render wrote.
+const (
+	ctxBackendKey     = "key"
+	ctxBackendTimeout = "timeout"
 )
 
 // Gate artifact ids, spelled once because they travel in ask contexts and
@@ -164,6 +174,14 @@ type WaveFacts struct {
 	ReviewTasks int
 }
 
+// ReviewerBackend is one entry of the configured reviewer chain that has a
+// real config key: the name as backends.reviewer spells it, and the deadline
+// backends.<name>.timeout currently holds.
+type ReviewerBackend struct {
+	Name    string
+	Timeout time.Duration
+}
+
 // Facts is everything Decide needs beyond the state.
 type Facts struct {
 	Now            time.Time
@@ -178,6 +196,13 @@ type Facts struct {
 	// VerifyTimeout is the deadline one verify command may take
 	// (config.verify_timeout); it is per command, never per run.
 	VerifyTimeout time.Duration
+	// ReviewerBackends are the configured reviewer chain entries that have a
+	// real config key, in preference order — what the review_error gate names
+	// as the deadline to raise (spec A3). There is no health probe:
+	// gatherFacts must not shell out, so it cannot know which backend would
+	// actually run, and this names every candidate rather than the one that
+	// would.
+	ReviewerBackends []ReviewerBackend
 
 	HasSpec       bool
 	HasGoals      bool
@@ -429,6 +454,25 @@ func decideExecute(st *bundle.State, f Facts) (Decision, error) {
 	return Decision{Action: ActTransition, Phase: bundle.PhaseFinish}, nil
 }
 
+// backendsContext renders the reviewer chain for the review_error gate: one
+// entry per backend with a config key, in preference order, each carrying
+// the key the user would raise and the deadline it holds today.
+//
+// The list is []any of map[string]any — the shape JSON decoding produces —
+// so the first render and every re-render of the persisted gate payload see
+// the same types, and the durations are rendered here rather than in the
+// question so that payload is stable bytes.
+func backendsContext(bs []ReviewerBackend) []any {
+	out := make([]any, 0, len(bs))
+	for _, b := range bs {
+		out = append(out, map[string]any{
+			ctxBackendKey:     "backends." + b.Name + ".timeout",
+			ctxBackendTimeout: b.Timeout.String(),
+		})
+	}
+	return out
+}
+
 func lowestWave(st *bundle.State, ids []int) int {
 	w := -1
 	for _, id := range ids {
@@ -493,6 +537,7 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 				// (cli.sliceOf) — so that is the file to point the user at.
 				"error": "see waves/" + strconv.Itoa(aw.N) +
 					"/close.s" + strconv.Itoa(max(1, aw.Slice)) + ".json",
+				ctxBackends: backendsContext(f.ReviewerBackends),
 			},
 		)
 	}

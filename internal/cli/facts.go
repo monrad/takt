@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/config"
 	"github.com/monrad/takt/internal/decide"
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/goals"
@@ -57,7 +58,11 @@ func gatherFacts(
 		// numbers the binary will apply to itself.
 		BackendTimeout: time.Duration(ws.Cfg.Backends.ReviewBudgetTimeout()),
 		VerifyTimeout:  time.Duration(ws.Cfg.VerifyTimeout),
-		Wave:           decide.WaveFacts{Recorded: map[int]bool{}},
+		// The chain the review_error gate names when a review errors, which
+		// is a fact about config alone and so is gathered with the rest of
+		// them (spec A3).
+		ReviewerBackends: reviewerBackends(ws.Cfg.Backends),
+		Wave:             decide.WaveFacts{Recorded: map[int]bool{}},
 	}
 	f.HasSpec = fileNonEmpty(filepath.Join(bdir, "spec.md"))
 	if b, err := os.ReadFile(filepath.Join(bdir, "goals.md")); err == nil {
@@ -106,6 +111,29 @@ func gatherFacts(
 	}
 	err = gatherWaveFacts(&f, bdir, st, events, pi)
 	return f, err
+}
+
+// reviewerBackends is the configured reviewer chain as the review_error gate
+// names it (spec A3): every entry with a real backends.<name>.timeout key, in
+// the preference order backends.reviewer lists them, carrying the deadline
+// that key holds today.
+//
+// An entry config cannot speak for — "fake", or a name it does not know — is
+// skipped rather than rendered as a key that does not exist; backends.reviewer
+// is not validated against a closed set, so such an entry is legal. No health
+// probe is made: gatherFacts must not shell out, so which backend would
+// actually run is unknowable here, and naming every candidate is accurate
+// without one.
+func reviewerBackends(b config.Backends) []decide.ReviewerBackend {
+	out := make([]decide.ReviewerBackend, 0, len(b.Reviewer))
+	for _, name := range b.Reviewer {
+		d, ok := b.Timeout(name)
+		if !ok {
+			continue
+		}
+		out = append(out, decide.ReviewerBackend{Name: name, Timeout: time.Duration(d)})
+	}
+	return out
 }
 
 // planIndex is the one read of plan.index.json a gatherFacts call makes,

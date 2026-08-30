@@ -1,0 +1,9 @@
+{
+  "task": 5,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Added `TestReviewErrorToleratesAMalformedBackendsContext` to internal/decide/decide_test.go covering all four of `backendDeadlines`' defensive guards including the bare-key-no-deadline rendering (mutation-checked, 100% coverage); assessed the \"undeclared workflow artifacts\" finding as a false positive about takt's own bookkeeping and left the facts.go/config duplication for a task that has internal/config in scope.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T13:59:26.685015591Z"
+}
