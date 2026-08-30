@@ -1,0 +1,90 @@
+{
+  "sha": "caac6fb4dde836d2a89767e5ad687aa1b64e5a1c",
+  "verdicts": [
+    {
+      "id": "G1",
+      "verdict": "achieved",
+      "evidence": "committedTasks in skeleton.go implements exactly the three-source fallback chain (event's own tasks list, then close record ids regardless of status, then wave_dispatched event), and TestBuildShippedDerivesTasksForAnEmptyCommitList covers all four outcomes (event list wins, close record, dispatch fallback, dash) plus TestBuildShippedFallbackMatchesTheWholeDispatchKey pins the (wave,slice,attempt) key matching. The 8th golden (waivedWaveDoc) shows the shipped row '4 — Rename the field; 5 — Backfill the old rows' derived from a close record whose task 4 sits at pre-waiver status 'rework'. go test ./internal/finish/... passes (all tests including these green).",
+      "citations": [
+        "internal/finish/skeleton.go:150-177",
+        "internal/finish/skeleton_test.go:313-368",
+        "internal/finish/skeleton_test.go:1069-1071",
+        "internal/finish/skeleton_test.go:645-654"
+      ]
+    },
+    {
+      "id": "G2",
+      "verdict": "achieved",
+      "evidence": "TestWaveTimingsLastCloseWins builds an event log with a wave closed twice under the same (wave,slice,attempt) key and asserts exactly one span for it (last close wins), alongside a reworked wave's two attempts and a two-slice wave, each producing separate spans (4 spans total for 3 distinct waves/keys). Test passes under go test ./internal/finish/.... The waivedWaveDoc golden's Numbers block also holds one wave_timings entry for the re-closed wave.",
+      "citations": [
+        "internal/finish/retro_test.go:284-326",
+        "internal/finish/skeleton_test.go:1097-1113"
+      ]
+    },
+    {
+      "id": "G3",
+      "verdict": "achieved",
+      "evidence": "skeleton_test.go's TestRenderSkeletonGolden table has exactly 8 entries, the 8th named 'waived wave' using waivedWaveIn()/waivedWaveEx(); the waivedWave() helper explicitly builds these via finish.BuildRetroInputs and finish.BuildShipped, not hand-written. go test ./internal/finish/... passes (verified directly, all tests PASS including TestRenderSkeletonGolden).",
+      "citations": [
+        "internal/finish/skeleton_test.go:191-217",
+        "internal/finish/skeleton_test.go:666-681"
+      ]
+    },
+    {
+      "id": "G4",
+      "verdict": "achieved",
+      "evidence": "BuildPR in pr.go inserts issuesSection(...) between goalsSection (## Goals) and the ## Run section; issueRefs recognizes bare #N, https?://.../issues/N URLs, and owner/repo#N cross-repo tokens, de-duplicated in topic order, with the keyword 'Closes'/'closes' repeated per reference, and issuesSection returns empty when no refs are found. TestBuildPRIssuesSection is table-driven over none/one/several/'#49 item 1'/an issue URL/a cross-repo token/a mix of forms, and assertIssuesSection asserts the closing-keyword count equals len(want). All finish tests pass.",
+      "citations": [
+        "internal/finish/pr.go:59-81",
+        "internal/finish/pr.go:157-203",
+        "internal/finish/pr_test.go:192-260"
+      ]
+    },
+    {
+      "id": "G5",
+      "verdict": "achieved",
+      "evidence": "Both commands/takt.md and hosts/copilot/skills/takt/SKILL.md contain the identical sentence 'the `push_pr` run op, and an `archived` stop's `cleanup` commands once the user has confirmed them', attaching the push-and-branch exception to those two ops. crossHostInvariants in prompt_test.go anchors this exact clause and TestPromptInvariantsReadTheSameOnEveryHost checks both files against it. go test ./internal/prompt/... passes (verified directly, all PASS).",
+      "citations": [
+        "commands/takt.md:45",
+        "hosts/copilot/skills/takt/SKILL.md:46",
+        "internal/prompt/prompt_test.go:84-106"
+      ]
+    },
+    {
+      "id": "G6",
+      "verdict": "achieved",
+      "evidence": "task hosts:gen was run and produced no diff to hosts/copilot/skills/takt/SKILL.md (byte-for-byte reproduction), and task hosts:check exits 0. RenderCopilotSkill in internal/hosts/skill.go applies an ordered profile of substitutions (copilotSkillProfile), each declaring an exact expected match count, injecting the plugin manifest version into the handshake substitution, and erroring by name when a from text's count does not match. TestRenderCopilotSkillErrorsWhenARegionDoesNotMatchItsCount covers both the zero-match ('matched 0 times, declared 1') and multi-match ('matched 2 times, declared 1') cases. go test ./internal/hosts/... ./internal/tools/hostgen/... passes.",
+      "citations": [
+        "internal/hosts/skill.go:47-59",
+        "internal/hosts/skill.go:71-143",
+        "internal/hosts/skill_test.go:65-89"
+      ]
+    },
+    {
+      "id": "G7",
+      "verdict": "achieved",
+      "evidence": "grep -rn plainOp --include='*.go' . and grep for plainOp in the design doc both find nothing. archive.go's applyAndStop comment now says every caller 'reaches here holding the lock' (not 'takes no lock'), and design §7.5 step 5 states 'commit `takt(\u003cslug\u003e): archive` — the last commit the archive step takes' (scoped to the step, not the run) plus 'a post-archive `takt retro --rewrite` plus `done --step retro` lands a `takt(\u003cslug\u003e): retro done` bundle commit'. doneRetro's comment in cmd_done.go cites 'design §7.5 step 5 names the post-archive `retro done` commit this records', pointing at that same passage. Neither archive.go nor the design doc contains 'run's last' as a naming of the archive commit.",
+      "citations": [
+        "internal/cli/archive.go:144-148",
+        "internal/cli/cmd_done.go:195-201",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:907-913"
+      ]
+    },
+    {
+      "id": "G8",
+      "verdict": "achieved",
+      "evidence": "Design §5.1's `takt retro --rewrite` row states 'a live holder fails the command outright, naming the holder and its heartbeat, with a hint to `takt unlock` — rather than the `ask: owner` gate §4.6 describes for `next`'. cmdRetro's lockBlocked callback in cmd_retro.go does exactly this: it fails with 'the run is held by '+held.ID+' (heartbeat '+held.Heartbeat.Format(time.RFC3339)+')' and hints 'run `takt unlock --slug \u003cslug\u003e`'.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:371",
+        "internal/cli/cmd_retro.go:68-84"
+      ]
+    },
+    {
+      "id": "G9",
+      "verdict": "achieved",
+      "evidence": "Ran task test (all packages ok, race detector on), task lint (0 issues), and task hosts:check (exit 0) directly — all three exited 0. git diff main -- internal/cli/archive.go internal/cli/cmd_done.go filtered to added/removed lines that are neither blank nor comment-only produced no output, confirming those two files' diff against main is comments-only (#72's scope).",
+      "citations": []
+    }
+  ],
+  "at": "2026-08-30T23:16:51.477931794Z"
+}

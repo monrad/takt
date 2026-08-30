@@ -71,3 +71,6 @@
 {"ts":"2026-08-30T23:11:42.229506913Z","type":"wave_closed","data":{"attempt":3,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":0,"rework":[],"sha":"3f131569c1f5f0d8061edbe2cdb4f64d093bb8d0","slice":1,"wave":1}}
 {"ts":"2026-08-30T23:12:55.776896845Z","type":"wave_cleared","data":{"wave":1}}
 {"ts":"2026-08-30T23:12:55.780710708Z","type":"phase","data":{"from":"execute","to":"finish"}}
+{"ts":"2026-08-30T23:13:11.889476777Z","type":"verify","data":{"commands":41,"passed":true,"sha":"caac6fb4dde836d2a89767e5ad687aa1b64e5a1c"}}
+{"ts":"2026-08-30T23:16:51.479836556Z","type":"goal_check","data":{"achieved":9,"missed":0,"partial":0,"sha":"caac6fb4dde836d2a89767e5ad687aa1b64e5a1c","waived":0}}
+{"ts":"2026-08-30T23:18:11.853976868Z","type":"retro","data":{"hash":"sha256:726117f170dbcd3bb8704966e44d833aef8e6d98a3d0085bd56c59140ace362f"}}
