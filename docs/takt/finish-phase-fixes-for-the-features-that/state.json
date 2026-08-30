@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "finish-phase-fixes-for-the-features-that",
   "topic": "Finish-phase fixes for the features that just shipped: #71, #74, #66, #72 — one run, four small issues, all in internal/finish, internal/cli/archive.go, cmd_done.go, the two host prompts and the design doc.",
-  "phase": "execute",
+  "phase": "finish",
   "created_at": "2026-08-30T18:54:31.082922042Z",
   "branch": "monrad/phase_c",
   "branch_adopted": true,
@@ -127,17 +127,7 @@
       }
     }
   ],
-  "active_wave": {
-    "n": 1,
-    "slice": 1,
-    "attempt": 3,
-    "started_at": "2026-08-30T22:45:34.277525342Z",
-    "session_id": "ef94de62-00ca-4100-b2ae-805c08e99f4d",
-    "tasks": [
-      4
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
