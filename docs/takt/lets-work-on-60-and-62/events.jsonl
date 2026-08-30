@@ -133,3 +133,6 @@
 {"ts":"2026-08-30T14:29:22.068239134Z","type":"goals_attempts_reset","data":{"reason":"recorded"}}
 {"ts":"2026-08-30T14:29:22.081106938Z","type":"gate_opened","data":{"gate":"goals_unmet"}}
 {"ts":"2026-08-30T14:30:31.875644226Z","type":"gate_answered","data":{"choice":"fix","gate":"goals_unmet"}}
+{"ts":"2026-08-30T14:31:03.734728277Z","type":"verify","data":{"commands":77,"passed":true,"sha":"55fcddd61dfe185ef96877963c1fd45b5cf464b2"}}
+{"ts":"2026-08-30T14:35:17.182440913Z","type":"goal_check","data":{"achieved":9,"missed":0,"partial":0,"sha":"55fcddd61dfe185ef96877963c1fd45b5cf464b2","waived":0}}
+{"ts":"2026-08-30T14:36:45.339453624Z","type":"retro","data":{"hash":"sha256:598f988c6c52e37d91cb87218a2e04953ecaf476070d6532725e7f478309ec95"}}

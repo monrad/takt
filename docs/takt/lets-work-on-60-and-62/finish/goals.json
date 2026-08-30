@@ -1,0 +1,99 @@
+{
+  "sha": "55fcddd61dfe185ef96877963c1fd45b5cf464b2",
+  "verdicts": [
+    {
+      "id": "G1",
+      "verdict": "achieved",
+      "evidence": "internal/config/config.go defines defaultBackendTimeout = 15*time.Minute and applies it to both Copilot and Claude in Defaults(); internal/cli/backend_timeout_test.go's TestBackendFallbackMatchesTheShippedDefault drives a Timeout-less ReviewRequest through the fake reviewer and asserts the deadline it actually ran under against config.Defaults().Backends.Copilot.Timeout (and asserts Claude's equals Copilot's, so the two cannot drift). `go test -race -count=1 ./internal/config/... ./internal/backend/...` and `go test -race -count=1 -run TestBackendFallback ./internal/cli/` both exit 0.",
+      "citations": [
+        "internal/config/config.go:192",
+        "internal/config/config.go:212-213",
+        "internal/cli/backend_timeout_test.go:27-58"
+      ]
+    },
+    {
+      "id": "G2",
+      "verdict": "achieved",
+      "evidence": "grep for closeWaveTimeout|reviewTimeoutS|closeTimeoutS|verifyTimeoutS across internal/ (including tests) finds only a comment in decide_test.go, no definitions. internal/deadline/deadline.go defines Close/Verify/GateReview/Session and the Grace constant. The four call sites use it: cmd_close_wave.go calls deadline.Close, cmd_verify.go calls deadline.Verify, cmd_review.go calls deadline.GateReview, decide.go calls deadline.Session/deadline.GateReview/deadline.Close.",
+      "citations": [
+        "internal/deadline/deadline.go:72",
+        "internal/deadline/deadline.go:104-128",
+        "internal/cli/cmd_close_wave.go:100",
+        "internal/cli/cmd_verify.go:109",
+        "internal/cli/cmd_review.go:173",
+        "internal/decide/decide.go:311-316"
+      ]
+    },
+    {
+      "id": "G3",
+      "verdict": "achieved",
+      "evidence": "internal/deadline/deadline.go implements one saturation domain (addDur/mulDur clamp negatives and saturate at MaxDuration) applied uniformly to Close/Verify/GateReview/Session; Close enforces Floor always, sums verifyTerm (undivided by MaxParallel) and reviewTerm (divided by MaxParallel, so Close is non-increasing in it), matching the stated formulas. Tests TestSessionStrictlyContainsEveryInner, TestCloseBudgetsTheWave, TestSaturatesInsteadOfWrapping, TestMonotonicity all exist and `go test -race -count=1 ./internal/deadline/...` exits 0.",
+      "citations": [
+        "internal/deadline/deadline.go:91-166",
+        "internal/deadline/deadline_test.go:63",
+        "internal/deadline/deadline_test.go:103",
+        "internal/deadline/deadline_test.go:288",
+        "internal/deadline/deadline_test.go:371"
+      ]
+    },
+    {
+      "id": "G4",
+      "verdict": "achieved",
+      "evidence": "internal/deadline/deadline.go's verifyTerm multiplies VerifyTimeout by VerifyCommands undivided by MaxParallel (serial), and reviewTerm multiplies BackendTimeout by 2 (blind + scoped pass) and by ceil(ReviewTasks/MaxParallel) (concurrent), matching the declared shapes exactly. internal/decide/decide_test.go's TestExecTimeoutsStrictlyContainTheBinaryCaps asserts the emitted exec op's TimeoutS for spec/plan review and close-wave each strictly exceeds the binary's own cap (deadline.GateReview/closeCap). `go test -race -count=1 ./internal/decide/...` exits 0.",
+      "citations": [
+        "internal/deadline/deadline.go:130-141",
+        "internal/decide/decide_test.go:108-144"
+      ]
+    },
+    {
+      "id": "G5",
+      "verdict": "achieved",
+      "evidence": "internal/decide/questions.go's reviewErrorRetryText/backendDeadlines names backends.\u003cname\u003e.timeout and its current deadline per configured backend with a key, skips entries lacking one, and falls back to the literal backendKeyPlaceholder ('backends.\u003cname\u003e.timeout') when nothing is named. internal/decide/decide_test.go's TestReviewErrorNamesTheBackendTimeouts covers a fully-configured set, a set with a keyless entry skipped, and an empty chain. internal/cli/facts.go's comment near gatherFacts states no health probe is made. `go test -race -count=1 -run 'TestReviewErrorNamesTheBackendTimeouts|TestGatherFactsFillsReviewerBackends' ./internal/decide/... ./internal/cli/...` exits 0.",
+      "citations": [
+        "internal/decide/questions.go:339-359",
+        "internal/decide/decide_test.go:1182-1224",
+        "internal/cli/facts.go:123-125"
+      ]
+    },
+    {
+      "id": "G6",
+      "verdict": "achieved",
+      "evidence": "internal/cli/finish_test.go's TestPushPRLeavesTheBodyInHead drives next to the push_pr op, asserts docs/takt/demo/finish/pr.md is present in `git ls-tree HEAD`, asserts the commit subject is 'takt(demo): pr body', then replays next and asserts HEAD's sha is unchanged. `go test -race -count=1 -run 'TestPushPR|TestPreparePushPR' ./internal/cli/` exits 0.",
+      "citations": [
+        "internal/cli/finish_test.go:798-813"
+      ]
+    },
+    {
+      "id": "G7",
+      "verdict": "achieved",
+      "evidence": "internal/cli/archive.go's prCleanup: CommitExists error or IsAncestor error both fall back to offering the plain push (never returning an error, so the archived stop never fails); missing tracking ref returns the -u form; ancestor-true returns nil (no cleanup); otherwise returns the plain push. internal/cli/archive_test.go's TestArchivedPROffersThePushUntilItIsDone exercises all four states in sequence (no tracking ref, fully pushed, commits the remote lacks, and a diverged branch) including running the printed command; internal/cli/archive_internal_test.go's TestArchivedPRPushIsOfferedWhenGitCannotAnswer and TestArchivedPRPushIsOfferedWhenTheAncestryReadFails inject failures on each of the two git reads and assert no error and the push is still offered. `go test -race -count=1 -run 'TestArchived|TestBranchFinish' ./internal/cli/` exits 0.",
+      "citations": [
+        "internal/cli/archive.go:235-254",
+        "internal/cli/archive_test.go:667-732",
+        "internal/cli/archive_internal_test.go:46-77"
+      ]
+    },
+    {
+      "id": "G8",
+      "verdict": "achieved",
+      "evidence": "Re-verified all four claimed fixes against the file as it now stands and against the code, not just the commit message. (a) §4.7's Commits bullet now lists `takt(\u003cslug\u003e): pr body` alongside the wave/plan→execute/archive commits, matching cmd_next.go's preparePushPR which calls commitBundle(..., \"pr body\") before returning the op. (b) §7.5 step 4 now states 'next commits that body as takt(\u003cslug\u003e): pr body ... before handing the op over', matching preparePushPR committing at lines 1063-1068 prior to filling inputs and returning at line 1072-1073 (the emit/handoff happens later in cmd_next.go). (c) §5.2 no longer says the push is offered 'exactly when the remote-tracking ref is missing commits' alone; it now reads '...when git says the branch holds commits the remote-tracking ref does not — and also when either git read fails...', which genuinely adds the failed-read case rather than restating the old text, and matches archive.go's prCleanup returning the push on both CommitExists and IsAncestor errors. (d) §7.4's review_error line now states the retry option names backends.\u003cname\u003e.timeout and its current deadline, with the literal-key fallback for keyless chains, exactly matching questions.go's reviewErrorRetryText/backendDeadlines/backendKeyPlaceholder. Also re-checked the original G8 evidence pointers: no '\"timeout\": \"5m\"' remains in README.md or the design doc (both show \"15m\"), §7.5 step 5 describes the pr remote-tracking check rather than 'asks git for nothing', and §13's Timeouts-everywhere bullet states internal/deadline derives each deadline from config and plan. Found no other doc/code contradiction in the sections touched by this run.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:337-342",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:484-492",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:814-822",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:873-881",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:1199-1205",
+        "internal/cli/cmd_next.go:1043-1073",
+        "internal/cli/archive.go:235-254",
+        "internal/decide/questions.go:325-359"
+      ]
+    },
+    {
+      "id": "G9",
+      "verdict": "achieved",
+      "evidence": "Ran `task check` (build + `go test ./... -race -count=1` + `golangci-lint run ./...` + `hosts:check`) myself in the repo root: build succeeded, every package's tests reported ok, golangci-lint reported '0 issues.', and hostgen --check produced no diff output. Captured exit status of the whole `task check` invocation was 0.",
+      "citations": []
+    }
+  ],
+  "at": "2026-08-30T14:35:17.180722156Z"
+}
