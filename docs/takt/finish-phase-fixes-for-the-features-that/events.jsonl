@@ -20,3 +20,14 @@
 {"ts":"2026-08-30T20:55:23.048655333Z","type":"alignment_verdicts","data":{"count":8}}
 {"ts":"2026-08-30T20:55:27.754232436Z","type":"plan_loaded","data":{"tasks":4,"waves":2}}
 {"ts":"2026-08-30T20:55:27.75425848Z","type":"phase","data":{"from":"plan","to":"execute"}}
+{"ts":"2026-08-30T20:55:27.783047344Z","type":"wave_dispatched","data":{"attempt":1,"slice":1,"tasks":[1,2,3],"wave":0}}
+{"ts":"2026-08-30T21:00:25.072720771Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":2}}
+{"ts":"2026-08-30T21:06:20.829993033Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":1}}
+{"ts":"2026-08-30T21:08:40.784984715Z","type":"task_recorded","data":{"attempt":1,"status":"done","task":3}}
+{"ts":"2026-08-30T21:11:27.603285296Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"simplicity","slice":1,"wave":0}}
+{"ts":"2026-08-30T21:13:45.483988135Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":2,"mode":"docs","slice":1,"wave":0}}
+{"ts":"2026-08-30T21:13:52.461667301Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"correctness","slice":1,"wave":0}}
+{"ts":"2026-08-30T21:14:45.009378449Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":0}}
+{"ts":"2026-08-30T21:15:09.961903122Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":7,"mode":"tests","slice":1,"wave":0}}
+{"ts":"2026-08-30T21:15:29.020521741Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":4,"mode":"consistency","slice":1,"wave":0}}
+{"ts":"2026-08-30T21:21:47.684518971Z","type":"internal_review_recorded","data":{"attempt":1,"candidates":13,"confirmed":13,"slice":1,"wave":0}}
