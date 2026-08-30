@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/op"
 )
 
@@ -147,6 +148,20 @@ type WaveFacts struct {
 	Recorded map[int]bool // task id → digest present for this attempt
 	Close    *CloseFacts  // nil until close-wave wrote the slice record
 	Internal InternalFacts
+
+	// VerifyCommands is how many verify commands the plan index holds
+	// across the active wave's pending tasks — the set close-wave grades,
+	// each command bounded by verify_timeout and run serially.
+	VerifyCommands int
+	// ReviewTasks is how many of the active wave's pending tasks get a
+	// backend review: all of them when review.tasks is on, none of them
+	// when it is off.
+	//
+	// Both counts are zero when the plan index cannot be read or parsed,
+	// because close-wave then fails on that index before it verifies or
+	// reviews anything — a budget for work the binary never reaches is not
+	// a containment, and the floor is the honest deadline for it.
+	ReviewTasks int
 }
 
 // Facts is everything Decide needs beyond the state.
@@ -157,6 +172,12 @@ type Facts struct {
 	Recover        bool
 	LockTTL        time.Duration
 	WaveStaleAfter time.Duration
+	// BackendTimeout is the deadline one backend review may take
+	// (backends.<name>.timeout, worst case across the reviewer chain).
+	BackendTimeout time.Duration
+	// VerifyTimeout is the deadline one verify command may take
+	// (config.verify_timeout); it is per command, never per run.
+	VerifyTimeout time.Duration
 
 	HasSpec       bool
 	HasGoals      bool
@@ -261,10 +282,14 @@ func run(step, narration string, inputs map[string]any) Decision {
 		Done: fmt.Sprintf("takt done --step %s --slug %v", step, inputs["slug"])}}
 }
 
-const (
-	reviewTimeoutS = 900
-	closeTimeoutS  = 1800
-)
+// sessionSeconds is the timeout an exec op carries for a command the binary
+// caps at inner: [deadline.Session] of that cap, in whole seconds. It is
+// strictly longer than inner everywhere below saturation, so the binary
+// reports its own timeout as a result instead of being cut off by the
+// session that asked for the work.
+func sessionSeconds(inner time.Duration) int {
+	return int(deadline.Session(inner).Seconds())
+}
 
 func decideBrainstorm(st *bundle.State, f Facts) Decision {
 	in := map[string]any{ctxSlug: st.Slug, "topic": st.Topic}
@@ -293,7 +318,8 @@ func decideBrainstorm(st *bundle.State, f Facts) Decision {
 				ctxSlug: st.Slug, ctxGate: specGate, ctxAttempts: f.SpecRounds,
 			})
 		}
-		return exec("review the spec", "takt review spec --slug "+st.Slug, reviewTimeoutS)
+		return exec("review the spec", "takt review spec --slug "+st.Slug,
+			sessionSeconds(deadline.GateReview(f.BackendTimeout)))
 	}
 	return Decision{Action: ActTransition, Phase: bundle.PhasePlan}
 }
@@ -326,7 +352,8 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 				},
 			)
 		}
-		return exec("review the plan", "takt review plan --slug "+st.Slug, reviewTimeoutS)
+		return exec("review the plan", "takt review plan --slug "+st.Slug,
+			sessionSeconds(deadline.GateReview(f.BackendTimeout)))
 	}
 	if st.Config.Alignment {
 		switch {
@@ -442,7 +469,13 @@ func decideActiveWave(st *bundle.State, aw *bundle.ActiveWave, f Facts) Decision
 		return exec(
 			fmt.Sprintf("closing wave %d: verify + review %d tasks", aw.N, len(aw.Tasks)),
 			"takt close-wave --slug "+st.Slug,
-			closeTimeoutS,
+			sessionSeconds(deadline.Close(deadline.Budget{
+				VerifyTimeout:  f.VerifyTimeout,
+				VerifyCommands: f.Wave.VerifyCommands,
+				BackendTimeout: f.BackendTimeout,
+				ReviewTasks:    f.Wave.ReviewTasks,
+				MaxParallel:    st.Config.MaxParallel,
+			})),
 		)
 	}
 	if c.Committed {

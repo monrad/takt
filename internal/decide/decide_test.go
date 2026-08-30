@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/deadline"
 	"github.com/monrad/takt/internal/decide"
 	"github.com/monrad/takt/internal/op"
 )
@@ -34,9 +35,125 @@ func state(phase string) *bundle.State {
 	}
 }
 
+// The deadline terms every fixture carries (spec A2.2): the shipped backend
+// timeout, the shipped verify_timeout, and the work of the 8-task × 2-command
+// wave the spec sizes — state()'s max_parallel is 8, so the wave is one
+// review round.
+const (
+	factBackendTimeout = 15 * time.Minute
+	factVerifyTimeout  = 10 * time.Minute
+	factVerifyCommands = 16
+	factReviewTasks    = 8
+	factMaxParallel    = 8
+)
+
 func facts() decide.Facts {
 	return decide.Facts{Now: t0, SessionID: "S", LockTTL: 10 * time.Minute, WaveStaleAfter: 30 * time.Minute,
-		Wave: decide.WaveFacts{Recorded: map[int]bool{}}}
+		BackendTimeout: factBackendTimeout, VerifyTimeout: factVerifyTimeout,
+		Wave: decide.WaveFacts{
+			Recorded: map[int]bool{}, VerifyCommands: factVerifyCommands, ReviewTasks: factReviewTasks,
+		}}
+}
+
+// closeCap is the cap the binary applies to itself for the close of the wave
+// facts() describes — the same [deadline.Budget] internal/cli's closeBudget
+// builds from the same run.
+func closeCap() time.Duration {
+	return deadline.Close(deadline.Budget{
+		VerifyTimeout:  factVerifyTimeout,
+		VerifyCommands: factVerifyCommands,
+		BackendTimeout: factBackendTimeout,
+		ReviewTasks:    factReviewTasks,
+		MaxParallel:    factMaxParallel,
+	})
+}
+
+// specGateFacts is a brainstorm run whose spec gate is the only thing left,
+// so row 7 emits `exec takt review spec`.
+func specGateFacts() decide.Facts {
+	f := facts()
+	f.HasSpec, f.HasGoals, f.GoalsFrozen = true, true, true
+	return f
+}
+
+// planGateFacts is a plan run whose plan gate is the only thing left, so
+// row 9 emits `exec takt review plan`.
+func planGateFacts() decide.Facts {
+	f := facts()
+	f.HasIndex, f.IndexValid = true, true
+	return f
+}
+
+// closeWaveState is the wave whose every task has reported, so row 15 emits
+// `exec takt close-wave`.
+func closeWaveState() *bundle.State {
+	st := execState()
+	st.ActiveWave = &bundle.ActiveWave{N: 0, Attempt: 1, StartedAt: t0, SessionID: "S", Tasks: []int{1, 2}}
+	return st
+}
+
+// TestExecTimeoutsStrictlyContainTheBinaryCaps is the decide half of spec
+// A2.2 and goal G2: an `exec` op's timeout_s is no longer a fixed constant
+// but [deadline.Session] of the very cap the binary will apply to the same
+// work, computed from the same facts the binary computes its own from.
+//
+// Both halves of that are asserted, because either alone is satisfiable by
+// an accident. The equality pins *which* cap each site wraps — a close op
+// carrying GateReview's number would pass a bare inequality — and the strict
+// inequality is the containment itself: the session must outlast the binary,
+// so a command that hits its own deadline reports the timeout as a result
+// instead of being killed mid-write. reviewTimeoutS (900s = exactly the new
+// 15m backend timeout) and closeTimeoutS (1800s, under the 30m cap it wrapped)
+// both failed that, which is why they are gone.
+func TestExecTimeoutsStrictlyContainTheBinaryCaps(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		st      *bundle.State
+		f       decide.Facts
+		command string
+		inner   time.Duration
+	}{
+		{
+			"spec review", state(bundle.PhaseBrainstorm), specGateFacts(),
+			"takt review spec --slug demo", deadline.GateReview(factBackendTimeout),
+		},
+		{
+			"plan review", state(bundle.PhasePlan), planGateFacts(),
+			"takt review plan --slug demo", deadline.GateReview(factBackendTimeout),
+		},
+		{
+			"close wave", closeWaveState(), func() decide.Facts {
+				f := facts()
+				f.Wave.Recorded = map[int]bool{1: true, 2: true}
+				return f
+			}(),
+			"takt close-wave --slug demo", closeCap(),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			d := mustDecide(t, c.st, c.f)
+			if d.Action != decide.ActExec || d.Op.Command != c.command {
+				t.Fatalf("%+v", d)
+			}
+			assertSessionContains(t, d.Op.TimeoutS, c.inner)
+		})
+	}
+}
+
+// assertSessionContains is the pair of claims every exec op above makes:
+// its timeout_s is Session of the named cap, and it strictly exceeds that
+// cap so the binary always outlives its own deadline.
+func assertSessionContains(t *testing.T, timeoutS int, inner time.Duration) {
+	t.Helper()
+	if want := int(deadline.Session(inner).Seconds()); timeoutS != want {
+		t.Fatalf("timeout_s = %d, want Session(%s) = %d", timeoutS, inner, want)
+	}
+	if capS := int(inner.Seconds()); timeoutS <= capS {
+		t.Fatalf("timeout_s %d must strictly exceed the binary's own cap %s (%ds)", timeoutS, inner, capS)
+	}
 }
 
 func execState() *bundle.State {

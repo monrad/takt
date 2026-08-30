@@ -60,7 +60,11 @@ func headCoveredAt(ctx context.Context, ws *workspace, bdir, head, sha string) (
 	return ws.Repo.DiffQuietExcluding(ctx, sha, head, rel)
 }
 
-// gatherFinishFacts fills rows 20–26's inputs.
+// gatherFinishFacts fills rows 20–26's inputs — every one of them off git
+// and the finish records. The one finish fact that comes off the plan index
+// instead, row 20's verify command count, is filled by gatherFacts from the
+// index it has already read (verifyCommandCount): healFinish calls this
+// gather too, and it needs neither the index nor the count.
 func gatherFinishFacts(ctx context.Context, ws *workspace, bdir string, st *bundle.State) (decide.FinishFacts, error) {
 	var fin decide.FinishFacts
 	head, err := ws.Repo.HeadSHA(ctx)
@@ -111,6 +115,30 @@ func gatherFinishFacts(ctx context.Context, ws *workspace, bdir string, st *bund
 		fin.DiscardBlocked = df.MergeBlocked
 	}
 	return fin, nil
+}
+
+// verifyCommandCount is how many commands `takt verify` will run at HEAD:
+// the union of the plan's per-task commands and the user's extras, over the
+// index gatherFacts has already read. It is the same union verifyAtHead
+// assembles from the same two files (cmd_verify.go) — the one place this
+// count has to stay in step with — so the deadline row 20's exec op carries
+// is sized for the run the binary then performs.
+//
+// An index that could not be read is this gather's failure rather than a
+// count of zero. Emitting an exec op whose timeout was computed from
+// Verify(per, 0) while the binary goes on to verify a real union is the
+// fail-open containment break the derived deadlines exist to close — and
+// `takt verify` reads that same file through readIndex, so a run that
+// cannot be counted here is one that cannot be verified either.
+func verifyCommandCount(bdir string, pi planIndex) (int, error) {
+	if pi.err != nil {
+		return 0, pi.err
+	}
+	extra, err := finish.ReadExtra(bdir)
+	if err != nil {
+		return 0, err
+	}
+	return len(finish.UnionCommands(pi.idx, extra)), nil
 }
 
 // dispositionFacts is what branch_finish may offer (spec §7.5 step 4).
