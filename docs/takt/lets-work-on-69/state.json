@@ -38,14 +38,23 @@
     {
       "id": 1,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "internal/decide/decide.go",
         "internal/decide/questions.go",
         "internal/decide/decide_plan_cap_test.go"
       ],
       "class": "implement",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "decidePlan now asks gate_review_capped once PlanRounds reaches maxAgentAttempts, placed after the rework branch so a pending verdict still wins, with the new Facts.PlanRounds field, a gate-agnostic capped-question doc comment, and two new tests in internal/decide/decide_plan_cap_test.go that leave decide_test.go untouched.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T16:58:24.355356283Z"
+      }
     },
     {
       "id": 2,
@@ -71,13 +80,22 @@
     {
       "id": 4,
       "wave": 0,
-      "status": "pending",
+      "status": "done",
       "files": [
         "commands/takt.md",
         "hosts/copilot/skills/takt/SKILL.md"
       ],
       "class": "mechanical",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 4,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Updated both hand-maintained prompt files with identical edit to gate_review_capped description, changing \"the spec review\" to \"a spec or plan review\" on lines 39 and 40 respectively. All verification checks pass.",
+        "blockers": "none",
+        "model": "haiku",
+        "recorded_at": "2026-08-30T16:56:42.715656214Z"
+      }
     },
     {
       "id": 5,
@@ -91,7 +109,18 @@
       "attempt": 0
     }
   ],
-  "active_wave": null,
+  "active_wave": {
+    "n": 0,
+    "slice": 1,
+    "attempt": 1,
+    "started_at": "2026-08-30T16:55:10.133962843Z",
+    "session_id": "e7d58452-778a-4996-8f76-7ee51117266d",
+    "tasks": [
+      1,
+      4
+    ],
+    "baseline": []
+  },
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,

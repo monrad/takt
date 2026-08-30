@@ -224,6 +224,10 @@ type Facts struct {
 	// so it is the one that needs a cap most (fixed-point design §8).
 	SpecRounds int
 
+	// PlanRounds is how many plan reviews have run since the newest
+	// gate_rounds_reset for the plan gate.
+	PlanRounds int
+
 	SpecGate  GateStatus
 	PlanGate  GateStatus
 	Alignment AlignmentFacts
@@ -376,6 +380,14 @@ func decidePlan(st *bundle.State, f Facts) Decision {
 					"reason":   f.PlanGate.Reason,
 				},
 			)
+		}
+		// After the needsRework branch, never before it: a rework/reject/error
+		// verdict waiting to be answered outranks the cap, so the user is shown
+		// gate_review with its revise while there is a verdict on the table.
+		if f.PlanRounds >= maxAgentAttempts {
+			return ask(gateReviewCapped, map[string]any{
+				ctxSlug: st.Slug, ctxGate: planGate, ctxAttempts: f.PlanRounds,
+			})
 		}
 		return exec("review the plan", "takt review plan --slug "+st.Slug,
 			sessionSeconds(deadline.GateReview(f.BackendTimeout)))

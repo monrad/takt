@@ -1,0 +1,89 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T17:06:42.507904208Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "nit",
+      "file": "internal/decide/decide.go",
+      "line": 345,
+      "title": "Order-is-load-bearing comment added only on the plan side",
+      "detail": "decidePlan's new cap check (decide.go:384-391) gets a four-line comment explaining why the needsRework check must precede the round-cap check. The identical shape in decideBrainstorm (decide.go:345-349), which decidePlan explicitly mirrors, carries no such comment. A future reader diffing the two blocks may wonder whether the spec-gate ordering is equally load-bearing but undocumented, or whether the two blocks have diverged. This matches what the task brief asked for (the spec branch's order is only 'implied' by shape), so it is not a defect, just a minor asymmetry worth being aware of if the two blocks are touched again.",
+      "id": "c1",
+      "task": 1,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/decide/decide_plan_cap_test.go",
+      "line": 124,
+      "title": "Option-count assertion doesn't verify option identity",
+      "detail": "TestPlanReviewRoundsAreCapped checks `len(choices) != 3` but never checks the actual Choice values/order (e.g. accept/retry/stop), so a bug in questionGateReviewCapped that returned three wrong options (or the wrong order) would still pass this test. This exactly mirrors the same weak assertion in the precedent TestSpecReviewRoundsAreCapped (internal/decide/decide_test.go:1099), so it's a pre-existing pattern rather than a new regression, but since decide_plan_cap_test.go is new code in this diff and free of the G7 no-edit constraint that applies to decide_test.go, it could have asserted `slices.Equal(choices, []string{\"accept\", \"retry\", \"stop\"})` (as another test does at decide_test.go:987 for a related gate) for a stronger guarantee.",
+      "id": "c2",
+      "task": 1,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/prompt/prompt_test.go",
+      "line": 84,
+      "title": "gate_review_capped sentence edited in two files isn't added to crossHostInvariants",
+      "detail": "Task 4 edits the identical `gate_review_capped is a spec or plan review after three review rounds...` sentence in commands/takt.md:39 and hosts/copilot/skills/takt/SKILL.md:40, and the task note correctly observes crossHostInvariants (internal/prompt/prompt_test.go:84) doesn't cover it so no test edit is 'needed'. But that list exists precisely to catch one file drifting from the other on a hand-maintained sentence like this one (see the list's own doc comment at line 78-83). As written, if a future edit changes this sentence in only one of the two files, TestPromptNamesEveryOpGateStepAndReason and TestPromptInvariantsReadTheSameOnEveryHost would both still pass — the former only checks that the gate id token `gate_review_capped` appears, not the surrounding prose. This is a real, currently-unpinned gap that intersects the exact line this diff changed.",
+      "id": "c3",
+      "task": 0,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "decidePlan's new cap check carries a 4-line comment explaining that the needsRework check must run before the round-cap check: 'After the needsRework branch, never before it: a rework/reject/error verdict waiting to be answered outranks the cap, so the user is shown gate_review with its revise while there is a verdict on the table.' (decide.go:384-386) directly above `if f.PlanRounds \u003e= maxAgentAttempts {` (decide.go:387). The identical-shape block in decideBrainstorm — `if needsRework(f.SpecGate) { ... }` followed immediately by `if f.SpecRounds \u003e= maxAgentAttempts { ... }` — has no such comment anywhere nearby (decide.go:331-349), and no package-level comment (e.g. on needsRework at decide.go:356 or maxAgentAttempts at decide.go:250-251) documents the ordering rule generically either. The diff itself only touches the decidePlan side (diff hunk lines 42-53), leaving decideBrainstorm's block exactly as it was, so the asymmetry the candidate describes is real and newly introduced by this diff.",
+      "citations": [
+        "internal/decide/decide.go:331-349",
+        "internal/decide/decide.go:384-391"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "decide_plan_cap_test.go:120-126 builds `choices` from `d.Op.Options` and only asserts `if len(choices) != 3 { t.Fatalf(...) }` (line 124) — it never checks the actual Choice strings or their order. This is byte-for-byte the same weak pattern as the precedent TestSpecReviewRoundsAreCapped, which builds `choices` at decide_test.go:1095-1097 and asserts `if len(choices) != 3 { t.Fatalf(\"choices = %v, want accept/retry/stop\", choices) }` at decide_test.go:1099-1101. Meanwhile a stronger pattern exists elsewhere in the same package: TestQuestionGateReviewOnAnErrorOffersRetryNotRevise asserts `if !slices.Equal(choices, []string{\"retry\", \"accept\", \"stop\"}) { t.Fatalf(...) }` at decide_test.go:987-989. Since questionGateReviewCapped (questions.go:192-210) builds the same three fixed options regardless of which gate (spec or plan) invoked it, and no other test pins the identity/order of those options for either gate, a bug that returned the wrong Choice values or wrong order would pass both TestSpecReviewRoundsAreCapped and the new TestPlanReviewRoundsAreCapped undetected.",
+      "citations": [
+        "internal/decide/decide_plan_cap_test.go:120-126",
+        "internal/decide/decide_test.go:1095-1101",
+        "internal/decide/decide_test.go:987-989"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "commands/takt.md:39 and hosts/copilot/skills/takt/SKILL.md:40 both carry the edited sentence '`gate_review_capped` is a spec or plan review after three review rounds without the gate closing — options `accept` ... `retry` ... `stop`.' The crossHostInvariants list at prompt_test.go:84-100 (whose own doc comment at prompt_test.go:78-83 says it exists precisely to catch one file drifting from the other on a hand-maintained sentence) does not include this sentence or any fragment of it. The only other test that touches the Gates section, TestPromptNamesEveryOpGateStepAndReason (prompt_test.go:26-53), does `gates := prompt.Section(md, \"Gates\"); for _, g := range v.Gates { mustContain(t, gates, \"`\"+g+\"`\", ...) }` (prompt_test.go:40-43) — this only checks that the backtick-quoted gate id token `gate_review_capped` appears somewhere in the section, and it loads only commands/takt.md (promptPath), never touching the Copilot SKILL.md at all. So neither test would catch this exact sentence drifting between the two files (or being reworded to lose meaning) on a future edit; the only check that pinned the two copies to read identically here was the one-time task-level grep verification (docs/takt/lets-work-on-69/waves/0/task-4.a1.md:20-21), not a committed regression test.",
+      "citations": [
+        "internal/prompt/prompt_test.go:84-100",
+        "internal/prompt/prompt_test.go:40-43",
+        "commands/takt.md:39"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3"
+  ]
+}
