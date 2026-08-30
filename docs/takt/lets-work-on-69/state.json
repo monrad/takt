@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "lets-work-on-69",
   "topic": "lets work on #69",
-  "phase": "brainstorm",
+  "phase": "plan",
   "created_at": "2026-08-30T15:14:01.445782654Z",
   "branch": "monrad/review_capped",
   "branch_adopted": true,
@@ -32,7 +32,7 @@
   "goals_hash": "sha256:de3cf62297d029e915ace8b5a9c3be3013bce4fbc0428c593b50ff19b35079a8",
   "gates": {
     "plan": "pending",
-    "spec": "pending"
+    "spec": "ok"
   },
   "tasks": [],
   "active_wave": null,
