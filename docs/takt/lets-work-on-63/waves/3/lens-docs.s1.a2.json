@@ -1,0 +1,18 @@
+{
+  "lens": "docs",
+  "wave": 3,
+  "slice": 1,
+  "attempt": 2,
+  "model": "sonnet",
+  "recorded_at": "2026-08-29T13:50:52.04883576Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 884,
+      "title": "§7.5 step 5's \"archive commit is the run's last one\" / \"bundle directory... otherwise untouched once archived\" invariant is now false and no task updates it",
+      "detail": "Step 5 states \"commit `takt(\u003cslug\u003e): archive`. That commit is the run's last one\" (line 884) and later \"there is no write after the archive commit\" / \"the bundle directory is otherwise untouched once archived\" (lines 902-909), describing the only post-archive bundle-write mechanism as a later `next` sweeping dirty files into a *second archive commit*. This diff's `finishOrArchivedOnly` (internal/cli/cmd_verify.go:64) lets `done --step retro` run in `archived`, and `doneRetro`'s own doc comment (internal/cli/cmd_done.go:195-201) plus TestDoneRetroAcceptedInArchivedPhase (internal/cli/finish_test.go, asserting `git log -1` contains \"retro done\") confirm it lands its own distinct `\"retro done\"` bundle commit after the archive commit — a mechanism §7.5 step 5 does not describe and one that falsifies both the \"last commit\" and \"untouched once archived\" claims for every disposition, not just `keep`. cmd_done.go:200-201's own comment (\"design §7.5 step 5 already contemplates post-archive bundle writes\") asserts the design doc already covers this, but step 5 only contemplates the second-archive-commit sweep, not an independent `done`-issued commit. No task in this run's plan (docs/takt/lets-work-on-63/plan.md) is scoped to fix step 5's text — task 8 explicitly restricts its edits and verify checks to the `3. **Retro**`–`4. **Disposition**` span of step 3 (plan.md:92-97) — so this contradiction ships undocumented. (Already logged as a follow-up in docs/takt/lets-work-on-63/follow-ups.json at wave 3, but it remains unfixed as of this diff.)",
+      "task": 0
+    }
+  ]
+}

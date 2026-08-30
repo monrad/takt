@@ -138,6 +138,26 @@
       "detail": "writeRetroArtifacts now reads spec.md and returns its error directly (retro.go:303-306), a code path that did not exist before this diff (the moved writeRetroInputs never touched spec.md). The finish_test.go file already has an established convention for exercising exactly this kind of 'broken bundle' failure (assertNextFailsNaming, used for missing/malformed goals.md and unreadable finish/goals.json in TestPushPRBodyListsGoalVerdicts), but no analogous case renames/removes spec.md before reaching the retro op to confirm the error surfaces and names the file the way the sibling checks do. Since the comment above the read explicitly documents the return-on-error choice as deliberate, a quick assertNextFailsNaming-style case would close the gap; as is, this branch is only exercised by inspection, not by any test in the wave.",
       "source": "internal",
       "ts": "2026-08-29T13:17:19.655489492Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 884,
+      "wave": 3,
+      "title": "Design doc's §7.5 step 5 \"archive commit is the run's last one\" invariant is now false, and no task in the plan is scoped to fix it",
+      "detail": "§7.5 step 5 states \"commit `takt(\u003cslug\u003e): archive`. That commit is the run's last one, which is what lets a merge carry the archived bundle\" (lines 884-885), and describes the only mechanism by which the bundle directory can still change post-archive as a later `next` sweeping dirty files into a *second archive commit* (lines 902-911: \"the bundle directory is otherwise untouched once archived\"). This diff's `finishOrArchivedOnly` lets `done --step retro` run in the `archived` phase and, per the new `doneRetro` doc comment (internal/cli/cmd_done.go:189-191) and TestDoneRetroAcceptedInArchivedPhase, produce its own ordinary `\"retro done\"` bundle commit landing after the archive commit — a distinct mechanism the design doc doesn't describe, and one that falsifies the \"last one\" claim outright for the `keep` disposition. Task 8 (the dedicated docs task for this section) explicitly scopes its edits, and its own verify checks, to only the `3. **Retro**`–`4. **Disposition**` markers of step 3 (docs/takt/lets-work-on-63/plan.md:92-97), so step 5's stale text is left unaddressed by the plan as written.",
+      "source": "internal",
+      "ts": "2026-08-29T13:33:35.964938182Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 884,
+      "wave": 3,
+      "title": "§7.5 step 5's \"archive commit is the run's last one\" / \"bundle directory... otherwise untouched once archived\" invariant is now false and no task updates it",
+      "detail": "Step 5 states \"commit `takt(\u003cslug\u003e): archive`. That commit is the run's last one\" (line 884) and later \"there is no write after the archive commit\" / \"the bundle directory is otherwise untouched once archived\" (lines 902-909), describing the only post-archive bundle-write mechanism as a later `next` sweeping dirty files into a *second archive commit*. This diff's `finishOrArchivedOnly` (internal/cli/cmd_verify.go:64) lets `done --step retro` run in `archived`, and `doneRetro`'s own doc comment (internal/cli/cmd_done.go:195-201) plus TestDoneRetroAcceptedInArchivedPhase (internal/cli/finish_test.go, asserting `git log -1` contains \"retro done\") confirm it lands its own distinct `\"retro done\"` bundle commit after the archive commit — a mechanism §7.5 step 5 does not describe and one that falsifies both the \"last commit\" and \"untouched once archived\" claims for every disposition, not just `keep`. cmd_done.go:200-201's own comment (\"design §7.5 step 5 already contemplates post-archive bundle writes\") asserts the design doc already covers this, but step 5 only contemplates the second-archive-commit sweep, not an independent `done`-issued commit. No task in this run's plan (docs/takt/lets-work-on-63/plan.md) is scoped to fix step 5's text — task 8 explicitly restricts its edits and verify checks to the `3. **Retro**`–`4. **Disposition**` span of step 3 (plan.md:92-97) — so this contradiction ships undocumented. (Already logged as a follow-up in docs/takt/lets-work-on-63/follow-ups.json at wave 3, but it remains unfixed as of this diff.)",
+      "source": "internal",
+      "ts": "2026-08-30T13:28:22.95759054Z"
     }
   ]
 }

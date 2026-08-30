@@ -1,0 +1,9 @@
+{
+  "task": 6,
+  "attempt": 2,
+  "status": "done",
+  "summary": "done --step retro` now runs its phase and prose-slot guards before the replay short-circuit, so it is accepted in `archived`, still refused in `execute` (even for a matching receipt), and refuses an unfilled `\u003c!-- prose:` slot; the reviewer's nits on double conversion, the untested read-error branch and the unterminated-marker branch are also resolved.",
+  "blockers": "none — except the `finish or archived` predicate shared with internal/cli/cmd_status.go:154, which is outside this task's declared files and left for a follow-up.",
+  "model": "opus",
+  "recorded_at": "2026-08-29T13:43:20.807476122Z"
+}
