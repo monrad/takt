@@ -1,0 +1,38 @@
+{
+  "verdict": "rework",
+  "summary": "Two blocking factual mismatches would leave the primary defects unfixed: close records do not mark waived task results as waived, and the proposed issue parser ignores the repository's supported issue-URL topic form. The assumptions table is present and most goals otherwise track the spec.",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "spec.md",
+      "line": 110,
+      "title": "The close-record fallback excludes the waived tasks it is intended to recover",
+      "detail": "`takt waive` changes only `state.Tasks[i].Status`; `carryForward` copies the retired `wave.TaskResult` unchanged, preserving its earlier `failed`, `blocked`, or `rework` status. Therefore filtering close-record results to `done` or `waived` does not produce the claimed complete slice and can omit precisely the waived tasks behind G1. Revise the derivation source or rule and make the golden model the statuses actually persisted by the close path."
+    },
+    {
+      "severity": "blocking",
+      "file": "spec.md",
+      "line": 143,
+      "title": "The issue parser misses supported issue-link topics",
+      "detail": "The codebase explicitly supports topics containing `/issues/\u003cn\u003e` (`deriveSlug` handles them), and the design's canonical `state.Topic` example is a full GitHub issue URL without a `#N` token. Parsing only `#\\d+\\b` therefore omits `## Issues` for a supported run started from an issue, contradicting §1.2, §4, and G4. Specify URL handling, same- versus cross-repository closing syntax, de-duplication across forms, and corresponding tests. The claim that this regex excludes CSS colours is also false for numeric colours such as `#123`."
+    },
+    {
+      "severity": "minor",
+      "file": "spec.md",
+      "line": 316,
+      "title": "Substitution multiplicity is described inconsistently",
+      "detail": "Section 2.3 permits substitutions declared as repeated, while the assumptions table says every substitution not matching exactly once errors. State one contract, preferably an explicit expected multiplicity per substitution, so generator tests and implementation use the same rule."
+    },
+    {
+      "severity": "minor",
+      "file": "goals.md",
+      "line": 15,
+      "title": "G7's global wording conflicts with its evidence boundary",
+      "detail": "The goal says no design paragraph names `plainOp` or the stale last-commit claim, but this run's own spec necessarily contains both while the evidence explicitly exempts run bundles. Scope the assertion to production code comments and the canonical design document."
+    }
+  ],
+  "provider": "copilot",
+  "model": "gpt-5.6-sol",
+  "hash": "sha256:d41f8c40bc310c780e058010ed19512c521c6cba3080ce76c9b73064f76c32fe",
+  "round": 1
+}
