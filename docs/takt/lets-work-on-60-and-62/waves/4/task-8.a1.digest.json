@@ -1,0 +1,9 @@
+{
+  "task": 8,
+  "attempt": 1,
+  "status": "done",
+  "summary": "Made all four planned documentation edits (README 15m x2, design-doc 15m x2, derived-budget rule, corrected pr-archive prose in §7.5 and §5.2) plus the unscripted fifth edit correcting the hard-coded `timeout_s: 1800` close-wave example at line 462 to show a derived, non-constant value; all seven grep verifies and the full `task check` gate pass.",
+  "blockers": "none",
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T14:09:56.148462278Z"
+}

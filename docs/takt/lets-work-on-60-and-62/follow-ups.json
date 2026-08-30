@@ -109,6 +109,50 @@
       "detail": "The `exec` example for `takt close-wave` still reads `\"timeout_s\": 1800` — the exact value of the now-deleted `closeTimeoutS` constant. This diff removes that constant and makes the close-wave exec op's timeout_s a computed value (`sessionSeconds(deadline.Close(deadline.Budget{...}))`, spec A2.2), which generally will not be 1800 (it scales with VerifyCommands/ReviewTasks/BackendTimeout/VerifyTimeout and is strictly greater than deadline.Close's own result). This is the master design reference under docs/superpowers/specs/ that the rubric names explicitly, and it now documents the pre-A2.2 fixed-timeout behaviour this wave's diff replaces. The spec/plan docs that guided this task (docs/takt/lets-work-on-60-and-62/plan.md and spec.md) do not list this file among the ones to update, so nothing else in the run addresses it.",
       "source": "internal",
       "ts": "2026-08-30T13:30:28.562940404Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 337,
+      "wave": 4,
+      "task": 8,
+      "title": "§4.7 commit-message catalog omits the new \"pr body\" commit",
+      "detail": "The \"Commits.\" bullet enumerates every message takt commits with (`wave \u003cn\u003e — tasks…`, `plan → execute`, `archive`) but not the `takt(\u003cslug\u003e): pr body` commit that `preparePushPR` (internal/cli/cmd_next.go) now makes when it writes `finish/pr.md`, before the session's `push_pr` runs `git push`. This is a branch-wide behavior change (run's own spec.md: \"next commits finish/pr.md in the commit the push carries\", goal G6, tested by TestPushPRLeavesTheBodyInHead) that this final docs wave did not fold into the invariant list it lives next to.",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.977719798Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 487,
+      "wave": 4,
+      "task": 8,
+      "title": "§5.2's \"exactly when\" wording for pr cleanup is looser than §7.5 step 5's own case list",
+      "detail": "§5.2 (lines 486-488) says a `pr` archive carries the push as `cleanup` \"exactly when the remote-tracking ref is missing commits.\" §7.5 step 5 (lines 892-897), added in the same diff and describing the same `prCleanup` predicate, adds a case §5.2 omits: \"a failed git read still offers the push\" — which matches `internal/cli/archive.go`'s `prCleanup` (both `CommitExists` and `IsAncestor` error paths return the push regardless of whether the ref is actually missing anything). So on a read failure the push can be offered even when the ref is not actually missing commits, which the §5.2 sentence's \"exactly when\" does not account for. §7.5's fuller statement is accurate; §5.2's summary overclaims precision. Low impact since §5.2 cross-references §7.5 step 5 for the mechanism, but the two sentences describe the same rule slightly differently within the same document.",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.97772009Z"
+    },
+    {
+      "severity": "minor",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 814,
+      "wave": 4,
+      "task": 8,
+      "title": "review_error gate's dynamic retry text (backends.\u003cname\u003e.timeout) is undocumented",
+      "detail": "internal/decide/questions.go's questionReviewError now names the specific `backends.\u003cname\u003e.timeout` key (and its current deadline) in the retry option's description when the review errored, falling back to the literal placeholder key when no backend can be named — a branch change (run spec G5). Line 814 still describes the gate only as \"(retry / skip this task's review with reason / stop)\" with no mention of this. This matches the doc's existing terseness for other gates' option text, so it's a minor gap rather than a clear regression.",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.977720291Z"
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 869,
+      "wave": 4,
+      "task": 8,
+      "title": "§7.5 step 4's `pr` disposition prose doesn't mention finish/pr.md is committed before the push",
+      "detail": "The paragraph describing `pr: run push_pr` says the body file path (`inputs.pr_body_path`, naming `finish/pr.md`) is handed to the session for `gh pr create --body-file`, but never says takt commits that file into the branch first (subject `pr body`) so the pushed branch already carries the PR body it was created from. A reader of this section would still believe the body is only written to disk, not committed — the exact behavior issue #62's first half changed, per the run's own spec.md and internal/cli/cmd_next.go's preparePushPR doc comment (\"Committing here... is what puts finish/pr.md in the branch before the session pushes it\").",
+      "source": "internal",
+      "ts": "2026-08-30T14:20:04.97772041Z"
     }
   ]
 }

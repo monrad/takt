@@ -459,8 +459,13 @@ user; the anchor is the verbatim topic), `retro`, `push_pr`.
 
 ```json
 { "op": "exec", "narration": "closing wave 0: verify + review 3 tasks",
-  "command": "takt close-wave --slug cedar-policy-2154", "timeout_s": 1800 }
+  "command": "takt close-wave --slug cedar-policy-2154", "timeout_s": 2820 }
 ```
+
+`timeout_s` here is not a fixed constant: `internal/deadline` computes it per wave from that wave's
+verify commands and reviewer count (§13, "Timeouts everywhere takt waits on something"), so it scales
+with the wave's real work — 2820 above is one plausible value for a small wave, not the canonical one; a
+larger wave can carry several times that.
 
 **stop** — end the turn.
 
@@ -478,8 +483,9 @@ An archived run's `stop` also carries `context` — git-derived facts about what
 now (e.g. `{"merged": "<sha>"}`, `{"deleted": true}`), read fresh from git on every call rather than
 remembered — and, whenever something git would not let takt do from this worktree, `cleanup`: the exact
 git commands takt could not run itself, for the session to run (§7.5 step 5). Both are present only
-when they have something to say: a `keep` or a `pr` archive asks git for nothing and carries neither,
-so the prompt must treat both as optional rather than expect an empty object and an empty list.
+when they have something to say: a `keep` archive carries neither; a `pr` archive carries the push as
+`cleanup` exactly when the remote-tracking ref is missing commits, so the prompt must treat both as
+optional rather than expect an empty object and an empty list.
 
 A `cleanup` that deletes the run branch (`git branch -d|-D <branch>`) can only run once nothing has
 that branch checked out — git refuses otherwise. The prompt therefore frames it as work to do **after
@@ -883,7 +889,12 @@ slice, which keeps every commit verified.
      anywhere else; every other case (the primary mid-merge on `base`, or a third worktree holding the
      branch) hands off the bare deletion instead. takt never checks out another branch itself (§4.7):
      everything it cannot do from here is handed to the session verbatim as `stop archived`'s `cleanup`
-     (§5.2). `pr` and `keep` ask git for nothing at this step.
+     (§5.2). `keep` asks git for nothing at this step; `pr` asks whether the branch
+     holds commits the remote-tracking ref does not — no ref → `git push -u origin <branch>`; the
+     branch is an ancestor of the remote-tracking ref, i.e. fully pushed → no cleanup; ahead or
+     diverged, i.e. it holds commits the ref does not → `git push origin <branch>`; a failed git read
+     still offers the push — and hands it back as `cleanup`. "That commit is the run's last one"
+     (above) is unaffected: the push is a cleanup command, not a commit.
    - None of this is ever recorded in state: there is no `disposition_applied` event and no write after
      the archive commit. `archive`, and every later `takt next` on the archived run, re-derive the same
      outcome from git each time, so an effect that could not land the first try (the primary was busy, the
@@ -1130,8 +1141,8 @@ config is for what a team shares (`dir`, gate defaults); user config for machine
   "default_branch": "",
   "backends": {
     "reviewer": ["copilot", "claude"],
-    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "5m" },
-    "claude":  { "model": "opus", "effort": "high", "timeout": "5m" }
+    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "15m" },
+    "claude":  { "model": "opus", "effort": "high", "timeout": "15m" }
   },
   "agents": {
     "implementer": {
@@ -1176,7 +1187,12 @@ run's behaviour.
 - **No network in takt.** `push`, `gh`, and anything that needs credentials stay in the session.
 - **No secrets in the bundle.** Reviewer logs are gitignored; briefs never include environment variables.
 - **Timeouts everywhere takt waits on something.** Reviewers, verify commands, git — all under `context`
-  deadlines; a timeout is a result, never a hang.
+  deadlines; a timeout is a result, never a hang. The deadlines that wrap a backend call — close-wave,
+  verify, gate review, and the session-side `timeout_s` on their `exec` ops — are never fixed constants:
+  `internal/deadline` derives each from the run's config and plan (verify budgeted per command and run
+  serially across the wave; reviews divided by `max_parallel`; `Session` strictly containing every
+  binary's own cap), so the outer deadline cannot fire before the work it wraps could still be reporting
+  a result.
 
 ---
 

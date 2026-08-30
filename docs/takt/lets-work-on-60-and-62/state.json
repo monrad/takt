@@ -194,23 +194,32 @@
     {
       "id": 8,
       "wave": 4,
-      "status": "pending",
+      "status": "done",
       "files": [
         "README.md",
         "docs/superpowers/specs/2026-08-24-takt-design.md"
       ],
       "class": "docs",
-      "attempt": 0
+      "attempt": 1,
+      "last_digest": {
+        "task": 8,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Made all four planned documentation edits (README 15m x2, design-doc 15m x2, derived-budget rule, corrected pr-archive prose in §7.5 and §5.2) plus the unscripted fifth edit correcting the hard-coded `timeout_s: 1800` close-wave example at line 462 to show a derived, non-constant value; all seven grep verifies and the full `task check` gate pass.",
+        "blockers": "none",
+        "model": "sonnet",
+        "recorded_at": "2026-08-30T14:09:56.148462278Z"
+      }
     }
   ],
   "active_wave": {
-    "n": 3,
+    "n": 4,
     "slice": 1,
-    "attempt": 2,
-    "started_at": "2026-08-30T13:54:24.465547713Z",
+    "attempt": 1,
+    "started_at": "2026-08-30T14:05:33.232818971Z",
     "session_id": "b533a4ff-7183-49ac-a2c8-b71a174a7098",
     "tasks": [
-      5
+      8
     ],
     "baseline": []
   },

@@ -148,8 +148,8 @@ timeouts. Precedence runs flags › environment › `.takt.json` › user config
   "default_branch": "",
   "backends": {
     "reviewer": ["copilot", "claude"],
-    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "5m" },
-    "claude":  { "model": "opus", "effort": "high", "timeout": "5m" }
+    "copilot": { "model": "gpt-5.6-sol", "effort": "high", "timeout": "15m" },
+    "claude":  { "model": "opus", "effort": "high", "timeout": "15m" }
   },
   "agents": {
     "implementer": {
