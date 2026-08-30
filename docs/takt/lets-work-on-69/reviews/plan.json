@@ -1,0 +1,31 @@
+{
+  "verdict": "rework",
+  "summary": "The decomposition covers the requested behavior and documentation surfaces, but verification is insufficient for two explicit requirements. Task 2 cannot prove that PlanRounds is populated only under the existing plan-gate guard, and Task 5's loose document greps can pass while required amendment sites are missing.",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 2's test cannot prove guarded placement",
+      "detail": "Task 2 claims that moving the PlanRounds assignment outside the guarded plan branch would fail, but its sole fixture enables plan review, supplies a valid index, and writes a non-empty plan.md. An unconditional assignment would therefore produce the same SpecRounds=1 and PlanRounds=2 and pass every listed verify command. Add negative cases for Review.Plan=false, an invalid or absent index, and an empty plan.md, each asserting PlanRounds remains zero."
+    },
+    {
+      "severity": "major",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 5 verification does not prove the required site-by-site amendments",
+      "detail": "Task 5 requires five specific base-design edits plus a supersession note and seven localized amendments that retain the original fixed-point text. Its checks only require one PlanRounds occurrence, removal of one phrase, one supersession phrase, and at least seven total #69 occurrences. The note plus seven amendments should already yield at least eight #69 mentions, so the stated threshold permits an omitted site, and repeated mentions elsewhere could mask additional omissions. Add site-specific checks or a targeted documentation test that proves every amendment is present near its named passage and that the required original sentences remain."
+    },
+    {
+      "severity": "minor",
+      "file": "plan.md",
+      "line": 0,
+      "title": "Task 1 does not verify that existing spec-cap tests remain untouched",
+      "detail": "Task 1 cites G7 and explicitly promises that the existing spec-gate tests are not edited, but its file scope includes decide_test.go and its package test only proves they still pass. A modified existing test could satisfy every command. Add a diff-based assertion for those existing test bodies or make the execution constraint independently checkable."
+    }
+  ],
+  "provider": "copilot",
+  "model": "gpt-5.6-sol",
+  "hash": "sha256:826f2e91b62f4b904cfe4cc8ea603b18156043977095b9928ca5b20d0728cd70",
+  "round": 1
+}
