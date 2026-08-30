@@ -29,14 +29,17 @@ whole-repo check).
 rework/reject/error verdict outranks the cap. `internal/decide/questions.go`'s
 `questionGateReviewCapped` doc comment (line 188) currently says "the spec review"; the
 rendered text is already gate-agnostic, so only the comment moves to "a spec or plan
-review". The two tests G1 and G2 name land in `decide_test.go` beside their spec-gate
-precedents (lines 1067 and 1115): the cap test alone cannot tell the two checks apart
-(it never sets a verdict), which is exactly why the precedence test exists — its comment
-should say so, like the spec one does. Scoped to one package so the whole task is judged
-by `go test ./internal/decide/...`. That run proves the spec gate's own tests still pass,
-but not that they were not *edited* — a rewritten test passes too — so G7 is pinned
-instead by a diff assertion: `git diff main -- internal/decide/decide_test.go` must show
-zero removed lines. The task adds test functions and touches no existing one.
+review". The two tests G1 and G2 name go in a **new**
+file, `decide_plan_cap_test.go`. Their natural home is beside their spec-gate precedents
+in `decide_test.go` (lines 1067 and 1115), but G7 claims those precedents are untouched,
+and no check over a modified file can prove that: a green package run passes a test
+weakened by an inserted `t.Skip()`, and so does a zero-deletions diff. The way to prove
+it is not to touch the file — `decide_test.go` leaves this task's file list, and
+`git diff --quiet main -- internal/decide/decide_test.go` proves G7 byte for byte in one
+command. The new file opens by naming the two precedents it mirrors, since it no longer
+sits next to them, and carries the spec test's own observation: the cap test never sets a
+verdict, so it alone cannot tell the two checks apart — which is exactly why the
+precedence test exists. Task 3 uses this shape for the same reason.
 
 ### Task 2 — fill `PlanRounds` in `gatherGateFacts`, pinned by a mixed-events facts test
 
@@ -67,7 +70,10 @@ the receipt never answers at the next hash, then one final unreviewed edit — t
 *retry* appends `gate_rounds_reset{gate: "plan"}` and the next `next` execs
 `takt review plan` again; *accept* requires `--reason`, records `gate_overridden` for the
 plan gate at the plan hash, carries the plan findings to follow-ups, and the run proceeds
-to the alignment audit; *stop* keeps the gate open and the same ask comes back; and the
+to the alignment audit; *stop* keeps the gate open and the same ask comes back — and, since the
+description claims it clears *nothing*, `gates/plan.json` and `events.jsonl` are
+snapshotted as bytes either side of the answer and compared, so a stop that quietly
+rewrote the receipt fails even with the gate still open; and the
 negative test — answering the capped plan gate leaves the spec gate's receipt bytes,
 round count and events untouched. New file rather than an edit to `cmd_answer_test.go`,
 so G7's "existing spec-gate cap tests pass untouched" is literal: the spec fixtures are
@@ -97,12 +103,17 @@ design (`2026-08-26-spec-gate-fixed-point-design.md`) is superseded in place, no
 rewritten: a `> Superseded in part` note under the title, and a short marked amendment at
 each of the seven sites (D3, D5, §3, §8, §11, A4, §13) naming #69 and pointing at base
 design §7.3, with every original sentence kept — A4's answer becomes "extended by #69,
-which needed no semantic change — as predicted". Each amendment sits within four lines of
-the passage it amends (six at §8), and the verify commands exploit that: one per site,
-each grepping the original sentence verbatim and requiring `#69` in its immediate context,
-so a check fails both when an amendment is missing and when the original was deleted or
-reworded. A file-wide `#69` count is deliberately not used — it passes with a site
-omitted. This task runs last and carries `task check` (build + `go test ./... -race` +
+which needed no semantic change — as predicted". One rule governs every amendment and the
+checks apply it uniformly: each sits within four lines of the passage it amends (six at
+§8), names `#69`, and points at base design §7.3 — so a generic "amended by #69" line
+satisfies neither half, and the anchor being grepped verbatim means a check also fails if
+the original was deleted or reworded. Three sites carry the reconciliation §6.1
+prescribes, checked in the same window: D3's spec-only scoping stands *except the round
+cap*, §3's verdict rule *stays spec-only*, A4's prediction is met *as predicted*. On the
+base design no absence check stands alone: "its round cap" and "including its uncapped"
+must be gone **and** both clauses must still be there saying "both review gates", so a
+deletion cannot pass where a rewrite is required. A file-wide `#69` count is deliberately
+not used — it passes with a site omitted. This task runs last and carries `task check` (build + `go test ./... -race` +
 lint + host parity), which is G8's evidence on the assembled branch.
 
 ## Risks
@@ -117,16 +128,21 @@ lint + host parity), which is G8's evidence on the assembled branch.
   describes. Mitigation: both documents are edited in one task, by one implementer, against
   the already-shipped code, with the spec's §6/§6.1 tables as the site-by-site checklist —
   and originals are kept, never deleted, at the fixed-point sites.
-- **Doc verifies trade latitude for coverage.** Twelve site-anchored checks replace the
-  earlier loose counts, which could pass with an amendment site omitted. The cost is that
-  each check now pins an original sentence verbatim as its anchor — which is exactly what
-  §6.1 requires be kept, so the constraint and the requirement are the same one — while
-  the amendment's own wording stays free.
+- **Doc verifies trade latitude for coverage.** Seventeen site-anchored checks replace
+  the earlier loose counts, which could pass with an amendment site omitted or satisfied
+  by a deletion. The cost is that each check pins an original sentence verbatim as its
+  anchor — which is exactly what §6.1 requires be kept, so the constraint and the
+  requirement are the same one — plus five short phrases the amendments must contain
+  (`§7.3`, `except the round cap`, `stays spec-only`, `as predicted`, `both review
+  gates`). Everything else in the prose stays free.
 - **The verify commands are the plan's own dogfood.** This run exists because the plan
-  gate could not stop; its first round found that two tasks could pass while their
-  requirement failed. Both were verification gaps, not decomposition errors, which is the
-  argument for fixing them here rather than trusting the per-task review to catch them
-  later against real code.
+  gate could not stop, and it has now taken two rounds, both finding that a task could
+  pass while its requirement failed. Every finding was a verification gap, not a
+  decomposition error — the argument for fixing them here rather than trusting the
+  per-task review to catch them later against real code. Round 2's findings were also
+  raised *against round 1's fixes*, which is the loop #69 describes; the answer taken here
+  was the one that ended the #60/#62 loop — restate the rule once (tests go in new files;
+  every amendment names #69 and §7.3) instead of patching the instance in front of it.
 
 ## Class justifications (tasks below `implement`)
 
