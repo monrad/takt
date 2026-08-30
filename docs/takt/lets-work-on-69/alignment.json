@@ -1,0 +1,11 @@
+{
+  "anchor_hash": "sha256:2ff5306e43d5c3891989b746e21f73e193950590095a84be0337cdf7011fbab0",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Work on issue/PR #69",
+      "span": "lets work on #69"
+    }
+  ],
+  "confirmed": true
+}
