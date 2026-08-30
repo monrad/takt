@@ -128,3 +128,8 @@
 {"ts":"2026-08-30T14:20:05.002885216Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":0,"rework":[],"sha":"26d70f47822a21f27f7c7ca97dfd25611fb111da","slice":1,"wave":4}}
 {"ts":"2026-08-30T14:20:19.804038799Z","type":"wave_cleared","data":{"wave":4}}
 {"ts":"2026-08-30T14:20:19.807963861Z","type":"phase","data":{"from":"execute","to":"finish"}}
+{"ts":"2026-08-30T14:20:47.325530887Z","type":"verify","data":{"commands":77,"passed":true,"sha":"b3e8615320d10c4d7ef3f64338bb175066abda6f"}}
+{"ts":"2026-08-30T14:25:27.499108405Z","type":"goals_invalid","data":{"problems":["G7: citation \"internal/cli/archive_test.go:667-733\" — line 733 is past the end (732 lines)"]}}
+{"ts":"2026-08-30T14:29:22.068239134Z","type":"goals_attempts_reset","data":{"reason":"recorded"}}
+{"ts":"2026-08-30T14:29:22.081106938Z","type":"gate_opened","data":{"gate":"goals_unmet"}}
+{"ts":"2026-08-30T14:30:31.875644226Z","type":"gate_answered","data":{"choice":"fix","gate":"goals_unmet"}}

@@ -214,7 +214,7 @@
   ],
   "active_wave": null,
   "pending_gate": null,
-  "verified_sha": null,
+  "verified_sha": "b3e8615320d10c4d7ef3f64338bb175066abda6f",
   "goals_checked_sha": null,
   "disposition": null
 }
