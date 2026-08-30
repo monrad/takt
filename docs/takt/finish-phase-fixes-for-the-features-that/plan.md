@@ -79,7 +79,10 @@ skill's `--expect` line on a version bump and stays compatible — both it and h
 same version from `.claude-plugin/plugin.json` — so it is deliberately not touched. Risk: the
 whole task is byte-exact string work; the count-mismatch error naming the substitution is what
 makes a slip diagnosable rather than silent, and the render-equals-committed parity test plus
-`task hosts:check` gate the result.
+`task hosts:check` gate the result. Both halves of hostgen's declared failure contract are
+tested, not one: a root missing `commands/takt.md` and a root missing `.claude-plugin/plugin.json`
+each return `exitFailure` with the missing path named in the message, asserted against `run`'s
+writers rather than the process.
 
 ### Task 4 — the stale prose, and the whole-branch gate (docs; G7, G8, G9)
 
@@ -91,8 +94,21 @@ the code as it stands — step 5 now names the post-archive `takt(<slug>): retro
 is where `doneRetro`'s repointed citation lands, and the §5.1 row describes `cmdRetro`'s
 `lockBlocked` failure (holder, heartbeat, `takt unlock` hint) instead of `next`'s `ask: owner`.
 The new prose avoids the phrase "the run's last" entirely so the absence greps are meaningful.
-This run's own bundle under `docs/takt/` quotes the old text and is out of scope per G7. The task
-runs last (depends on 1–3) and its verify closes the run: `task test`, `task lint`,
+This run's own bundle under `docs/takt/` quotes the old text and is out of scope per G7 — the
+tree-wide `plainOp` sweep uses `--include='*.go'`, which excludes it by construction.
+
+Three checks close the plan review's findings on this task. G9's comments-only constraint is
+*proved*, not assumed: a scoped filter over `git diff main -- internal/cli/archive.go
+internal/cli/cmd_done.go` drops the file headers and every `+`/`-` line that is a comment or blank,
+and requires nothing to be left — an executable edit slipped into either file fails the task even
+though the build, the suite, the lint and every content grep still pass. `go vet ./...` is run
+explicitly rather than assumed inside `task lint`. And each absence grep is paired with a positive
+one, because deleting a clause satisfies an absence check on its own: `applyAndStop`'s rewritten
+comment must contain "holding the lock" — the fact that replaces the retired `plainOp` sentence,
+that every caller reaches it holding the lock and prints through the caller's `emit` — and
+`doneRetro`'s comment must still cite "design §7.5 step 5" once "already contemplates" is gone.
+
+The task runs last (depends on 1–3) and its verify closes the run: `task test`, `task lint`,
 `task hosts:check`.
 
 Class justification: task 4 is `docs` because every change it makes is a comment or a design-doc
@@ -109,4 +125,5 @@ byte for byte), which is exactly the class of defect the generator ends; its own
 tests and `task hosts:check` all gate it. Task 1's risk is the golden's bytes; task 2's is RE2
 boundary handling; task 4's is prose that satisfies the greps without matching the code — mitigated
 by naming the exact functions (`cmdRetro`'s `lockBlocked`, `doneRetroChecks`) each paragraph must
-be read against.
+be read against, and by the comments-only diff filter, which fails the task if prose work spills
+into code.
