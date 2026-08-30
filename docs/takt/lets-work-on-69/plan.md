@@ -55,9 +55,13 @@ events, or ignores the per-gate reset, fails. The test must also assert `HasInde
 That positive test proves the count is right but not that it is *guarded*: its fixture
 satisfies every conjunct, so an unconditional assignment outside the branch would pass it
 unchanged. A second test therefore runs the same events log through three fixtures that
-each break one conjunct — plan review off, no valid index, empty `plan.md` — and asserts
-`PlanRounds == 0` while `SpecRounds` is still 1, so the zero is the guard's doing rather
-than an empty log. Kept separate from task 1 because it is the CLI half of the seam and
+break the guard — plan review off, no valid index (absent, and malformed), and an empty
+`plan.md` — and asserts `PlanRounds == 0` while `SpecRounds` is still 1, so the zero is
+the guard's doing rather than an empty log. The third does not isolate the guard's final
+`fileNonEmpty` conjunct and does not claim to: `gatherIndexFacts` (facts.go:188) already
+folds an empty `plan.md` into `IndexProblems`, so `IndexValid` is false too and the two
+conjuncts cannot fail apart in `gatherFacts`. It stays as a reachable end-to-end case,
+stating only what it proves. Kept separate from task 1 because it is the CLI half of the seam and
 its fixture is real I/O, not table rows.
 
 ### Task 3 — `cmd_answer` tests: all three answers on a capped plan gate, and spec-gate independence
@@ -67,6 +71,9 @@ brainstorm (spec, goals, approving spec review), record a valid plan, take three
 review rounds with the fake backend returning `rework`, editing `plan.md` before each so
 the receipt never answers at the next hash, then one final unreviewed edit — three
 `gate_reviewed{plan}` events, current hash unreviewed, no verdict pending. Four tests:
+`cmd_answer_test.go` stays out of this task's file
+list and `git diff --quiet main -- internal/cli/cmd_answer_test.go` proves its spec-gate
+cap tests untouched, the same way task 1 proves `decide_test.go` — running them would not.
 *retry* appends `gate_rounds_reset{gate: "plan"}` and the next `next` execs
 `takt review plan` again; *accept* requires `--reason`, records `gate_overridden` for the
 plan gate at the plan hash, carries the plan findings to follow-ups, and the run proceeds
@@ -111,8 +118,12 @@ the original was deleted or reworded. Three sites carry the reconciliation §6.1
 prescribes, checked in the same window: D3's spec-only scoping stands *except the round
 cap*, §3's verdict rule *stays spec-only*, A4's prediction is met *as predicted*. On the
 base design no absence check stands alone: "its round cap" and "including its uncapped"
-must be gone **and** both clauses must still be there saying "both review gates", so a
-deletion cannot pass where a rewrite is required. A file-wide `#69` count is deliberately
+must be gone **and** each clause must still be there saying "both review gates" — anchored
+at "Nine decisions read events as their durable record" (§5.2) and "This is the spec
+gate's fixed point" (§7.2), not counted file-wide, so neither a deletion nor the phrase
+parked elsewhere can pass where a rewrite is required. The supersession blockquote is
+anchored the same way: within ten lines of the fixed-point document's title, naming #69
+and §7.3 there. A file-wide `#69` count is deliberately
 not used — it passes with a site omitted. This task runs last and carries `task check` (build + `go test ./... -race` +
 lint + host parity), which is G8's evidence on the assembled branch.
 
@@ -128,7 +139,7 @@ lint + host parity), which is G8's evidence on the assembled branch.
   describes. Mitigation: both documents are edited in one task, by one implementer, against
   the already-shipped code, with the spec's §6/§6.1 tables as the site-by-site checklist —
   and originals are kept, never deleted, at the fixed-point sites.
-- **Doc verifies trade latitude for coverage.** Seventeen site-anchored checks replace
+- **Doc verifies trade latitude for coverage.** Nineteen site-anchored checks replace
   the earlier loose counts, which could pass with an amendment site omitted or satisfied
   by a deletion. The cost is that each check pins an original sentence verbatim as its
   anchor — which is exactly what §6.1 requires be kept, so the constraint and the
@@ -139,10 +150,14 @@ lint + host parity), which is G8's evidence on the assembled branch.
   gate could not stop, and it has now taken two rounds, both finding that a task could
   pass while its requirement failed. Every finding was a verification gap, not a
   decomposition error — the argument for fixing them here rather than trusting the
-  per-task review to catch them later against real code. Round 2's findings were also
-  raised *against round 1's fixes*, which is the loop #69 describes; the answer taken here
-  was the one that ended the #60/#62 loop — restate the rule once (tests go in new files;
-  every amendment names #69 and §7.3) instead of patching the instance in front of it.
+  per-task review to catch them later against real code. Rounds 2 and 3 raised findings
+  *against the previous round's fixes*, which is the loop #69 describes; the answer taken
+  here was the one that ended the #60/#62 loop — restate the rule once (existing test
+  files are never edited, so new tests go in new files; every amendment names #69 and
+  §7.3; every doc check is anchored at its site) instead of patching the instance in front
+  of it. Round 3 also found a real defect under that noise — task 2 claimed a fixture
+  isolation `gatherIndexFacts` makes impossible — which is the argument for the cap being
+  *accept · retry · stop* rather than a hard stop.
 
 ## Class justifications (tasks below `implement`)
 

@@ -1,38 +1,38 @@
 {
   "verdict": "rework",
-  "summary": "The decomposition is broadly correct, but Task 2 specifies an impossible guard fixture and Tasks 3 and 5 have verification gaps for explicit requirements.",
+  "summary": "The decomposition and scopes are plausible, but several verify sets can pass while explicit spec requirements remain unmet. Tasks 3–5 need stronger assertions before execution.",
   "findings": [
-    {
-      "severity": "blocking",
-      "file": "plan.md",
-      "line": 57,
-      "title": "Task 2 cannot isolate the empty-plan guard as specified",
-      "detail": "Task 2 says each fixture breaks one guard conjunct and requires an empty plan.md with a valid index. In the current implementation, gatherIndexFacts adds \"plan.md is missing or empty\" to IndexProblems and therefore sets IndexValid=false, so an empty plan necessarily breaks both IndexValid and fileNonEmpty. The proposed gatherFacts test cannot prove placement behind the final fileNonEmpty conjunct as claimed. Either test gatherGateFacts directly with constructed Facts, or remove the impossible isolation claim and state the reachable behavior being tested."
-    },
     {
       "severity": "major",
       "file": "plan.md",
       "line": 78,
-      "title": "Task 3 does not prove existing cmd_answer cap tests are untouched",
-      "detail": "G7 explicitly requires existing spec-gate cap tests to pass untouched, and the plan claims cmd_answer_test.go remains byte-untouched. Task 3 only runs TestSpecReviewRoundCap*, which would still pass if those tests were weakened or skipped—the exact failure mode Task 1 identifies. Add `git diff --quiet main -- internal/cli/cmd_answer_test.go` to Task 3's verify commands."
+      "title": "Task 3 does not verify that the override reason is recorded",
+      "detail": "Spec §§5 and 7 require the plan-gate `gate_overridden` event to contain the user's reason. Task 3 checks that an empty reason fails and that the resulting event has the plan gate and current hash, but never asserts `Data[\"reason\"] == \"known gap\"`. The tests could pass if the reason were accepted by the CLI and then discarded."
     },
     {
       "severity": "major",
       "file": "plan.md",
-      "line": 113,
-      "title": "Task 5's base-design checks do not anchor two required rewrites",
-      "detail": "The plan claims deletion cannot satisfy the §5.2 and §7.2 requirements, but the verifies only require the obsolete phrases to disappear and count two occurrences of `both review gates` anywhere in the file. Deleting both required passages and placing that phrase twice elsewhere would pass. Add separate context-anchored checks for the §5.2 event-accounting passage and the §7.2 fixed-point closing passage."
+      "line": 91,
+      "title": "Task 4's greps do not prove the prescribed sentence replacement",
+      "detail": "Each verification only searches for the new substring, while the prompt parity tests do not anchor this sentence. Both commands would pass if the new phrase were appended elsewhere and the false “the spec review” sentence remained, or if the options were changed. Require the complete expected gate sentence in both files and assert the obsolete wording is absent."
+    },
+    {
+      "severity": "major",
+      "file": "plan.md",
+      "line": 100,
+      "title": "Task 5's base-design checks omit the cap threshold and precedence semantics",
+      "detail": "The row-9 check proves only that `ask gate_review(plan)` and `gate_review_capped` occur on one line; it does not require `PlanRounds ≥ maxAgentAttempts (3)`, that pending rework/reject/error comes first, or that normal review remains the fallback. Likewise, the §7.3 check only requires the gate id, not three rounds since the newest reset. The documented behavior could therefore be materially wrong while every verify command passes."
     },
     {
       "severity": "minor",
       "file": "plan.md",
-      "line": 103,
-      "title": "The supersession-note check does not prove its required location or references",
-      "detail": "Task 5 requires a `Superseded in part` blockquote directly under the title naming #69 and base design §7.3, but its verify only greps for `Superseded in part` anywhere. Anchor the check to the document header and require `#69` and `§7.3` in that same opening block."
+      "line": 25,
+      "title": "Task 1 does not verify the required PlanRounds documentation",
+      "detail": "The spec gives an explicit two-line field comment, but Task 1 only greps for `PlanRounds int`. Tests and lint do not prove that the required comment exists or identifies the plan gate and newest `gate_rounds_reset`; add an anchored check for that documentation."
     }
   ],
   "provider": "copilot",
   "model": "gpt-5.6-sol",
-  "hash": "sha256:25f7fc9021c79c31c5567758d4fd28209e6188a736f6e19911c760890e9f66cf",
-  "round": 3
+  "hash": "sha256:207f9c931b46186058b0d6ed60c1dc61990ff84213b7fb4691cba611ab7a2f5e",
+  "round": 4
 }
