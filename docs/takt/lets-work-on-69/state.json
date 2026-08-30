@@ -1,0 +1,43 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "lets-work-on-69",
+  "topic": "lets work on #69",
+  "phase": "brainstorm",
+  "created_at": "2026-08-30T15:14:01.445782654Z",
+  "branch": "monrad/review_capped",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "2f9c3dbf1bc0208cb91ef4a86e4151a86db7918c",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": null,
+  "gates": {
+    "plan": "pending",
+    "spec": "pending"
+  },
+  "tasks": [],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": null,
+  "goals_checked_sha": null,
+  "disposition": null
+}
