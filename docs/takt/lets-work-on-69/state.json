@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "lets-work-on-69",
   "topic": "lets work on #69",
-  "phase": "execute",
+  "phase": "finish",
   "created_at": "2026-08-30T15:14:01.445782654Z",
   "branch": "monrad/review_capped",
   "branch_adopted": true,
@@ -136,17 +136,7 @@
       }
     }
   ],
-  "active_wave": {
-    "n": 3,
-    "slice": 1,
-    "attempt": 1,
-    "started_at": "2026-08-30T17:51:55.515776669Z",
-    "session_id": "e7d58452-778a-4996-8f76-7ee51117266d",
-    "tasks": [
-      5
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
