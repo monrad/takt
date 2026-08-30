@@ -66,9 +66,16 @@ To develop against a local checkout rather than GitHub, add the marketplace from
 
 ### Copilot host files
 
-`hosts/copilot/agents/*.agent.md` are generated from `agents/*.md` by `task hosts:gen`, and checked by
-`task hosts:check` and the test suite. The skill's `takt version --expect <version>` line is stamped by
-`task version:set`. A `0.0.0-dev` development build satisfies it via `"dev": true`.
+Every Copilot host file is generated, and none of them is hand-edited: `hosts/copilot/agents/*.agent.md`
+from `agents/*.md`, and `hosts/copilot/skills/takt/SKILL.md` from `commands/takt.md` through the ordered
+substitution profile in `internal/hosts/skill.go`, which rewrites only the regions where the two hosts
+legitimately differ. `task hosts:gen` writes them; `task hosts:check` and the test suite fail when one is
+stale. So edit the source — `agents/*.md` or `commands/takt.md` — and regenerate; an edit made directly to
+a generated file is overwritten by the next `task hosts:gen`, and fails `task hosts:check` until it is.
+
+The skill's `takt version --expect <version>` line is part of that render: `hostgen` takes the version from
+`.claude-plugin/plugin.json`, and `task version:set` stamps it as well on a bump. A `0.0.0-dev` development
+build satisfies it via `"dev": true`.
 
 ## Releasing
 

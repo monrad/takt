@@ -88,6 +88,12 @@ var crossHostInvariants = []string{
 	"An `answer` that prints `\"kept\": true` leaves the gate open — end the turn (the user chose to stop or abort).",
 	// the `git add -A` prohibition (Invariants)
 	"never run `git add -A`",
+	// the push-and-branch invariant's exception (Invariants, #66): the
+	// clause that attaches the exception to the two ops that carry it. This
+	// is the sentence that drifted — the prompts forbade the very push an
+	// `archived` stop's `cleanup` hands the session — and it was anchored
+	// nowhere, so the two copies could have disagreed unnoticed.
+	"the `push_pr` run op, and an `archived` stop's `cleanup` commands once the user has confirmed them",
 	// the push_pr command (op table, `run` bullet, #36)
 	"gh pr create --base <base> --title '<title>' --body-file <path>",
 	// the never-cd-into-the-bundle invariant (Invariants, #37)

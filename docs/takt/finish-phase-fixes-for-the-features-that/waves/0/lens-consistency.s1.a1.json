@@ -1,0 +1,42 @@
+{
+  "lens": "consistency",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T21:15:29.007971974Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 117,
+      "title": "generateSkill duplicates the agent loop's compare/check/write logic instead of sharing a helper",
+      "detail": "run()'s per-agent loop (lines 66-78: read dst, bytes.Equal skip, `check` → print \"stale:\" + count, else write() + print \"wrote\") is the same four-branch shape newly written again in generateSkill (lines 117-127) for the skill file. Both were touched/added by this wave's task-3. A small `writeOrReport(dst, out, check, stdout, stderr) (stale int, err error)` would serve both call sites; instead the diff reimplements the pattern rather than factoring it, which is exactly the 'duplicated helper' this lens looks for — and it is the same file, so a future edit to one copy (e.g. the stale-message wording) can silently drift from the other.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 148,
+      "title": "Missing-version-field error reads differently from the CLI's own phrasing for the same condition",
+      "detail": "hostgen's manifestVersion renders a missing/empty \"version\" field as `fmt.Errorf(\"%s: no \\\"version\\\" field\", path)` (internal/tools/hostgen/main.go:148), while internal/cli/cmd_version.go:139 renders the identical condition — an empty version in the same .claude-plugin/plugin.json — as `\"plugin manifest \" + path + \" has no version field\"`. Same fact, two different sentence shapes and quoting conventions for the one JSON field this wave's task-3 cares about (§2.3's version handshake).",
+      "task": 3
+    },
+    {
+      "severity": "nit",
+      "file": "internal/finish/retro.go",
+      "line": 309,
+      "title": "Slice-floor-to-1 rule hand-duplicated between timingKeyOf and closeKeyOf",
+      "detail": "timingKeyOf (line 309: `max(int(sl), 1)`) and the new closeKeyOf (line 317: `max(c.Slice, 1)`) encode the same 'floor a missing/zero slice to 1' rule inline in two places rather than through one named helper (e.g. `floorSlice(n int) int`). closeKeyOf's own doc comment even says it floors 'the way [timingKeyOf] floors', which is a hint the two could share one function instead of restating the rule.",
+      "task": 1
+    },
+    {
+      "severity": "nit",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 136,
+      "title": "manifestVersion names a function here but a struct/type for the same concept elsewhere in the codebase",
+      "detail": "internal/tools/hostgen/main.go:136 introduces `func manifestVersion(path string) (string, error)`, and internal/prompt/copilot_test.go:100 (this same wave) introduces a same-named test helper function. internal/cli/cmd_version.go:88 already has `type manifestVersion struct { Version string }` for the identical concept (the plugin manifest's version field). Different packages so it compiles, but the same identifier names a type in one place and a function in two others for what the brief itself treats as one recurring concept (spec §2.3's handshake version).",
+      "task": 3
+    }
+  ]
+}

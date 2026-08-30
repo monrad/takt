@@ -1,0 +1,26 @@
+{
+  "lens": "consistency",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T22:20:47.704273893Z",
+  "findings": [
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 936,
+      "title": "\"the disposition itself is never recorded\" contradicts step 5's own opening sentence and internal/bundle/state.go",
+      "detail": "The rewritten bullet reads: \"None of this is ever recorded in state: the disposition itself is never recorded, and the archive step writes nothing tracked after its commit…\" (lines 936-938). But the very same numbered step, 25 lines earlier, states the opposite: \"disposition.applied = true for whichever choice was made — set before the commit, for every choice\" (line 907), and internal/bundle/state.go:107 shows `Disposition.Applied bool` is a field of the tracked state.json that archive.go writes via bundle.SaveState (archive.go:70-73) before the archive commit (archive.go:85) commits it. So the disposition (at least its `applied` flag) plainly IS recorded in state and is committed. The original text this replaced was careful to say \"there is no `disposition_applied` EVENT and no write AFTER the archive commit\" — explicitly scoping the negative claim to an event log entry and to writes after the commit, not to the state field itself. The rewrite drops that scoping and also drops the qualifier used two sentences earlier in the same paragraph, \"the git side of the disposition\" (line 911) — which is the precise, non-contradictory way archive.go's own top-of-file comment states this same fact (\"nothing about the git side of a disposition is remembered in state\", archive.go:27-29). As written, line 936 self-contradicts line 907 of the same step.",
+      "task": 4
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/archive_test.go",
+      "line": 177,
+      "title": "Test failure strings still use the retired \"run's last\" framing this task eliminates elsewhere",
+      "detail": "archive_test.go:177 (\"the archive commit is the run's last write\") and archive_test.go:327 (\"keep is applied by the archive commit, which is the run's last write\") still phrase the invariant in exactly the terms G7 retires from archive.go and the design doc (\"the run's last …\"). archive_test.go isn't one of task-4's editable files, so this isn't something the implementer could fix here, but it's now the one place in internal/cli that still asserts the archive commit is \"the run's last write\" — a claim the rest of the package and the design doc now go out of their way not to make, since a post-archive `retro --rewrite` + `done --step retro` can land a later commit. Worth a follow-up cleanup so the test vocabulary matches the comments it exercises.",
+      "task": 0
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "schema": 2,
+  "takt_version": "0.0.0-dev",
+  "slug": "finish-phase-fixes-for-the-features-that",
+  "topic": "Finish-phase fixes for the features that just shipped: #71, #74, #66, #72 — one run, four small issues, all in internal/finish, internal/cli/archive.go, cmd_done.go, the two host prompts and the design doc.",
+  "phase": "archived",
+  "created_at": "2026-08-30T18:54:31.082922042Z",
+  "branch": "monrad/phase_c",
+  "branch_adopted": true,
+  "base": "main",
+  "base_sha": "279e306242e272ac48248d13a67d27ee2cc55abd",
+  "config": {
+    "autonomy": "auto",
+    "review": {
+      "spec": true,
+      "plan": true,
+      "tasks": true,
+      "lenses": [
+        "correctness",
+        "intent",
+        "tests",
+        "simplicity",
+        "consistency",
+        "docs"
+      ]
+    },
+    "goals": true,
+    "alignment": true,
+    "max_parallel": 8,
+    "max_rework": 1
+  },
+  "goals_hash": "sha256:080e7c0d1ee1ac4fa08ded0a6ad3dfb1005f32cca10ec5fd8d42010f1ef5fa9a",
+  "gates": {
+    "plan": "ok",
+    "spec": "ok"
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/finish/skeleton.go",
+        "internal/finish/retro.go",
+        "internal/finish/skeleton_test.go",
+        "internal/finish/retro_test.go",
+        "internal/cli/retro.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 1,
+        "attempt": 1,
+        "status": "done",
+        "summary": "BuildShipped` now derives a waived wave's commit tasks from the close record (unfiltered by status) then the dispatch event, `waveTimings` emits one span per dispatch with the last close winning, and both are pinned by an eighth golden built through `BuildRetroInputs`/`BuildShipped` plus three focused tests.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T21:06:20.828746421Z"
+      }
+    },
+    {
+      "id": 2,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "internal/finish/pr.go",
+        "internal/finish/pr_test.go"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 2,
+        "attempt": 1,
+        "status": "done",
+        "summary": "BuildPR` now renders an `## Issues` section between `## Goals` and `## Run`, parsing bare `#N`, `https?://…/issues/N` and `owner/repo#N` from the topic with hand-checked boundaries, de-duplicated in topic order with the closing keyword repeated per reference, covered by a 15-row table including all six boundary negatives.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T21:00:25.070230998Z"
+      }
+    },
+    {
+      "id": 3,
+      "wave": 0,
+      "status": "done",
+      "files": [
+        "commands/takt.md",
+        "hosts/copilot/skills/takt/SKILL.md",
+        "internal/hosts/skill.go",
+        "internal/hosts/skill_test.go",
+        "internal/tools/hostgen/main.go",
+        "internal/tools/hostgen/main_test.go",
+        "internal/prompt/prompt_test.go",
+        "internal/prompt/copilot_test.go",
+        "Taskfile.yml"
+      ],
+      "class": "implement",
+      "attempt": 1,
+      "last_digest": {
+        "task": 3,
+        "attempt": 1,
+        "status": "done",
+        "summary": "Reworded the push invariant in commands/takt.md, anchored its exception clause in crossHostInvariants, added internal/hosts/skill.go's ordered substitution profile with RenderCopilotSkill, taught hostgen to generate and check hosts/copilot/skills/takt/SKILL.md from the prompt and manifest version, regenerated the skill, and covered all of it with tests in internal/hosts, internal/tools/hostgen and internal/prompt.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T21:08:40.771551096Z"
+      }
+    },
+    {
+      "id": 4,
+      "wave": 1,
+      "status": "waived",
+      "files": [
+        "internal/cli/archive.go",
+        "internal/cli/cmd_done.go",
+        "docs/superpowers/specs/2026-08-24-takt-design.md"
+      ],
+      "class": "docs",
+      "attempt": 3,
+      "last_digest": {
+        "task": 4,
+        "attempt": 3,
+        "status": "done",
+        "summary": "Restated §7.5 step 5's archive-step guarantee in both places as a no-write-after-commit claim (naming the untracked session sidecar as the sole post-commit write) and cast the retro-done and re-taken archive commits as separate later `takt` invocations; all verify commands pass.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T22:51:15.156510807Z"
+      }
+    }
+  ],
+  "active_wave": null,
+  "pending_gate": null,
+  "verified_sha": "caac6fb4dde836d2a89767e5ad687aa1b64e5a1c",
+  "goals_checked_sha": "caac6fb4dde836d2a89767e5ad687aa1b64e5a1c",
+  "disposition": {
+    "choice": "pr",
+    "at": "2026-08-30T23:21:22.061103907Z",
+    "pr_url": "https://github.com/monrad/takt/pull/76",
+    "applied": true
+  }
+}

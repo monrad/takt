@@ -42,7 +42,7 @@ A `dispatch` op with `confirm: true` (the run's autonomy is `step`) is preceded 
 
 - Never edit `state.json`, `events.jsonl`, receipts, digests or anything under the run's bundle directory by hand: only takt's own commands write there, never you.
 - Inspect bundle files by absolute path — never `cd` into the bundle: a shell that stays there turns every later repo-relative path into a false "missing file".
-- Never commit or push except where an op says so (`push_pr`); never run `git add -A`; never delete or check out branches — the `archived` stop lists what is left for you as `cleanup`.
+- Never commit, push, delete a branch or check one out on your own initiative — two ops say otherwise, and only those: the `push_pr` run op, and an `archived` stop's `cleanup` commands once the user has confirmed them; never run `git add -A`, ever.
 - Never answer a gate on the user's behalf and never skip one.
 - Never continue after a non-zero exit: print stderr (its `error` and `hint`) and stop. The exceptions are printed as JSON with exit 0 (`"ignored": true`, `"valid": false`) or are results (`takt verify` with `"passed": false`).
 - Every `Agent` call carries the `model` from the op and the `takt:<agent>` subagent type.

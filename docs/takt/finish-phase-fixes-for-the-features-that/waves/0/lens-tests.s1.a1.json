@@ -1,0 +1,66 @@
+{
+  "lens": "tests",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T21:15:09.936911004Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "internal/tools/hostgen/main_test.go",
+      "line": 126,
+      "title": "generateSkill's RenderCopilotSkill error path (a render error is exitFailure) is never exercised",
+      "detail": "internal/tools/hostgen/main.go:112-115 returns the error from hosts.RenderCopilotSkill straight out of generateSkill, and run() (main.go:85-89) turns it into exitFailure — spec §2.3 explicitly names this half of the contract ('a render error is exitFailure'). Neither TestRunRegeneratesAHandEditedSkill nor TestRunRefusesARootMissingASkillSource (nor any other test in main_test.go) ever seeds a root whose commands/takt.md fails a substitution's declared count, so this branch of generateSkill/run is untested at the hostgen level — it is only exercised indirectly through hosts.RenderCopilotSkill's own unit tests in internal/hosts/skill_test.go, never through run()'s wiring of that error into exitFailure and its stderr message.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 144,
+      "title": "manifestVersion's JSON-unmarshal and empty-version error returns are untested",
+      "detail": "manifestVersion (main.go:136-151) has three error returns: file-read failure, json.Unmarshal failure (line 144-146), and an empty \"version\" field (line 147-149). Only the file-read failure is exercised, via TestRunRefusesARootMissingASkillSource's 'no manifest' case (main_test.go:177), which removes the file rather than corrupting or emptying its version. The other two returns are never triggered by any test.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/hosts/skill.go",
+      "line": 153,
+      "title": "substitutionLabel's truncation branch is never exercised",
+      "detail": "substitutionLabel truncates a from region to labelMax (56) runes at line 153-154, but every case in TestRenderCopilotSkillErrorsWhenARegionDoesNotMatchItsCount (internal/hosts/skill_test.go) breaks the H1 substitution, whose from text ('# /takt — the op loop', 22 runes) never approaches 56. The frontmatter substitution's from field is far longer than 56 runes, so the truncation path this function exists for is never hit by a test.",
+      "task": 3
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/pr_test.go",
+      "line": 192,
+      "title": "Bare-#N leading-boundary negatives cover only letters and slash, not digits or underscore",
+      "detail": "isWordByte (internal/finish/pr.go:222) treats '_', digits and ASCII letters alike as word bytes, and bareRefIsBounded (pr.go:210) uses it to reject a preceding word byte. TestBuildPRIssuesSection's leading-boundary negatives are 'abc#71', 'takt#71' (letters), '/#71' and 'owner/#71' (slash) — no case precedes '#' with a digit or '_', so those two branches of isWordByte are exercised only redundantly through the letter cases, never distinguished from them.",
+      "task": 2
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro_test.go",
+      "line": 284,
+      "title": "TestWaveTimingsLastCloseWins cannot distinguish \"last in log order\" from \"latest timestamp\"",
+      "detail": "The fixture's two wave_closed events sharing a key are appended to the events slice in the same order as their timestamps (5min then 8min), so the map-overwrite behaviour documented at internal/finish/retro.go:335-340 ('the LAST one in log order wins') is indistinguishable, by this test, from an implementation that instead picked the later-timestamped close. A fixture that puts the earlier-timestamped close event after the later one in the slice (log order diverging from timestamp order) would pin the documented rule rather than a coincidentally-equivalent one.",
+      "task": 1
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/pr.go",
+      "line": 222,
+      "title": "No test proves isWordByte's non-ASCII boundary claim",
+      "detail": "isWordByte's doc comment (pr.go:220-221) states 'A byte of a multi-byte rune is not one, so a topic written in another script still names its issue' — an explicit, testable claim about UTF-8 continuation bytes never matching the word-byte check. No case in TestBuildPRIssuesSection (pr_test.go:192) puts a non-ASCII character immediately before or after a bare '#N' reference to verify that claim.",
+      "task": 2
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton_test.go",
+      "line": 377,
+      "title": "No test proves the close record wins over a co-present, differently-tasked wave_dispatched fallback",
+      "detail": "committedTasks (internal/finish/skeleton.go) tries the event's own list, then the close record, then the dispatch event, in that order. TestBuildShippedFallbackMatchesTheWholeDispatchKey's 'a matching record with no tasks falls through to the dispatch' case (skeleton_test.go:377) only shows the close-record-empty → dispatch-fallback transition; TestBuildShippedDerivesTasksForAnEmptyCommitList's 'an empty list takes the ids of the close record' case has no dispatch event present at all. No case has both a matching, non-empty close record and a matching, differently-tasked wave_dispatched event in the same fixture, so priority order 2-over-3 is never directly demonstrated (it currently follows from the early-return control flow, but that flow is not itself pinned by a test).",
+      "task": 1
+    }
+  ]
+}

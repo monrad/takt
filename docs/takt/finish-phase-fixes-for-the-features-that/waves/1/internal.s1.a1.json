@@ -1,0 +1,116 @@
+{
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T22:24:45.566056397Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 604,
+      "title": "Design-doc changes go well beyond the task's four named regions",
+      "detail": "Task-4 enumerates exactly four regions to edit in this file (§4.7 Commits bullet ~342, §7.5 step 5 ~905, the two follow-on sentences ~926/928, §5.1's `takt retro --rewrite` row ~371), all about retiring 'the run's last commit' prose. The diff additionally rewrites §3.3's repository-layout rows for hosts/copilot/skills/takt/SKILL.md and internal/hosts/ (lines ~111, ~128, ~130), the whole §6.1 'GitHub Copilot CLI host' paragraph (lines ~604-621, describing hostgen's new substitution-profile rendering of the Copilot skill from commands/takt.md), and the §14 `prompt` test-table row (~line 1249, adding TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt). This content documents wave 0's task-3 (the hostgen/SKILL.md-generation feature), whose own task file restricted edits to commands/takt.md, hosts/copilot/skills/takt/SKILL.md, internal/hosts/*, internal/tools/hostgen/*, prompt test files and Taskfile.yml — never the design doc — and wave 0's diff (logs/wave-0.s1.a1.diff) never touched docs/superpowers/specs/2026-08-24-takt-design.md. None of this belongs to task-4's stated problem (retiring archived-path prose); it is unauthorized scope creep inside a declared file, exactly the kind of thing this repo's own precedent (the earlier CONTRIBUTING.md episode) says needs explicit authorization before landing.",
+      "id": "c1",
+      "task": 4,
+      "lenses": [
+        "intent"
+      ]
+    },
+    {
+      "severity": "blocking",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 936,
+      "title": "\"the disposition itself is never recorded\" contradicts step 5's own opening sentence and internal/bundle/state.go",
+      "detail": "The rewritten bullet reads: \"None of this is ever recorded in state: the disposition itself is never recorded, and the archive step writes nothing tracked after its commit…\" (lines 936-938). But the very same numbered step, 25 lines earlier, states the opposite: \"disposition.applied = true for whichever choice was made — set before the commit, for every choice\" (line 907), and internal/bundle/state.go:107 shows `Disposition.Applied bool` is a field of the tracked state.json that archive.go writes via bundle.SaveState (archive.go:70-73) before the archive commit (archive.go:85) commits it. So the disposition (at least its `applied` flag) plainly IS recorded in state and is committed. The original text this replaced was careful to say \"there is no `disposition_applied` EVENT and no write AFTER the archive commit\" — explicitly scoping the negative claim to an event log entry and to writes after the commit, not to the state field itself. The rewrite drops that scoping and also drops the qualifier used two sentences earlier in the same paragraph, \"the git side of the disposition\" (line 911) — which is the precise, non-contradictory way archive.go's own top-of-file comment states this same fact (\"nothing about the git side of a disposition is remembered in state\", archive.go:27-29). As written, line 936 self-contradicts line 907 of the same step.",
+      "id": "c2",
+      "task": 4,
+      "lenses": [
+        "consistency",
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 937,
+      "title": "\"The one write that can follow it ... not to this step\" ignores the second-archive-commit case documented two paragraphs later",
+      "detail": "Lines 937-938 claim the retro-done commit is \"the one write that can follow\" the archive commit, and that any such write \"belongs to `done --step retro`, not to this step\" (the archive step). But the very next bullet in the same numbered item 5, lines 943-947 (unchanged by this diff), documents a second kind of follow-on write that does belong to the archive step: \"The `archive` commit itself is re-taken on the same terms: a later `takt next` on the archived run that finds anything dirty in git under the bundle directory redoes it, so a file dropped there after archiving ... is swept into a second `archive` commit that carries it\" — implemented by recommitArchive (internal/cli/archive.go), whose own doc comment attributes it squarely to finishing an incomplete archive. The new absolute phrasing (\"the one write\", \"not to this step\") overclaims exclusivity and is inconsistent with the paragraph immediately following it in the same document.",
+      "id": "c3",
+      "task": 4,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/cli/archive_test.go",
+      "line": 177,
+      "title": "Test failure strings still use the retired \"run's last\" framing this task eliminates elsewhere",
+      "detail": "archive_test.go:177 (\"the archive commit is the run's last write\") and archive_test.go:327 (\"keep is applied by the archive commit, which is the run's last write\") still phrase the invariant in exactly the terms G7 retires from archive.go and the design doc (\"the run's last …\"). archive_test.go isn't one of task-4's editable files, so this isn't something the implementer could fix here, but it's now the one place in internal/cli that still asserts the archive commit is \"the run's last write\" — a claim the rest of the package and the design doc now go out of their way not to make, since a post-archive `retro --rewrite` + `done --step retro` can land a later commit. Worth a follow-up cleanup so the test vocabulary matches the comments it exercises.",
+      "id": "c4",
+      "task": 0,
+      "lenses": [
+        "consistency"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "false_positive",
+      "evidence": "c1's entire complaint is that the diff edits §3.3's repository-layout rows (lines 108-130 of the diff, hosts/copilot/skills/takt/SKILL.md and internal/hosts/), the §6.1 'GitHub Copilot CLI host' paragraph (diff lines 604-621), and the §14 `prompt` test-table row (adding TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt) beyond task-4's four named regions. This exact set of edits — 'restating §3.3's repository-layout rows, §6.1, and §14 testing table against the now-generated Copilot skill' — is precisely the standing-fact (2)(a) authorization for task 4's additions, given in writing with the dispatch that ran it. A candidate whose sole complaint is that these edits are unauthorized/out of scope is a false positive per that standing fact; c1 makes no claim that the content of these passages is factually wrong.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:110",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:604",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:1249"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "Line 936 (new text) reads: 'None of this is ever recorded in state: the disposition itself is never recorded, and the archive step writes nothing tracked after its commit...'. This contradicts two things in the same document and the code: (1) the same numbered step's opening sentence, line 907: '`disposition.applied = true` for whichever choice was made — set before the commit, for every choice'; (2) the preceding step 4 ('answer'), lines 895-896: 'once accepted, it records `{choice, at, reason, pr_url, applied}`' — i.e. the disposition record is explicitly recorded. archive.go confirms this in code: `r.st.Disposition.Applied = true` (archive.go:71) is written via `bundle.SaveState(r.bdir, r.st)` (archive.go:73) *before* the archive commit (archive.go:85), and `bundle.State.Disposition *Disposition` (state.go:130) with `Applied bool` (state.go:107) is a tracked field of state.json. archive.go's own comment scopes the negative claim narrowly to 'the git side of a disposition' (archive.go:27-29: 'nothing about the git side of a disposition is remembered in state'), not to the disposition record itself — the qualifier the rewritten design-doc line drops.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:936",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:907",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:895",
+        "internal/cli/archive.go:70",
+        "internal/cli/archive.go:73",
+        "internal/bundle/state.go:107"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "Lines 936-938 (new text) claim: '...the archive step writes nothing tracked after its commit — the one write that can follow, the post-archive `retro done` commit named above, belongs to `done --step retro`, not to this step.' This absolute, exclusive framing is contradicted by the very next bullet in the same numbered item 5, lines 943-947 (unchanged by the diff): 'The `archive` commit itself is re-taken on the same terms: a later `takt next` on the archived run that finds anything dirty in git under the bundle directory redoes it, so a file dropped there after archiving...is swept into a second `archive` commit that carries it.' A second `archive` commit landing after the first is plainly a tracked write following the archive commit that belongs to the archive step itself (implemented by recommitArchive in internal/cli/archive.go, in the same file/step), not to `done --step retro` — directly contradicting the 'one write ... not to this step' claim two paragraphs earlier.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:936",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:943",
+        "internal/cli/archive.go:108"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "archive_test.go:177 reads `t.Fatalf(\"the archive commit is the run's last write: %q\", s)` and archive_test.go:327 reads `t.Fatalf(\"keep is applied by the archive commit, which is the run's last write: %q\", s)` — both confirmed verbatim. archive_test.go is not in task-4's editable-files list (internal/cli/archive.go, internal/cli/cmd_done.go, docs/superpowers/specs/2026-08-24-takt-design.md only, per waves/1/task-4.a1.md), so the implementer could not have touched it, exactly as the candidate states. The phrasing is genuinely the retired 'run's last' framing G7 retires elsewhere in the package and design doc, left stale in this untouched test file — a true, minor, non-blocking observation.",
+      "citations": [
+        "internal/cli/archive_test.go:177",
+        "internal/cli/archive_test.go:327",
+        "docs/takt/finish-phase-fixes-for-the-features-that/waves/1/task-4.a1.md:14"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c2",
+    "c3",
+    "c4"
+  ]
+}

@@ -1,0 +1,316 @@
+{
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T21:21:47.683770799Z",
+  "lenses": [
+    "correctness",
+    "intent",
+    "tests",
+    "simplicity",
+    "consistency",
+    "docs"
+  ],
+  "candidates": [
+    {
+      "severity": "major",
+      "file": "CONTRIBUTING.md",
+      "line": 69,
+      "title": "Copilot host files section still describes the skill as hand-kept except for its version line",
+      "detail": "CONTRIBUTING.md:67-71 (\"### Copilot host files\") says only \"`hosts/copilot/agents/*.agent.md` are generated from `agents/*.md` by `task hosts:gen`... The skill's `takt version --expect \u003cversion\u003e` line is stamped by `task version:set`\" — implying the rest of hosts/copilot/skills/takt/SKILL.md is hand-maintained. This diff (internal/hosts/skill.go, internal/tools/hostgen/main.go's generateSkill) makes the WHOLE skill file a render of commands/takt.md via a substitution profile, written and staleness-checked by the same `task hosts:gen` / `task hosts:check` that already covers the agent files (per the new TestRunRegeneratesAHandEditedSkill and TestRunRefusesARootMissingASkillSource). A contributor following this section would still believe hand-editing the skill body is normal practice and that only the version line is generator-owned, which is no longer true and will now be silently overwritten by `task hosts:gen` or fail `task hosts:check`/CI.",
+      "id": "c1",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1239,
+      "title": "Design doc's §14 testing table and §3.3/§6.1 architecture text omit the new skill-generation parity test and its \"generated, never hand-edited\" status",
+      "detail": "Line 1239 (§14 Testing table, `prompt` row) names the Copilot parity tests by name — `TestCopilotSkillNamesEverythingTheBinaryCanEmit`, `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents`, `TestCopilotHostFrontmatterIsParseable` — but not the new `TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt` (internal/prompt/copilot_test.go) that proves the skill is a byte-exact render of commands/takt.md, the direct skill-level analogue of the agents' own parity test already listed. Two related spots are stale the same way: §3.3's repository-layout table (lines 111-112) marks `hosts/copilot/agents/*.agent.md` \"generated from agents/*.md — never hand-edited\" but leaves the SKILL.md row (line 111) and the internal/hosts and internal/tools/hostgen rows (lines 128-130, \"renders agents/*.md for other hosts\" / \"writes and checks the generated Copilot agent files\") not mentioning the skill at all; and §6.1's paragraph (lines 611-616) ends \"...fail when a generated agent file is stale\" without now also covering the generated skill file. None of these were touched by this diff even though the diff is exactly the change (#66/§2.3) that makes them incomplete.",
+      "id": "c2",
+      "task": 0,
+      "lenses": [
+        "docs"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/pr.go",
+      "line": 222,
+      "title": "No test proves isWordByte's non-ASCII boundary claim",
+      "detail": "isWordByte's doc comment (pr.go:220-221) states 'A byte of a multi-byte rune is not one, so a topic written in another script still names its issue' — an explicit, testable claim about UTF-8 continuation bytes never matching the word-byte check. No case in TestBuildPRIssuesSection (pr_test.go:192) puts a non-ASCII character immediately before or after a bare '#N' reference to verify that claim.",
+      "id": "c3",
+      "task": 2,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/pr_test.go",
+      "line": 192,
+      "title": "Bare-#N leading-boundary negatives cover only letters and slash, not digits or underscore",
+      "detail": "isWordByte (internal/finish/pr.go:222) treats '_', digits and ASCII letters alike as word bytes, and bareRefIsBounded (pr.go:210) uses it to reject a preceding word byte. TestBuildPRIssuesSection's leading-boundary negatives are 'abc#71', 'takt#71' (letters), '/#71' and 'owner/#71' (slash) — no case precedes '#' with a digit or '_', so those two branches of isWordByte are exercised only redundantly through the letter cases, never distinguished from them.",
+      "id": "c4",
+      "task": 2,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/finish/retro.go",
+      "line": 309,
+      "title": "Slice-floor-to-1 rule hand-duplicated between timingKeyOf and closeKeyOf",
+      "detail": "timingKeyOf (line 309: `max(int(sl), 1)`) and the new closeKeyOf (line 317: `max(c.Slice, 1)`) encode the same 'floor a missing/zero slice to 1' rule inline in two places rather than through one named helper (e.g. `floorSlice(n int) int`). closeKeyOf's own doc comment even says it floors 'the way [timingKeyOf] floors', which is a hint the two could share one function instead of restating the rule.",
+      "id": "c5",
+      "task": 1,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/retro_test.go",
+      "line": 284,
+      "title": "TestWaveTimingsLastCloseWins cannot distinguish \"last in log order\" from \"latest timestamp\"",
+      "detail": "The fixture's two wave_closed events sharing a key are appended to the events slice in the same order as their timestamps (5min then 8min), so the map-overwrite behaviour documented at internal/finish/retro.go:335-340 ('the LAST one in log order wins') is indistinguishable, by this test, from an implementation that instead picked the later-timestamped close. A fixture that puts the earlier-timestamped close event after the later one in the slice (log order diverging from timestamp order) would pin the documented rule rather than a coincidentally-equivalent one.",
+      "id": "c6",
+      "task": 1,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/finish/skeleton_test.go",
+      "line": 377,
+      "title": "No test proves the close record wins over a co-present, differently-tasked wave_dispatched fallback",
+      "detail": "committedTasks (internal/finish/skeleton.go) tries the event's own list, then the close record, then the dispatch event, in that order. TestBuildShippedFallbackMatchesTheWholeDispatchKey's 'a matching record with no tasks falls through to the dispatch' case (skeleton_test.go:377) only shows the close-record-empty → dispatch-fallback transition; TestBuildShippedDerivesTasksForAnEmptyCommitList's 'an empty list takes the ids of the close record' case has no dispatch event present at all. No case has both a matching, non-empty close record and a matching, differently-tasked wave_dispatched event in the same fixture, so priority order 2-over-3 is never directly demonstrated (it currently follows from the early-return control flow, but that flow is not itself pinned by a test).",
+      "id": "c7",
+      "task": 1,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/hosts/skill.go",
+      "line": 153,
+      "title": "substitutionLabel's truncation branch is never exercised",
+      "detail": "substitutionLabel truncates a from region to labelMax (56) runes at line 153-154, but every case in TestRenderCopilotSkillErrorsWhenARegionDoesNotMatchItsCount (internal/hosts/skill_test.go) breaks the H1 substitution, whose from text ('# /takt — the op loop', 22 runes) never approaches 56. The frontmatter substitution's from field is far longer than 56 runes, so the truncation path this function exists for is never hit by a test.",
+      "id": "c8",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 117,
+      "title": "generateSkill duplicates the agent loop's compare/check/write logic instead of sharing a helper",
+      "detail": "run()'s per-agent loop (lines 66-78: read dst, bytes.Equal skip, `check` → print \"stale:\" + count, else write() + print \"wrote\") is the same four-branch shape newly written again in generateSkill (lines 117-127) for the skill file. Both were touched/added by this wave's task-3. A small `writeOrReport(dst, out, check, stdout, stderr) (stale int, err error)` would serve both call sites; instead the diff reimplements the pattern rather than factoring it, which is exactly the 'duplicated helper' this lens looks for — and it is the same file, so a future edit to one copy (e.g. the stale-message wording) can silently drift from the other.",
+      "id": "c9",
+      "task": 3,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "nit",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 136,
+      "title": "manifestVersion names a function here but a struct/type for the same concept elsewhere in the codebase",
+      "detail": "internal/tools/hostgen/main.go:136 introduces `func manifestVersion(path string) (string, error)`, and internal/prompt/copilot_test.go:100 (this same wave) introduces a same-named test helper function. internal/cli/cmd_version.go:88 already has `type manifestVersion struct { Version string }` for the identical concept (the plugin manifest's version field). Different packages so it compiles, but the same identifier names a type in one place and a function in two others for what the brief itself treats as one recurring concept (spec §2.3's handshake version).",
+      "id": "c10",
+      "task": 3,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 144,
+      "title": "manifestVersion's JSON-unmarshal and empty-version error returns are untested",
+      "detail": "manifestVersion (main.go:136-151) has three error returns: file-read failure, json.Unmarshal failure (line 144-146), and an empty \"version\" field (line 147-149). Only the file-read failure is exercised, via TestRunRefusesARootMissingASkillSource's 'no manifest' case (main_test.go:177), which removes the file rather than corrupting or emptying its version. The other two returns are never triggered by any test.",
+      "id": "c11",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    },
+    {
+      "severity": "minor",
+      "file": "internal/tools/hostgen/main.go",
+      "line": 148,
+      "title": "Missing-version-field error reads differently from the CLI's own phrasing for the same condition",
+      "detail": "hostgen's manifestVersion renders a missing/empty \"version\" field as `fmt.Errorf(\"%s: no \\\"version\\\" field\", path)` (internal/tools/hostgen/main.go:148), while internal/cli/cmd_version.go:139 renders the identical condition — an empty version in the same .claude-plugin/plugin.json — as `\"plugin manifest \" + path + \" has no version field\"`. Same fact, two different sentence shapes and quoting conventions for the one JSON field this wave's task-3 cares about (§2.3's version handshake).",
+      "id": "c12",
+      "task": 3,
+      "lenses": [
+        "consistency"
+      ]
+    },
+    {
+      "severity": "major",
+      "file": "internal/tools/hostgen/main_test.go",
+      "line": 126,
+      "title": "generateSkill's RenderCopilotSkill error path (a render error is exitFailure) is never exercised",
+      "detail": "internal/tools/hostgen/main.go:112-115 returns the error from hosts.RenderCopilotSkill straight out of generateSkill, and run() (main.go:85-89) turns it into exitFailure — spec §2.3 explicitly names this half of the contract ('a render error is exitFailure'). Neither TestRunRegeneratesAHandEditedSkill nor TestRunRefusesARootMissingASkillSource (nor any other test in main_test.go) ever seeds a root whose commands/takt.md fails a substitution's declared count, so this branch of generateSkill/run is untested at the hostgen level — it is only exercised indirectly through hosts.RenderCopilotSkill's own unit tests in internal/hosts/skill_test.go, never through run()'s wiring of that error into exitFailure and its stderr message.",
+      "id": "c13",
+      "task": 3,
+      "lenses": [
+        "tests"
+      ]
+    }
+  ],
+  "verdicts": [
+    {
+      "id": "c1",
+      "verdict": "confirmed",
+      "evidence": "CONTRIBUTING.md:69-71 still reads '`hosts/copilot/agents/*.agent.md` are generated from `agents/*.md` by `task hosts:gen`... The skill's `takt version --expect \u003cversion\u003e` line is stamped by `task version:set`.' — naming only the version line as generator-owned. This diff (internal/hosts/skill.go's RenderCopilotSkill, internal/tools/hostgen/main.go's generateSkill at main.go:102-129, wired into run() at main.go:85-93) makes hostgen render and --check the WHOLE SKILL.md body, confirmed by TestRunRegeneratesAHandEditedSkill (main_test.go:126) which shows a hand-edited skill body is reported stale and overwritten. The diff even updates Taskfile.yml's hosts:gen/hosts:check descriptions to mention the skill but leaves CONTRIBUTING.md untouched (absent from the diff — confirmed no CONTRIBUTING.md hunk exists), so the two docs now disagree about what `task hosts:gen` covers.",
+      "citations": [
+        "CONTRIBUTING.md:69",
+        "CONTRIBUTING.md:70",
+        "internal/tools/hostgen/main.go:96",
+        "internal/tools/hostgen/main_test.go:126"
+      ]
+    },
+    {
+      "id": "c2",
+      "verdict": "confirmed",
+      "evidence": "§14's testing table (docs/superpowers/specs/2026-08-24-takt-design.md:1239) names TestCopilotSkillNamesEverythingTheBinaryCanEmit, TestCopilotSkillHandshakeMatchesTheManifest, TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents, TestCopilotHostFrontmatterIsParseable but not the new TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt (internal/prompt/copilot_test.go:78). §3.3's layout table (lines 111-112) marks only `hosts/copilot/agents/*.agent.md` as 'generated from agents/*.md — never hand-edited', leaves the SKILL.md row (line 111) silent on generation, and lines 128-130 describe internal/hosts and internal/tools/hostgen without mentioning the skill. §6.1 (lines 604-616) still says 'task version:set stamps the line' for the handshake and ends '...fail when a generated agent file is stale' with no mention of the now-generated skill file. None of these lines appear in the diff (grep for the filename found nothing), so all three are stale after this wave's change.",
+      "citations": [
+        "docs/superpowers/specs/2026-08-24-takt-design.md:1239",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:111",
+        "docs/superpowers/specs/2026-08-24-takt-design.md:613"
+      ]
+    },
+    {
+      "id": "c3",
+      "verdict": "confirmed",
+      "evidence": "isWordByte's doc comment at internal/finish/pr.go:220-221 states 'A byte of a multi-byte rune is not one, so a topic written in another script still names its issue.' TestBuildPRIssuesSection's full table (internal/finish/pr_test.go:198-239) has no topic placing a non-ASCII rune immediately before or after a bare `#N` — every case uses ASCII letters, digits, slashes, or the literal string 'issues'. The claim about UTF-8 continuation bytes is therefore asserted in prose but never exercised by a test.",
+      "citations": [
+        "internal/finish/pr.go:220",
+        "internal/finish/pr.go:222",
+        "internal/finish/pr_test.go:198"
+      ]
+    },
+    {
+      "id": "c4",
+      "verdict": "confirmed",
+      "evidence": "isWordByte (internal/finish/pr.go:222-227) treats '_', digits and letters alike as word bytes. The leading-boundary negatives in TestBuildPRIssuesSection are only 'abc#71', 'takt#71' (letters), '/#71', 'owner/#71' (slash) — internal/finish/pr_test.go:218-221 — with no topic of the form '1#71' or '_#71' anywhere in the file (grep over the test file confirms no digit or underscore precedes any '#').",
+      "citations": [
+        "internal/finish/pr.go:222",
+        "internal/finish/pr_test.go:218",
+        "internal/finish/pr_test.go:221"
+      ]
+    },
+    {
+      "id": "c5",
+      "verdict": "confirmed",
+      "evidence": "timingKeyOf (internal/finish/retro.go:305-310) computes `slice: max(int(sl), 1)` and closeKeyOf (retro.go:312-318) computes `slice: max(c.Slice, 1)` — the same floor-to-1 rule restated rather than shared through one helper; closeKeyOf's own comment ('The slice is floored the way [timingKeyOf] floors an event's') acknowledges the duplication.",
+      "citations": [
+        "internal/finish/retro.go:309",
+        "internal/finish/retro.go:317"
+      ]
+    },
+    {
+      "id": "c6",
+      "verdict": "confirmed",
+      "evidence": "In TestWaveTimingsLastCloseWins (internal/finish/retro_test.go:284-308), the two same-key wave_closed events are `ev(5*time.Minute, ...)` then `ev(8*time.Minute, ...)` — appended in the same order as their timestamps. Since waveTimings (retro.go:336-353) overwrites a map entry by iterating `events` in slice order (log order), this fixture cannot distinguish 'last in log order wins' from 'latest timestamp wins': both rules pick the same 8-minute close here.",
+      "citations": [
+        "internal/finish/retro_test.go:293",
+        "internal/finish/retro.go:339"
+      ]
+    },
+    {
+      "id": "c7",
+      "verdict": "confirmed",
+      "evidence": "committedTasks (internal/finish/skeleton.go:520-530) returns closedTasks's result immediately if non-empty, never checking dispatchedTasks. In TestBuildShippedFallbackMatchesTheWholeDispatchKey (internal/finish/skeleton_test.go:377-838) every case either has no wave_dispatched event matching the (wave,slice,attempt) key at all, or has a matching close record that is empty (the 'falls through to the dispatch' case, skeleton_test.go:822-830). No case supplies both a matching non-empty close record and a matching wave_dispatched event carrying different task ids, so the close-record-over-dispatch priority is never directly demonstrated.",
+      "citations": [
+        "internal/finish/skeleton.go:520",
+        "internal/finish/skeleton_test.go:377",
+        "internal/finish/skeleton_test.go:822"
+      ]
+    },
+    {
+      "id": "c8",
+      "verdict": "confirmed",
+      "evidence": "substitutionLabel truncates to labelMax=56 runes at internal/hosts/skill.go:153-154. TestRenderCopilotSkillErrorsWhenARegionDoesNotMatchItsCount (internal/hosts/skill_test.go) only breaks the h1 substitution ('# /takt — the op loop', 22 runes, skill_test.go:23-24), never a from text near or over 56 runes (e.g. the much longer frontmatter or handshake substitutions), so the truncation branch is never exercised.",
+      "citations": [
+        "internal/hosts/skill.go:153",
+        "internal/hosts/skill_test.go:24"
+      ]
+    },
+    {
+      "id": "c9",
+      "verdict": "confirmed",
+      "evidence": "The per-agent loop in run() (internal/tools/hostgen/main.go:66-78) and generateSkill (main.go:117-127) both do: read dst, bytes.Equal skip, `if check` print 'stale:' and count/return 1, else write() and print 'wrote' — the same four-branch shape repeated rather than factored into one helper like `writeOrReport(dst, out, check, stdout, stderr)`.",
+      "citations": [
+        "internal/tools/hostgen/main.go:66",
+        "internal/tools/hostgen/main.go:117"
+      ]
+    },
+    {
+      "id": "c10",
+      "verdict": "confirmed",
+      "evidence": "internal/tools/hostgen/main.go:136 defines `func manifestVersion(path string) (string, error)`; internal/prompt/copilot_test.go:100 defines a same-named `func manifestVersion(t *testing.T) string`; internal/cli/cmd_version.go:88 defines `type manifestVersion struct { Version string }`. Three different packages give three different kinds of identifier the same name for the closely related concept of the plugin manifest's version field.",
+      "citations": [
+        "internal/tools/hostgen/main.go:136",
+        "internal/prompt/copilot_test.go:100",
+        "internal/cli/cmd_version.go:88"
+      ]
+    },
+    {
+      "id": "c11",
+      "verdict": "confirmed",
+      "evidence": "manifestVersion (internal/tools/hostgen/main.go:136-151) has three error returns: read failure, json.Unmarshal failure (144-146), and empty version (147-149). main_test.go's TestRunRefusesARootMissingASkillSource only removes the manifest file entirely (main_test.go:184,189), exercising just the read-failure path; no test in main_test.go corrupts the manifest's JSON or empties its version field.",
+      "citations": [
+        "internal/tools/hostgen/main.go:144",
+        "internal/tools/hostgen/main.go:147",
+        "internal/tools/hostgen/main_test.go:184"
+      ]
+    },
+    {
+      "id": "c12",
+      "verdict": "confirmed",
+      "evidence": "hostgen's manifestVersion renders a missing version as `fmt.Errorf(\"%s: no \\\"version\\\" field\", path)` (internal/tools/hostgen/main.go:148), while cmd_version.go's manifestFailure renders the same condition as `\"plugin manifest \" + path + \" has no version field\"` (internal/cli/cmd_version.go:139) — different sentence shape and quoting for the identical missing-version-field fact.",
+      "citations": [
+        "internal/tools/hostgen/main.go:148",
+        "internal/cli/cmd_version.go:139"
+      ]
+    },
+    {
+      "id": "c13",
+      "verdict": "confirmed",
+      "evidence": "generateSkill returns hosts.RenderCopilotSkill's error straight out (internal/tools/hostgen/main.go:112-115), and run() turns any generateSkill error into exitFailure (main.go:85-89). Reading main_test.go in full shows TestRunRegeneratesAHandEditedSkill (line 126) and TestRunRefusesARootMissingASkillSource (line 177) are the only skill-related tests, and neither seeds a commands/takt.md that fails a substitution's declared count — that path is exercised only in internal/hosts/skill_test.go, never through run()'s wiring into exitFailure and its stderr message.",
+      "citations": [
+        "internal/tools/hostgen/main.go:112",
+        "internal/tools/hostgen/main.go:85",
+        "internal/tools/hostgen/main_test.go:126"
+      ]
+    }
+  ],
+  "confirmed": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13"
+  ]
+}

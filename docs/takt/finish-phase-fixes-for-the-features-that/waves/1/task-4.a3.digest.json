@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 3,
+  "status": "done",
+  "summary": "Restated §7.5 step 5's archive-step guarantee in both places as a no-write-after-commit claim (naming the untracked session sidecar as the sole post-commit write) and cast the retro-done and re-taken archive commits as separate later `takt` invocations; all verify commands pass.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T22:51:15.156510807Z"
+}
