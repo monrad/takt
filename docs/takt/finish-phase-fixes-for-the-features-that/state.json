@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "finish-phase-fixes-for-the-features-that",
   "topic": "Finish-phase fixes for the features that just shipped: #71, #74, #66, #72 — one run, four small issues, all in internal/finish, internal/cli/archive.go, cmd_done.go, the two host prompts and the design doc.",
-  "phase": "finish",
+  "phase": "archived",
   "created_at": "2026-08-30T18:54:31.082922042Z",
   "branch": "monrad/phase_c",
   "branch_adopted": true,
@@ -135,6 +135,6 @@
     "choice": "pr",
     "at": "2026-08-30T23:21:22.061103907Z",
     "pr_url": "https://github.com/monrad/takt/pull/76",
-    "applied": false
+    "applied": true
   }
 }
