@@ -906,12 +906,13 @@ slice, which keeps every commit verified.
    nothing further.
 5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
    before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
-   happens here too, before the commit, so the copy predates the branch about to lose it); lock released;
-   commit `takt(<slug>): archive` — the last commit the archive step takes, still what lets a merge
-   carry the archived bundle, since the git side of the disposition happens only after it stands. After
-   that commit the step writes nothing tracked: its bookkeeping is already in, and all that follows is
-   the session lock's untracked sidecar being cleared (§4.6) and git work that records nothing in the
-   bundle. Later `takt` invocations can still add to the branch — a post-archive `takt retro --rewrite`
+   happens here too, before the commit, so the copy predates the branch about to lose it); commit
+   `takt(<slug>): archive` — the last commit the archive step takes, still what lets a merge
+   carry the archived bundle, since the git side of the disposition happens only after it stands. The
+   lock is released after that commit, not before it: `archive` reaches `applyAndStop` still holding it,
+   and `ClearSession` runs there once `commitBundle` has returned. After the commit the step writes
+   nothing tracked: its bookkeeping is already in, and all that follows is the session lock's untracked
+   sidecar being cleared (§4.6) and git work that records nothing in the bundle. Later `takt` invocations can still add to the branch — a post-archive `takt retro --rewrite`
    plus `done --step retro` lands a `takt(<slug>): retro done` bundle commit, which is why
    `doneRetroChecks` accepts the archived phase, and a later `takt next` on the archived run can re-take
    the `archive` commit itself (below) — but those are separate commands, not writes by this step.
