@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/monrad/takt/internal/bundle"
+	"github.com/monrad/takt/internal/goals"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/testutil"
 )
@@ -34,6 +35,27 @@ func driveToFinish(t *testing.T, d *driver) map[string]any {
 	}
 	t.Fatal("never reached finish")
 	return nil
+}
+
+// driveToExecute plays the loop until the run is building, which is where
+// every finish verb must still refuse. It is the mirror of driveToFinish and
+// stops at the op it has not played.
+func driveToExecute(t *testing.T, d *driver) {
+	t.Helper()
+	for range 40 {
+		o := d.nextOp()
+		st, err := bundle.LoadState(d.bdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Phase == bundle.PhaseExecute {
+			return
+		}
+		if reason, stopped := d.step(o); stopped {
+			t.Fatalf("the run stopped (%s) before execute: %v", reason, d.ops)
+		}
+	}
+	t.Fatalf("never reached execute: %v", d.ops)
 }
 
 func finishRun(t *testing.T, initFlags ...string) (*driver, string) {
@@ -959,41 +981,26 @@ func TestAllAchievedGoalsRecordWithoutItsStateWriteIsHealed(t *testing.T) {
 // once.
 func TestFinishCommandsRefuseOutsideTheFinishPhase(t *testing.T) {
 	t.Parallel()
-	root, bdir := setupRunWith(t, "--no-goals")
-	d := &driver{t: t, root: root, bdir: bdir, env: map[string]string{"TAKT_SESSION": "S"}}
-	reached := false
-	for range 40 {
-		o := d.nextOp()
-		st, err := bundle.LoadState(bdir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if st.Phase == bundle.PhaseExecute {
-			reached = true
-			break
-		}
-		if reason, stopped := d.step(o); stopped {
-			t.Fatalf("the run stopped (%s) before execute: %v", reason, d.ops)
-		}
-	}
-	if !reached {
-		t.Fatalf("never reached execute: %v", d.ops)
-	}
+	d, bdir := finishRun(t, "--no-goals")
+	driveToExecute(t, d)
 	msg := d.message("```json\n[{\"id\":\"G1\",\"verdict\":\"achieved\",\"evidence\":\"x\"}]\n```\n")
-	testutil.WriteFile(t, root, "docs/takt/demo/retro.md", "# Retro\n\ntoo early\n")
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md", "# Retro\n\ntoo early\n")
 	for _, c := range []struct {
-		what string
-		args []string
+		what  string
+		args  []string
+		phase string // the phase word(s) this verb's guard names.
 	}{
-		{"verify", []string{"verify", "--slug", "demo"}},
-		{"record --agent goal-assessor", []string{"record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo"}},
-		{"done --step retro", []string{"done", "--step", "retro", "--slug", "demo"}},
+		{"verify", []string{"verify", "--slug", "demo"}, "finish"},
+		{"record --agent goal-assessor", []string{"record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo"}, "finish"},
+		// done --step retro also accepts archived (G9), so its refusal
+		// names both phases even though execute is refused all the same.
+		{"done --step retro", []string{"done", "--step", "retro", "--slug", "demo"}, "finish or archived"},
 	} {
 		code, _, errb := d.cmd(c.args...)
 		if code != 1 {
 			t.Fatalf("%s must be refused in execute: exit %d", c.what, code)
 		}
-		if !strings.Contains(errb, c.what+" runs in the finish phase (now execute)") ||
+		if !strings.Contains(errb, c.what+" runs in the "+c.phase+" phase (now execute)") ||
 			!strings.Contains(errb, "takt next") {
 			t.Fatalf("%s: %s", c.what, errb)
 		}
@@ -1008,5 +1015,140 @@ func TestFinishCommandsRefuseOutsideTheFinishPhase(t *testing.T) {
 	}
 	if countEvents(t, bdir, "retro") != 0 || countEvents(t, bdir, "verify") != 0 {
 		t.Fatal("a refused command must leave no receipt")
+	}
+}
+
+// TestDoneRetroRefusesUnfilledProseSlot pins the guard the skeleton
+// introduces: a retro.md that still carries a `<!-- prose: … -->` marker has
+// recorded the render, not an account of the run, so `done --step retro`
+// must refuse it and name the slot verbatim (spec §7's assumptions-table
+// row).
+func TestDoneRetroRefusesUnfilledProseSlot(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	driveToFinish(t, d)
+	d.cmd("verify", "--slug", "demo")
+	d.nextOp() // the retro run op
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md",
+		"# Retro — demo\n\n## Lessons\n\n<!-- prose: lessons for the next run -->\n")
+	code, _, errb := d.cmd("done", "--step", "retro", "--slug", "demo")
+	if code != 1 {
+		t.Fatalf("an unfilled prose slot must be refused: exit %d, %s", code, errb)
+	}
+	if !strings.Contains(errb, "prose slot") || !strings.Contains(errb, "lessons") {
+		t.Fatalf("the error must name the unfilled slot: %s", errb)
+	}
+	// A marker an edit broke open is still an unfilled slot, and the error
+	// names the line it opens rather than everything after it.
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md",
+		"# Retro — demo\n\n## Lessons\n\n<!-- prose: lessons\n\nKeep the driving binary current.\n")
+	code, _, errb = d.cmd("done", "--step", "retro", "--slug", "demo")
+	// (stderr is JSON, so the marker's angle brackets are escaped there.)
+	if code != 1 || !strings.Contains(errb, "prose slot") || !strings.Contains(errb, "prose: lessons") {
+		t.Fatalf("an unterminated marker must be refused by its own line: %d %s", code, errb)
+	}
+	if strings.Contains(errb, "Keep the driving binary current") {
+		t.Fatalf("the error must name the slot, not the tail of the file: %s", errb)
+	}
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md",
+		"# Retro — demo\n\n## Lessons\n\nKeep the driving binary current.\n")
+	code, got, errb := d.cmd("done", "--step", "retro", "--slug", "demo")
+	if code != 0 || got["ok"] != true {
+		t.Fatalf("a filled retro must be accepted: %d %v %s", code, got, errb)
+	}
+	// The guard has to survive the replay path too: a bundle whose retro was
+	// recorded before the guard existed still hashes to its own receipt, and
+	// doneAlready would otherwise hand that skeleton an `ignored` receipt
+	// instead of the refusal.
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md",
+		"# Retro — demo\n\n## Lessons\n\n<!-- prose: lessons for the next run -->\n")
+	recordRetroReceipt(t, bdir)
+	before := countEvents(t, bdir, "retro")
+	code, got, errb = d.cmd("done", "--step", "retro", "--slug", "demo")
+	if code != 1 || got["ignored"] != nil {
+		t.Fatalf("a recorded unfilled slot must still be refused: %d %v %s", code, got, errb)
+	}
+	if !strings.Contains(errb, "prose slot") || !strings.Contains(errb, "lessons") {
+		t.Fatalf("the error must name the unfilled slot: %s", errb)
+	}
+	if after := countEvents(t, bdir, "retro"); after != before {
+		t.Fatalf("a refused done must leave no receipt: before %d after %d", before, after)
+	}
+}
+
+// recordRetroReceipt appends the receipt a `done --step retro` would have
+// written for the retro.md now on disk, without the checks the command runs
+// today. That is both what a bundle recorded before those checks existed
+// looks like and the only way to reach doneAlready's replay path with a
+// retro.md the command would now refuse.
+func recordRetroReceipt(t *testing.T, bdir string) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(bdir, "retro.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = bundle.AppendEvent(bdir, "retro", map[string]any{"hash": goals.Hash(b)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDoneRetroRefusesARecordedRetroInExecute is the other half of the
+// replay question G9 raises: `done --step retro` is refused before the
+// finish phase, and a retro.md that matches a receipt already on the log
+// must not turn that refusal into a success. The phase is a property of the
+// run, not of the file, so it is checked whether or not the work would be
+// redone.
+func TestDoneRetroRefusesARecordedRetroInExecute(t *testing.T) {
+	t.Parallel()
+	d, bdir := finishRun(t, "--no-goals")
+	driveToExecute(t, d)
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md", "# Retro — demo\n\nwritten far too early.\n")
+	recordRetroReceipt(t, bdir)
+	code, got, errb := d.cmd("done", "--step", "retro", "--slug", "demo")
+	if code != 1 || got["ignored"] != nil {
+		t.Fatalf("a matching receipt must not excuse the phase: %d %v %s", code, got, errb)
+	}
+	if !strings.Contains(errb, "done --step retro runs in the finish or archived phase (now execute)") {
+		t.Fatalf("%s", errb)
+	}
+	if n := countEvents(t, bdir, "retro"); n != 1 {
+		t.Fatalf("a refused done must leave no second receipt: %d", n)
+	}
+}
+
+// TestDoneRetroAcceptedInArchivedPhase pins G9: the retro is the one finish
+// verb with an after-life, so `done --step retro` must still work once a run
+// has archived — that is what lets a rewritten retrospective be recorded
+// months later (spec §7, task 7's `takt retro --rewrite`). It drives the
+// same branch_finish `keep` flow the archive tests use, since a plain
+// checkout is the ordinary case that lands a run in the archived phase.
+func TestDoneRetroAcceptedInArchivedPhase(t *testing.T) {
+	t.Parallel()
+	d, bdir, _ := finishedRun(t)
+	if code, _, errb := d.cmd("answer", "--gate", "branch_finish", "--choice", "keep", "--slug", "demo"); code != 0 {
+		t.Fatal(errb)
+	}
+	o := d.nextOp()
+	if o["op"] != "stop" || o["reason"] != "archived" {
+		t.Fatalf("%v", o)
+	}
+	st, err := bundle.LoadState(bdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Phase != bundle.PhaseArchived {
+		t.Fatalf("expected the archived phase, got %s", st.Phase)
+	}
+	before := countEvents(t, bdir, "retro")
+	testutil.WriteFile(t, d.root, "docs/takt/demo/retro.md", "# Retro — demo\n\nrewritten after archiving.\n")
+	code, got, errb := d.cmd("done", "--step", "retro", "--slug", "demo")
+	if code != 0 || got["ok"] != true {
+		t.Fatalf("retro must be accepted in the archived phase: %d %v %s", code, got, errb)
+	}
+	if after := countEvents(t, bdir, "retro"); after != before+1 {
+		t.Fatalf("a changed retro.md must append a fresh retro event: before %d after %d", before, after)
+	}
+	if s := testutil.Git(t, d.root, "log", "-1", "--format=%s"); !strings.Contains(s, "retro done") {
+		t.Fatalf("commit: %s", s)
 	}
 }

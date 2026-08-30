@@ -45,9 +45,9 @@ func cmdVerify(env Env) int {
 // finish verbs are driven by a session, not by takt, so a stale op or a
 // hand-typed command can reach one early — and half-doing the work is worse
 // than saying no: `verify` would record a verification of a HEAD the run has
-// not finished at, `record --agent goal-assessor` would check goals against
-// a tree still being built, and `done --step retro` would take a receipt row
-// 22 has not asked for. All three refuse in the one shape, so a session
+// not finished at, and `record --agent goal-assessor` would check goals
+// against a tree still being built. Both refuse in the one shape
+// finishOrArchivedOnly also uses for `done --step retro`, so a session
 // learns it once (review M2, spec §5.1).
 func finishPhaseOnly(env Env, st *bundle.State, what string) int {
 	if st.Phase == bundle.PhaseFinish {
@@ -55,6 +55,18 @@ func finishPhaseOnly(env Env, st *bundle.State, what string) int {
 	}
 	return fail(env.Stderr, exitError,
 		what+" runs in the finish phase (now "+st.Phase+")", "run `takt next`")
+}
+
+// finishOrArchivedOnly refuses a finish verb outside the finish and archived
+// phases. The retro is the one finish verb with an after-life — a retro
+// found wanting months later must be redoable (spec §7), and task 7's `takt
+// retro --rewrite` uses the same check.
+func finishOrArchivedOnly(env Env, st *bundle.State, what string) int {
+	if st.Phase == bundle.PhaseFinish || st.Phase == bundle.PhaseArchived {
+		return 0
+	}
+	return fail(env.Stderr, exitError,
+		what+" runs in the finish or archived phase (now "+st.Phase+")", "run `takt next`")
 }
 
 // verifyAtHead assembles the command union, runs it from the repo root and
