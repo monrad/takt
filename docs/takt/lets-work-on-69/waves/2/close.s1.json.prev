@@ -1,0 +1,106 @@
+{
+  "wave": 2,
+  "slice": 1,
+  "attempt": 2,
+  "tasks": [
+    {
+      "task": 3,
+      "status": "rework",
+      "reason": "The plan-cap scenarios are covered, but three tests omit an explicitly required assertion about the capped question's context.",
+      "files_changed": [
+        "internal/cli/cmd_answer_plan_test.go"
+      ],
+      "verify": [
+        {
+          "command": "grep -q 'func planCapFixture' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapAsksThenRetryReviewsAgain' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapAcceptOverridesAndMovesOn' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapStopKeepsTheGateOpen' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'TestPlanReviewRoundCapAnswersLeaveTheSpecGateAlone' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "grep -q 'func snapshotGateState' internal/cli/cmd_answer_plan_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "git diff --quiet main -- internal/cli/cmd_answer_test.go",
+          "exit": 0,
+          "passed": true,
+          "tail": "",
+          "elapsed_ms": 3
+        },
+        {
+          "command": "go test -race -count=1 -run 'TestPlanReviewRoundCap|TestSpecReviewRoundCap' ./internal/cli/",
+          "exit": 0,
+          "passed": true,
+          "tail": "ok  \tgithub.com/monrad/takt/internal/cli\t1.189s",
+          "elapsed_ms": 1417
+        },
+        {
+          "command": "golangci-lint run ./internal/cli/...",
+          "exit": 0,
+          "passed": true,
+          "tail": "level=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"should have a package comment\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"exported \\\\\\\\S+ \\\\\\\\S+ should have comment( \\\\\\\\(or a comment on this block\\\\\\\\))? or be unexported\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"package comment should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \\\"comment on exported \\\\\\\\S+ \\\\\\\\S+ should be of the form \\\\\\\".+\\\\\\\"\\\", Source: \\\"// ?(nolint|TODO)\\\", Linters: \\\"revive, staticcheck\\\"]\"\nlevel=warning msg=\"[runner/exclusion_rules] Skipped 0 issues by rules: [Source: \\\"TODO\\\", Linters: \\\"godot\\\"]\"\n0 issues.",
+          "elapsed_ms": 374
+        }
+      ],
+      "review": {
+        "verdict": "rework",
+        "summary": "The plan-cap scenarios are covered, but three tests omit an explicitly required assertion about the capped question's context.",
+        "findings": [
+          {
+            "severity": "major",
+            "file": "internal/cli/cmd_answer_plan_test.go",
+            "line": 177,
+            "title": "Three answer tests do not verify the plan-gate context and attempt count",
+            "detail": "The task requires each of the four tests to assert that the initial `next` result has context `gate == \"plan\"` and `attempts == float64(3)`. Only TestPlanReviewRoundCapAsksThenRetryReviewsAgain checks these fields. The accept, stop, and spec-independence tests at lines 177, 234, and 262 check only `op` and `gate`, so they could proceed despite an incorrectly scoped or incorrectly counted capped question. Reuse a helper that validates the complete ask shape in every test."
+          }
+        ],
+        "provider": "copilot",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "review_findings": 1,
+  "out_of_scope": null,
+  "reverted": null,
+  "committed": false,
+  "closed_at": "2026-08-30T17:41:34.170350381Z",
+  "failed": [],
+  "blocked": [],
+  "rework": [
+    3
+  ],
+  "review_errors": []
+}

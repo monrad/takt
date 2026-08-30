@@ -1,0 +1,18 @@
+{
+  "lens": "tests",
+  "wave": 2,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T17:30:38.113056854Z",
+  "findings": [
+    {
+      "severity": "minor",
+      "file": "internal/cli/cmd_answer_plan_test.go",
+      "line": 153,
+      "title": "Plan-gate accept test skips the severity/title parity check its spec counterpart makes",
+      "detail": "TestSpecReviewRoundCapAcceptOverridesAndMovesOn (cmd_answer_test.go:138) additionally asserts got.Items[0].Severity == \"blocking\" and .Title == \"gap\" to pin that finding detail (not just provenance) survives the carry. TestPlanReviewRoundCapAcceptOverridesAndMovesOn only checks Source and Gate (lines 160-162), so a regression that dropped severity/title while carrying the plan gate's finding would pass this test undetected. Low impact since the mechanism (carryFindings) is shared and already covered for the spec gate, but it's a minor asymmetry with the file's own stated goal of mirroring the spec family.",
+      "task": 3
+    }
+  ]
+}

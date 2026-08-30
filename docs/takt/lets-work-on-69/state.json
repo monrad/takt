@@ -84,7 +84,16 @@
         "internal/cli/cmd_answer_plan_test.go"
       ],
       "class": "test",
-      "attempt": 0
+      "attempt": 2,
+      "last_digest": {
+        "task": 3,
+        "attempt": 2,
+        "status": "done",
+        "summary": "Strengthened the plan-gate cap accept test to assert the carried finding's severity/file/line/title/detail and to pin the post-accept dispatch to the alignment-auditor in clauses mode, and made snapshotGateState a plain read that fails on any error; extracted three helpers to keep gocognit under its limit.",
+        "blockers": "none",
+        "model": "opus",
+        "recorded_at": "2026-08-30T17:38:18.521277956Z"
+      }
     },
     {
       "id": 4,
@@ -118,17 +127,7 @@
       "attempt": 0
     }
   ],
-  "active_wave": {
-    "n": 1,
-    "slice": 1,
-    "attempt": 2,
-    "started_at": "2026-08-30T17:19:01.665037623Z",
-    "session_id": "e7d58452-778a-4996-8f76-7ee51117266d",
-    "tasks": [
-      2
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
