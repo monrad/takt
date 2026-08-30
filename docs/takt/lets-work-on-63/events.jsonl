@@ -156,3 +156,7 @@
 {"ts":"2026-08-30T14:26:39.987979177Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"intent","slice":1,"wave":5}}
 {"ts":"2026-08-30T14:27:08.951853465Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"consistency","slice":1,"wave":5}}
 {"ts":"2026-08-30T14:27:30.321672866Z","type":"lens_recorded","data":{"attempt":1,"dropped":0,"findings":0,"mode":"docs","slice":1,"wave":5}}
+{"ts":"2026-08-30T14:28:01.44775853Z","type":"wave_committed","data":{"attempt":1,"sha":"f616a06ed396eb5bc299b7de154ea0a837398e45","slice":1,"tasks":[9],"wave":5}}
+{"ts":"2026-08-30T14:28:01.447797258Z","type":"wave_closed","data":{"attempt":1,"blocked":[],"committed":true,"failed":[],"nothing_to_commit":false,"reverted":null,"review_errors":[],"review_findings":0,"rework":[],"sha":"f616a06ed396eb5bc299b7de154ea0a837398e45","slice":1,"wave":5}}
+{"ts":"2026-08-30T14:28:07.240574445Z","type":"wave_cleared","data":{"wave":5}}
+{"ts":"2026-08-30T14:28:07.244857191Z","type":"phase","data":{"from":"execute","to":"finish"}}

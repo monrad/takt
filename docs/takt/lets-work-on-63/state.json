@@ -3,7 +3,7 @@
   "takt_version": "0.0.0-dev",
   "slug": "lets-work-on-63",
   "topic": "lets work on #63",
-  "phase": "execute",
+  "phase": "finish",
   "created_at": "2026-08-29T02:03:22.443364702Z",
   "branch": "monrad/better-retroes",
   "branch_adopted": true,
@@ -222,17 +222,7 @@
       }
     }
   ],
-  "active_wave": {
-    "n": 5,
-    "slice": 1,
-    "attempt": 1,
-    "started_at": "2026-08-30T14:22:53.184176231Z",
-    "session_id": "dcc38050-c2a1-44c6-a9d7-69b497b8c1e6",
-    "tasks": [
-      9
-    ],
-    "baseline": []
-  },
+  "active_wave": null,
   "pending_gate": null,
   "verified_sha": null,
   "goals_checked_sha": null,
