@@ -1,5 +1,21 @@
 The spec gate stops asking the backend after three rounds. The plan gate never stops.
 
+Closes #69.
+
+## What changed
+
+`decidePlan` gains one branch — `if f.PlanRounds >= maxAgentAttempts { ask(gateReviewCapped, {gate: plan, attempts}) }` — placed after the `needsRework` guard, so a `rework`/`reject`/`error` verdict waiting to be answered still outranks the cap. `Facts.PlanRounds` is filled by `gate.Rounds(events, gate.Plan)` inside the plan branch of `gatherGateFacts` that `Config.Review.Plan && HasIndex && IndexValid && plan.md` already guards.
+
+Everything downstream was already gate-agnostic and is untouched: `gate.Rounds` counts per gate id, `questionGateReviewCapped` renders the gate name from context, and `answerGateReviewCapped` resolves the gate from the pending payload — so *accept* → `gate_overridden{plan}`, *retry* → `gate_rounds_reset{gate: "plan"}`, *stop* all work as they stand. No new gate id, event type, question or answer path.
+
+Thirteen production and prose lines; the rest is tests (three new files) and documentation. Both prompts now say `gate_review_capped` is "a spec or plan review". Both design documents are corrected: the base design at five sites, and the fixed-point design **superseded in place** at seven — its D3 ("applies to the spec gate only … including its uncapped rounds") and A4 ("the plan gate's uncapped rounds are tolerable … if it becomes the next bottleneck, D5's cap is the cheapest thing to extend to it") keep their original text and gain an amendment naming this issue. A4 predicted exactly this change; it needed no semantic change, as predicted.
+
+## Notes
+
+- **Task 3 is waived.** Its four `cmd_answer` tests exist, pass, and were mutation-checked, and all six internal lenses cleared its final attempt — but the per-task reviewer's blocking finding named `docs/takt/lets-work-on-69/**` (takt's own bookkeeping, which every implementer brief forbids touching) as an out-of-scope edit, three rounds running. No attempt can satisfy it. The one real remaining item — the fixture asserts a dispatch happened, not that it is the planner — is recorded as a follow-up.
+- This run's own plan gate took four rounds and closed by override, because the cap it builds did not exist yet. See `retro.md`.
+- The branch also carries two cherry-picked bundle-only commits (`68835fb`, `ca12aec`) that archive the earlier `sweep-the-plan-4-plan-5-deferred-minors-backlog` run; its PR (#52) merged before those commits were written, so main never received them.
+
 ## Goals
 
 - G1 — Once the plan gate has taken three review rounds since the newest `gate_rounds_reset` without closing, `decidePlan` asks `gate_review_capped` with `gate: "plan"` and the round count, instead of emitting a fourth `exec takt review plan`. — achieved
