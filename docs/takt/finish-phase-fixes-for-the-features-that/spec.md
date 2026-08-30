@@ -106,10 +106,18 @@ skill: `internal/tools/hostgen` renders only `hosts/copilot/agents/*.agent.md` f
 When a `wave_committed` event carries a non-empty task list, nothing changes — that list is what
 the commit recorded and it wins. When it is empty, the ids are derived, in this order:
 
-1. The close record whose `(wave, slice, attempt)` equals the event's, taking the ids of its task
-   results whose status is `done` or `waived`. After `carryForward` that record holds the whole
-   slice's story across both rounds, and at a committing close every task of the slice is `done` or
-   `waived` — so this is exactly the set of tasks whose files `commitWaveOnce` staged.
+1. The close record whose `(wave, slice, attempt)` equals the event's, taking **every** id in its
+   `tasks` list, whatever status each result carries. After `carryForward` that record holds the
+   whole slice's story across both rounds, and a committing close only happens when `sliceDone`
+   holds — every task of the slice is `done` or `waived` *in `state.json`* — so every id in the
+   record is a task whose files `commitWaveOnce` staged.
+
+   **The statuses in the record must not be filtered on.** `takt waive` writes
+   `state.Tasks[i].Status` and nothing else (`internal/cli/cmd_waive.go:48`); the
+   `wave.TaskResult` in the close record keeps the last verdict a review round gave it, and
+   `carryForward` copies it across unchanged. The `lets-work-on-69` bundle is the proof: the
+   surviving record for wave 2 slice 1 is `attempt 3, committed: true, tasks: [{task: 3, status:
+   "rework"}]` — a `done`/`waived` filter would discard precisely the task the row exists to name.
 2. Failing that, the `wave_dispatched` event with the same `(wave, slice, attempt)` key, whose
    `tasks` list is the slice as it went out.
 3. Failing both, today's `—`.
@@ -138,20 +146,39 @@ These are the issues this run set out to fix; `## Goals` above says which of the
 Closes #66, closes #71, closes #72, closes #74
 ```
 
-- The numbers are parsed from `state.Topic`, which `BuildPR` already receives as `topic`. Not from
-  the slug: `init` strips the sigil there.
-- Pattern `#\d+\b` — the word boundary keeps a CSS colour or a `#71b` fragment from being read as
-  an issue.
-- De-duplicated, in the order the topic names them.
-- The keyword is repeated per issue (`Closes #66, closes #71, …`). GitHub links only the first
+- The references are parsed from `state.Topic`, which `BuildPR` already receives as `topic`. Not
+  from the slug: `deriveSlug` (`internal/cli/slug.go:22`) rewrites an issue-URL topic to
+  `issue-<n>`, and every other topic loses its `#` to `nonSlug`.
+- **Three token forms**, because a takt run is started from an issue in more than one way. They are
+  one alternation, tried in this order, and each is rendered into the closing line *verbatim* —
+  GitHub accepts all three after a closing keyword:
+
+  | form | pattern | example |
+  |---|---|---|
+  | cross-repository | `[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+` | `monrad/takt#71` |
+  | issue URL | `https?://\S+?/issues/\d+` | `https://github.com/monrad/takt/issues/71` |
+  | bare number | `#\d+`, not preceded by `/` or a word character, not followed by a word character | `#71` |
+
+  The URL form is the one the review caught: `deriveSlug` supports `/issues/<n>` topics, so the
+  canonical "started from an issue" run — the run §1.2 is about — has a topic with no `#N` in it at
+  all. Requiring the `https?://` prefix keeps a bare `/issues/12` fragment, which is not a link,
+  out of the closing line.
+- **De-duplicated by rendered token**, in the order the topic names them. Two *different* forms are
+  never merged: `BuildPR` is pure and knows neither the repository nor the host, so it cannot prove
+  that `#71` and `https://github.com/monrad/takt/issues/71` are the same issue. A topic naming both
+  emits both; GitHub resolves them to one issue and closes it once.
+- The keyword is repeated per reference (`Closes #66, closes #71, …`). GitHub links only the first
   issue of a bare comma list, so one keyword for four issues closes one issue.
 - When the topic names no issue at all, the whole section — heading, sentence and line — is
   omitted. A `## Issues` heading over nothing would read as an omission.
 - When the run's goals are off (`gs == nil`, so `## Goals` is not rendered), the sentence drops its
   second clause and reads *"These are the issues this run set out to fix."*
 
-A topic that names only part of an issue (`#49 item 1`) closes `#49`. That is the existing
-behaviour of a closing keyword and this run does not try to be cleverer about it.
+Two limits, stated rather than engineered around. A topic that names only part of an issue
+(`#49 item 1`) closes `#49` — the existing behaviour of a closing keyword, and out of scope here. And
+a six-digit colour literal (`#123456`) is indistinguishable from an issue number in prose a person
+wrote; the bare-number form does not try to tell them apart, it only refuses a token with a letter
+stuck to it (`#71b`).
 
 ### 2.3 The prompts and their generator (#66)
 
@@ -190,10 +217,12 @@ profile: an ordered list of exact `from → to` substitutions over `commands/tak
 
 - reads `commands/takt.md`, applies the profile in order, and writes
   `hosts/copilot/skills/takt/SKILL.md`;
-- **errors** when any substitution's `from` matches zero times, or more than once where the
-  substitution is not declared as a repeated one. That is the whole safety property: a reworded
+- **errors** when a substitution does not match its declared count. Every substitution carries an
+  expected multiplicity — `1` for all but the `AskUserQuestion` → `ask_user` swap, which declares
+  `2` — and a `from` found a different number of times stops the generator, naming the substitution
+  and both counts. That is the whole safety property, and it has one contract, not two: a reworded
   *shared* sentence propagates silently and correctly, while a reworded *host-specific* sentence
-  stops the generator by name instead of drifting;
+  fails the build by name instead of drifting;
 - injects the version from `.claude-plugin/plugin.json` into `takt version --expect <v>`, which
   `TestCopilotSkillHandshakeMatchesTheManifest` requires today and a human has had to remember on
   every bump;
@@ -266,16 +295,23 @@ thing to do and no next call to answer a question.
   dispatched, failed, waived and re-closed — its `RetroInputs` produced by `finish.BuildRetroInputs`
   and its extras by `finish.BuildShipped`, from that event log and close record, rather than
   hand-written. The golden then proves both halves end to end: the `## What shipped` row names the
-  waived wave's tasks and `## Numbers` carries one span for the wave. Plus focused tests: the
-  three-step derivation order (event list wins · close record · dispatch event · `—`), and
-  `waveTimings` collapsing two closes of one key while keeping two attempts apart.
-- **#74:** a table-driven test over a topic naming no issue, one, several, and `#49 item 1`,
-  asserting the count of the closing keyword equals the count of issues — the assertion that fails
-  if the keyword is ever emitted once for a comma list — plus the absence of the whole section when
-  there is none, and the sentence's goals-off form.
-- **#66:** the generator's own tests — a profile substitution that matches zero times is an error
-  naming it; one that matches twice where it must match once is an error; a full render of
-  `commands/takt.md` equals the committed `SKILL.md`; `--check` reports the skill stale. Plus
+  waived wave's tasks and `## Numbers` carries one span for the wave. The golden's close record
+  models what the close path actually persists — the waived task carried at its pre-waiver
+  `rework` status — so a `done`/`waived` filter reintroduced later fails it. Plus focused tests:
+  the three-step derivation order (event list wins · close record · dispatch event · `—`), a close
+  record whose task results are all non-`done` still naming its tasks, and `waveTimings` collapsing
+  two closes of one key while keeping two attempts and two slices apart.
+- **#74:** a table-driven test over a topic naming no issue, one, several, `#49 item 1`, an issue
+  URL, a cross-repository `owner/repo#N`, a mix of forms, and a repeat of one form — asserting in
+  every case that the count of the closing keyword equals the count of references rendered (the
+  assertion that fails if the keyword is ever emitted once for a comma list), that each reference
+  appears verbatim, and that the order is the topic's. Plus the absence of the whole section when
+  there is none, the sentence's goals-off form, and negative cases: `#71b` and a bare `/issues/12`
+  fragment are not references.
+- **#66:** the generator's own tests — a substitution that matches zero times is an error naming it
+  and both counts; one that matches twice where it declares one is the same error; the repeated
+  substitution matching its declared two is not; a full render of `commands/takt.md` equals the
+  committed `SKILL.md`; `--check` reports the skill stale. Plus
   `TestPromptInvariantsReadTheSameOnEveryHost` with the new anchor, and the existing copilot suite
   (`TestCopilotSkillNamesEverythingTheBinaryCanEmit`,
   `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotHostFrontmatterIsParseable`) passing
@@ -302,18 +338,21 @@ thing to do and no next call to answer a question.
 | question | decision | rationale | source |
 |---|---|---|---|
 | Fix #71(a) where the event is written or where the retro is rendered? | Rendered — in `BuildShipped` | Repairs bundles already on disk, including the run whose retro exposed this; keeps #71 inside `internal/finish` | assumed |
-| What does an empty `wave_committed` task list fall back to? | The close record for the same `(wave, slice, attempt)`, its `done`/`waived` task ids; then the `wave_dispatched` event with that key; then `—` | The issue asks for "the close record or the previous attempt's dispatch, whichever the code can prove"; the close record is the fuller proof, the dispatch event the fallback when no record survives | user-confirmed |
+| What does an empty `wave_committed` task list fall back to? | Every task id in the close record for the same `(wave, slice, attempt)`, unfiltered by status; then the `wave_dispatched` event with that key; then `—` | The issue asks for "the close record or the previous attempt's dispatch, whichever the code can prove"; the close record is the fuller proof, the dispatch event the fallback when no record survives | user-confirmed |
+| Should the close record's task results be filtered by status? | No | `takt waive` writes only `state.Tasks[i].Status`, so a waived task keeps its `failed`/`blocked`/`rework` verdict in the record — a `done`/`waived` filter would discard exactly the tasks the row exists to name (spec review, blocking) | assumed |
 | Should a derived row be marked as derived in the table? | No | The row states what the commit carried, which is true however it was derived; a marker would be noise in a document a human rewrites | assumed |
 | What is a `## Numbers` span keyed on? | `(wave, slice, attempt)`, last `wave_closed` in log order wins | Stated in #71; keeps a reworked wave's two attempts and a sliced wave's two slices apart while collapsing a waived wave's two closes | user-confirmed |
 | Where does the eighth golden live? | `internal/finish/skeleton_test.go`, beside the other seven | The user asked for it there, and a golden outside the table it belongs to is not one | user-confirmed |
 | Is the golden's input hand-written or derived? | Derived — through `BuildRetroInputs` and `BuildShipped` from the event log and close record | A hand-written `WaveTimings` would exercise the renderer and not the two functions being fixed | assumed |
 | Where does the #74 section go, and does it carry a heading? | `## Issues`, between `## Goals` and `## Run` | Chosen by the user from three renderings; matches the body's other sections | user-confirmed |
-| What pattern parses the issue numbers? | `#\d+\b` over `state.Topic`, de-duplicated, in topic order | The trailing boundary keeps `#71b` and colour literals out; the topic is where the sigil survives, the slug is not | assumed |
+| What forms does the issue parser accept? | Three, over `state.Topic`, in topic order: `owner/repo#N`, `https?://…/issues/N`, and a bare `#N` | `deriveSlug` supports `/issues/<n>` topics, so a run started from an issue URL has no `#N` at all — parsing only `#N` would omit the section for the very case §1.2 is about (spec review, blocking) | assumed |
+| Are two forms naming the same issue merged? | No — de-duplication is by rendered token, within a form | `BuildPR` is pure and knows neither repository nor host, so it cannot prove `#71` and an issue URL are the same issue; GitHub closes it once either way | assumed |
+| Does the bare-number form exclude colour literals? | No — only a token with a letter attached (`#71b`) | `#123456` is indistinguishable from an issue number in prose; claiming otherwise was wrong (spec review) | assumed |
 | What happens when the topic names no issue? | The whole section is omitted | A heading over nothing reads as an omission, which is the failure mode the retro's "none" rule exists to avoid | assumed |
 | What does the sentence say when the run's goals are off? | It drops the `## Goals` clause | The sentence must not point at a section the body does not render | assumed |
 | Reword the invariant only, or make `SKILL.md` generated? | Generated, from `commands/takt.md`, via a substitution profile | Chosen by the user after the trade-off was put; it makes the original brief's "regenerate with `task hosts:gen`" true and ends the class of defect #66 is an instance of | user-confirmed |
 | Which file is the source of truth? | `commands/takt.md` — shape A | It is what the plugin ships and what every existing test loads as authoritative; shape B would make it a build artifact for the same guarantee | user-confirmed |
-| What does hostgen do with a substitution that does not match exactly once? | Errors, naming it | This is the drift alarm: shared prose propagates silently, host-specific prose fails loudly | assumed |
+| What does hostgen do with a substitution that does not match its count? | Errors, naming the substitution and both counts. Every substitution declares an expected multiplicity — 1 for all but the `AskUserQuestion` → `ask_user` swap, which declares 2 | This is the drift alarm: shared prose propagates silently, host-specific prose fails loudly. One contract, so the tests and the implementation cannot read it differently (spec review, minor) | assumed |
 | Does hostgen inject the handshake version? | Yes, from `.claude-plugin/plugin.json` | `TestCopilotSkillHandshakeMatchesTheManifest` already requires the pin; generating it removes a manual step from every version bump | assumed |
 | Does `crossHostInvariants` survive the generator? | Yes, plus the new push-clause anchor | It becomes the check that nobody turned a shared sentence into a substitution | user-confirmed |
 | Does #72 also drop the "run's last commit" claim from `archive.go`, or only the `plainOp` sentence? | Both — the same staleness, applied everywhere it appears | The issue names it in the design doc; leaving the identical claim in the comment beside it would re-create the drift the run is closing | assumed |

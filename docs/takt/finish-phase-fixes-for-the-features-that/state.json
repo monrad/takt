@@ -29,14 +29,49 @@
     "max_parallel": 8,
     "max_rework": 1
   },
-  "goals_hash": "sha256:5353aa485a90be1fbcc1585623a4ba853325c079ec32f8cd756f828cf582e1cb",
+  "goals_hash": "sha256:080e7c0d1ee1ac4fa08ded0a6ad3dfb1005f32cca10ec5fd8d42010f1ef5fa9a",
   "gates": {
     "plan": "pending",
     "spec": "pending"
   },
   "tasks": [],
   "active_wave": null,
-  "pending_gate": null,
+  "pending_gate": {
+    "id": "gate_review",
+    "opened_at": "2026-08-30T19:08:59.003464451Z",
+    "payload": {
+      "op": "ask",
+      "narration": "spec review asked for rework",
+      "gate": "gate_review",
+      "question": "The spec review verdict is rework: see reviews/spec.md. How do you want to proceed?",
+      "options": [
+        {
+          "choice": "revise",
+          "label": "Revise and re-review (Recommended)",
+          "description": "Edit the spec with the findings in reviews/spec.md; the gate re-arms on the new hash."
+        },
+        {
+          "choice": "accept",
+          "label": "Accept as is",
+          "description": "Record an override with a reason (`--reason`); the findings are carried to the retro."
+        },
+        {
+          "choice": "stop",
+          "label": "Stop",
+          "description": "Keep the gate open and end the turn."
+        }
+      ],
+      "context": {
+        "blocking": true,
+        "gate": "spec",
+        "reason": "",
+        "slug": "finish-phase-fixes-for-the-features-that",
+        "summary": "see reviews/spec.md",
+        "verdict": "rework"
+      },
+      "answer": "takt answer --gate gate_review --choice \u003cchoice\u003e --slug finish-phase-fixes-for-the-features-that"
+    }
+  },
   "verified_sha": null,
   "goals_checked_sha": null,
   "disposition": null
