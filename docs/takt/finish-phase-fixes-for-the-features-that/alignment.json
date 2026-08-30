@@ -1,0 +1,46 @@
+{
+  "anchor_hash": "sha256:325174b24c1ee1c60821b22c71cfc1cd31d1cb6ce5750bca53c193f65b15ad60",
+  "clauses": [
+    {
+      "id": "A1",
+      "text": "Fix the four finish-phase issues for features #71, #74, #66, #72 that just shipped.",
+      "span": "Finish-phase fixes for the features that just shipped: #71, #74, #66, #72"
+    },
+    {
+      "id": "A2",
+      "text": "Do the work as a single run (one unified pass/PR, not split up).",
+      "span": "one run"
+    },
+    {
+      "id": "A3",
+      "text": "Scope is four small issues (one per referenced feature, all small).",
+      "span": "four small issues"
+    },
+    {
+      "id": "A4",
+      "text": "Changes should touch internal/finish.",
+      "span": "internal/finish"
+    },
+    {
+      "id": "A5",
+      "text": "Changes should touch internal/cli/archive.go.",
+      "span": "internal/cli/archive.go"
+    },
+    {
+      "id": "A6",
+      "text": "Changes should touch cmd_done.go.",
+      "span": "cmd_done.go"
+    },
+    {
+      "id": "A7",
+      "text": "Changes should touch the two host prompts.",
+      "span": "the two host prompts"
+    },
+    {
+      "id": "A8",
+      "text": "Changes should touch the design doc.",
+      "span": "the design doc"
+    }
+  ],
+  "confirmed": true
+}
