@@ -197,8 +197,8 @@ func doneGoals(env Env, bdir string, st *bundle.State) int {
 // they guard a replay as well as a first recording, so they cannot live
 // here. doneAlready still hash-compares retro.md, so a rewritten one
 // re-records on an archived run as an ordinary bundle commit and an
-// unchanged one commits nothing (design §7.5 step 5 already contemplates
-// post-archive bundle writes).
+// unchanged one commits nothing (design §7.5 step 5 names the post-archive
+// `retro done` commit this records).
 func doneRetro(tgt *runTarget) int {
 	_ = bundle.AppendEvent(tgt.bdir, op.StepRetro, map[string]any{keyHash: artifactHash(tgt.bdir, "retro.md")})
 	return 0
