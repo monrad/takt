@@ -108,7 +108,7 @@ agents/planner.md              fable  · Read, Grep, Glob, Write
 agents/goal-assessor.md        sonnet · Read, Grep, Glob, Bash (read-only commands)
 agents/alignment-auditor.md    sonnet · Read, Grep, Glob
 agents/reviewer.md             sonnet · Read, Grep, Glob
-hosts/copilot/skills/takt/SKILL.md  the Copilot CLI host's op loop (§6.1)
+hosts/copilot/skills/takt/SKILL.md  generated from commands/takt.md — never hand-edited (§6.1)
 hosts/copilot/agents/*.agent.md     generated from agents/*.md — never hand-edited
 cmd/takt/main.go                    subcommand dispatch (stdlib flag)
 internal/bundle/                    dir resolution, state I/O, events, session lock
@@ -125,9 +125,9 @@ internal/doctor/
 internal/goals/                     goals.md parsing, hashing
 internal/prompt/                    parses commands/takt.md, the agent defs and the manifests for the
                                      op/gate-parity, handshake and version-agreement tests (§14)
-internal/hosts/                     renders agents/*.md for other hosts (§6.1)
+internal/hosts/                     renders agents/*.md and commands/takt.md for other hosts (§6.1)
 internal/tools/hostgen/             `task hosts:gen` / `hosts:check` — writes and checks the generated
-                                     Copilot agent files
+                                     Copilot agent files and skill
 internal/tools/setversion/          `task version:set` — the one thing that rewrites the two manifests'
                                      version fields and the Copilot skill's handshake line
 flake.nix                           packages.default via buildGoModule
@@ -339,9 +339,9 @@ tracked `logs/.gitignore` still protects clones.
 - **Commits.** `takt(<slug>): wave <n> — tasks 1, 2` after a successful close; `takt(<slug>): plan →
   execute` at phase transitions; `takt(<slug>): pr body` when `next` writes `finish/pr.md` for the
   `push_pr` op, so the body is in the branch before the session pushes it (§7.5 step 4);
-  `takt(<slug>): archive`. `takt(<slug>): archive` is the run's last
-  commit; the merge disposition is applied only after it, in the primary worktree (§7.5 step 5).
-  Commits are made by takt with `git commit` in the cwd worktree; the user's git identity applies.
+  `takt(<slug>): archive`, the last commit the archive step takes — the merge disposition is applied
+  only after it stands, in the primary worktree (§7.5 step 5). Commits are made by takt with `git
+  commit` in the cwd worktree; the user's git identity applies.
 - **Agents never commit.** That is what makes re-dispatch after a crash safe.
 
 ---
@@ -368,7 +368,7 @@ only bundle is archived reports "no active run" to a bare command rather than an
 also how a choice carries its argument where it needs one: `no_verification`'s *specify* has no flag of
 its own, and the verify command to add is passed as `--reason "<command>"`. |
 | `takt done --step <id> [--url <pr-url>]` | Marks an LLM-side `run` step complete (brainstorm, goals, retro, push_pr). For `goals`, freezes `goals.md` (hash). `push_pr` requires `--url`. A `done` for a step already closed against the same artifact is a no-op (`ignored: true`); `push_pr` is the one exception — a repeat with the *same* URL is the no-op, a *different* URL (a re-opened or replaced pull request) is a new `done`, since the URL is `push_pr`'s only artifact. |
-| `takt retro --rewrite` | Re-derives `finish/retro-inputs.json` and `finish/retro-skeleton.md` and re-emits the retro run op, in the `finish` and `archived` phases; takes the session lock (§4.6) as `next` does and writes no state. Without `--rewrite`: usage error. |
+| `takt retro --rewrite` | Re-derives `finish/retro-inputs.json` and `finish/retro-skeleton.md` and re-emits the retro run op, in the `finish` and `archived` phases; takes the session lock (§4.6) as `next` does, except that a live holder fails the command outright, naming the holder and its heartbeat, with a hint to `takt unlock` — rather than the `ask: owner` gate §4.6 describes for `next` — since this command is not an op loop and has nothing to hand a question back to. Writes no state. Without `--rewrite`: usage error. |
 | `takt close-wave` | The long half of a wave (§7.4): scope verify, verify commands, reviews, commit. Launched by the session in the background from an `exec` op. |
 | `takt review spec\|plan [--skip --reason "…"] [--force]` | Runs the gate review headless and writes the receipt (`exec` op). `--skip` records an evidenced skip (§9) instead of running. At a hash that already has a receipt with a reviewer's verdict (approve, rework, reject) the command returns that receipt with "cached": true, runs nothing and commits nothing; --force re-runs. An error verdict or an evidenced skip never counts as an answer. |
 | `takt verify` | Runs the union of all tasks' verify commands (plus any the user supplied through `no_verification`'s *specify*) at HEAD; records `finish/verify.json` and, on pass, `verified_sha`. `exec` op. |
@@ -604,16 +604,21 @@ emit appears in the prompt's table (masterplan's `op-table-parity` idea).
 ### 6.1 GitHub Copilot CLI host
 
 The op protocol (§5.2) is host-neutral; a host is a prompt that executes ops plus the agent definitions its
-delegation tool needs. The Copilot CLI host is `hosts/copilot/skills/takt/SKILL.md` — the same op table as
-`commands/takt.md`, with `ask_user` for `ask`, delegation to custom agents named `takt-<agent>` for
-`dispatch`, and `takt version --expect <version>` for the handshake (no plugin root on this host;
-`task version:set` stamps the line; a `0.0.0-dev` build passes with `"dev": true` exactly as
-`--expect-manifest` does) — and `hosts/copilot/agents/takt-*.agent.md`, generated from `agents/*.md` by
-`go run ./internal/tools/hostgen` (body verbatim; frontmatter `name`, `description`, `tools: ["*"]`; no
-`model` — Copilot chooses subagent models itself, so the op's `model` is advisory there). Parity tests in
-`internal/prompt` hold the skill to `decide.Vocab()`, `op.Kinds()` and `cli.Commands()` exactly as they hold
-the Claude Code command, and fail when a generated agent file is stale. Codex and Pi hosts remain out of
-scope.
+delegation tool needs. The Copilot CLI host is `hosts/copilot/skills/takt/SKILL.md`, generated from
+`commands/takt.md` by `go run ./internal/tools/hostgen` through an ordered substitution profile in
+`internal/hosts` — the frontmatter, the H1, the handshake, the verb bullets, the question-tool name and a
+handful of op-table clauses that legitimately read differently on this host; everything the profile does not
+name is copied through byte for byte, so a shared sentence can no longer drift between the two files. The
+rendered skill carries the same op table as `commands/takt.md`, with `ask_user` for `ask`, delegation to
+custom agents named `takt-<agent>` for `dispatch`, and `takt version --expect <version>` for the handshake (no
+plugin root on this host; `hostgen` injects the version from `.claude-plugin/plugin.json`, and `task
+version:set` also stamps the line directly on a version bump; a `0.0.0-dev` build passes with `"dev": true`
+exactly as `--expect-manifest` does). `hostgen` also renders `hosts/copilot/agents/takt-*.agent.md` from
+`agents/*.md` (body verbatim; frontmatter `name`, `description`, `tools: ["*"]`; no `model` — Copilot chooses
+subagent models itself, so the op's `model` is advisory there). Parity tests in `internal/prompt` hold the
+skill to `decide.Vocab()`, `op.Kinds()` and `cli.Commands()` exactly as they hold the Claude Code command,
+assert the skill is a byte-exact render of `commands/takt.md`, and fail when a generated agent file or the
+skill itself is stale. Codex and Pi hosts remain out of scope.
 
 ---
 
@@ -901,9 +906,16 @@ slice, which keeps every commit verified.
    nothing further.
 5. **Archive:** `phase = archived`; `disposition.applied = true` for whichever choice was made — set
    before the commit, for every choice (`discard`'s copy of the bundle to `<dir>/.discarded/<slug>/`
-   happens here too, before the commit, so the copy predates the branch about to lose it); lock released;
-   commit `takt(<slug>): archive`. That commit is the run's last one, which is what lets a merge carry the
-   archived bundle: only after it does takt do the git side of the disposition.
+   happens here too, before the commit, so the copy predates the branch about to lose it); commit
+   `takt(<slug>): archive` — the last commit the archive step takes, still what lets a merge
+   carry the archived bundle, since the git side of the disposition happens only after it stands. The
+   lock is released after that commit, not before it: `archive` reaches `applyAndStop` still holding it,
+   and `ClearSession` runs there once `commitBundle` has returned. After the commit the step writes
+   nothing tracked: its bookkeeping is already in, and all that follows is the session lock's untracked
+   sidecar being cleared (§4.6) and git work that records nothing in the bundle. Later `takt` invocations can still add to the branch — a post-archive `takt retro --rewrite`
+   plus `done --step retro` lands a `takt(<slug>): retro done` bundle commit, which is why
+   `doneRetroChecks` accepts the archived phase, and a later `takt next` on the archived run can re-take
+   the `archive` commit itself (below) — but those are separate commands, not writes by this step.
    - **merge** re-checks — not just re-reads the answer-time facts — that the primary worktree is still on
      `base` and clean, and skips the merge entirely when `takt/<slug>` is already an ancestor of `base`.
      Otherwise `git -C <primary> merge --no-ff takt/<slug>`; a conflict runs `git -C <primary> merge
@@ -923,13 +935,18 @@ slice, which keeps every commit verified.
      holds commits the remote-tracking ref does not — no ref → `git push -u origin <branch>`; the
      branch is an ancestor of the remote-tracking ref, i.e. fully pushed → no cleanup; ahead or
      diverged, i.e. it holds commits the ref does not → `git push origin <branch>`; a failed git read
-     still offers the push — and hands it back as `cleanup`. "That commit is the run's last one"
+     still offers the push — and hands it back as `cleanup`. "The last commit the archive step takes"
      (above) is unaffected: the push is a cleanup command, not a commit.
-   - None of this is ever recorded in state: there is no `disposition_applied` event and no write after
-     the archive commit. `archive`, and every later `takt next` on the archived run, re-derive the same
-     outcome from git each time, so an effect that could not land the first try (the primary was busy, the
-     merge conflicted) is simply retried, and `stop`'s `context` always reflects git as it stands right
-     now rather than a stale claim. The working tree is clean after archive for every choice.
+   - None of this git work is ever recorded in state: there is no `disposition_applied` event, and
+     nothing about the git side of a disposition — whether the merge landed, whether the branch is
+     gone — is remembered; `disposition.applied` (above) says only that takt's own bookkeeping for the
+     choice ran. After its commit the archive step writes nothing tracked: the `retro done` commit
+     named above and the re-taken `archive` commit below are landed by later `takt` invocations —
+     `done --step retro` and `takt next` — not by this step. `archive`, and every later `takt next` on
+     the archived run, re-derive the same outcome from git each time, so an effect that could not land
+     the first try (the primary was busy, the merge conflicted) is simply retried, and `stop`'s
+     `context` always reflects git as it stands right now rather than a stale claim. The working tree
+     is clean after archive for every choice.
    - The `archive` commit itself is re-taken on the same terms: a later `takt next` on the archived run
      that finds anything dirty in git under the bundle directory redoes it, so a file dropped there after
      archiving — the bundle directory is otherwise untouched once archived — is swept into a second
@@ -1236,7 +1253,7 @@ run's behaviour.
 | `wave` | Temp git repos (`t.TempDir()` + `git init`): scripted "agents" that edit in scope, out of scope, create untracked files, and change nothing; scope verify and revert; verify runner with a failing command; commit staging never includes baseline-dirty files. Lens records: `MergeCandidates` determinism (same file+line merges, ids stable across input order) and record round-trips (two-layers design §5.2). |
 | `backend` | `fake` reviewer driven by a fixture file; parsing of fenced JSON; timeout → `error`; live behind `TAKT_LIVE=1`: one review smoke per backend (`TestLiveCopilotReviewsASpec`, `TestLiveClaudeReviewsASpec`) plus the copilot→claude fallback order against the real `claude` binary (`TestLiveFallbackOrder`). |
 | `brief` | Golden files for every template; the delimiter token never collides with content. |
-| `prompt` | Parse `commands/takt.md`; assert every op kind, gate id, run step, exec command and stop reason `decide` can emit is present, and that the handshake, verb and invariant lines hold (`TestPromptNamesEveryOpGateStepAndReason`, `TestPromptHandshakeVerbsAndInvariants`); agent frontmatter matches spec §3.3 (`TestAgentDefinitionsMatchSpec`); `plugin.json` and `marketplace.json` agree on version (`TestPluginManifestsAgreeOnVersion`); `flake.nix` and `.goreleaser.yaml` both stamp it (`TestFlakeReadsThePluginVersion`, `TestGoreleaserStampsTheVersion`). The Copilot skill is held to the same vocabulary and its handshake to the manifest version, and every generated `hosts/copilot/agents/*.agent.md` is re-rendered and compared (`TestCopilotSkillNamesEverythingTheBinaryCanEmit`, `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents`), and every host file's frontmatter is held to what a YAML parser accepts (`TestCopilotHostFrontmatterIsParseable`). |
+| `prompt` | Parse `commands/takt.md`; assert every op kind, gate id, run step, exec command and stop reason `decide` can emit is present, and that the handshake, verb and invariant lines hold (`TestPromptNamesEveryOpGateStepAndReason`, `TestPromptHandshakeVerbsAndInvariants`); agent frontmatter matches spec §3.3 (`TestAgentDefinitionsMatchSpec`); `plugin.json` and `marketplace.json` agree on version (`TestPluginManifestsAgreeOnVersion`); `flake.nix` and `.goreleaser.yaml` both stamp it (`TestFlakeReadsThePluginVersion`, `TestGoreleaserStampsTheVersion`). The Copilot skill is held to the same vocabulary, its handshake to the manifest version, and its own bytes to a fresh render of `commands/takt.md` through the profile in `internal/hosts`, and every generated `hosts/copilot/agents/*.agent.md` is re-rendered and compared (`TestCopilotSkillNamesEverythingTheBinaryCanEmit`, `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt`, `TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents`), and every host file's frontmatter is held to what a YAML parser accepts (`TestCopilotHostFrontmatterIsParseable`). |
 | `cli` | Golden stdout/stderr per command; exit codes. The reviewer record contract (lens and verify records, the evidence bar, stale-attempt and already-verified ignores, the `reviewer_invalid` streak); the internal-review `decide` rows (15a/15b, `agent_invalid` with `skip`); the blind-then-scoped `close-wave` pass (§7.4 step 3.5, two-layers design §3.5). |
 | e2e (opt-in, `TAKT_E2E=1`) | A throwaway repo, a two-wave plan, `haiku` implementers via a session-less driver that executes ops like the prompt would; kill/resume at each op boundary (G1) (`TestLiveEndToEnd`). |
 

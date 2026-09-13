@@ -1,0 +1,9 @@
+{
+  "task": 1,
+  "attempt": 1,
+  "status": "done",
+  "summary": "BuildShipped` now derives a waived wave's commit tasks from the close record (unfiltered by status) then the dispatch event, `waveTimings` emits one span per dispatch with the last close winning, and both are pinned by an eighth golden built through `BuildRetroInputs`/`BuildShipped` plus three focused tests.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T21:06:20.828746421Z"
+}

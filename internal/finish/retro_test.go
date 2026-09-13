@@ -273,6 +273,75 @@ func TestWaveTimingsIncludeAnAttemptThatClosedWithoutCommitting(t *testing.T) {
 	}
 }
 
+// TestWaveTimingsLastCloseWins covers #71(b): a waive does not bump the
+// attempt, so the close that found failures and the close that committed
+// after the waive carry the same (wave, slice, attempt) key and describe one
+// dispatch. Numbers gets one span for them, timed to the later close — the
+// one that says how the dispatch actually ended — while a reworked wave's
+// two attempts and a split wave's two slices keep their own keys and their
+// own spans. The log is deliberately out of order against the output: the
+// spans come back sorted by wave, then slice, then attempt.
+func TestWaveTimingsLastCloseWins(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
+	ev := func(after time.Duration, typ string, w, sl, a int) bundle.Event {
+		return bundle.Event{
+			TS: t0.Add(after), Type: typ,
+			Data: map[string]any{"wave": float64(w), "slice": float64(sl), "attempt": float64(a)},
+		}
+	}
+	events := []bundle.Event{
+		ev(0, "wave_dispatched", waveOne, sliceOne, attemptOne),
+		// The first close found failures and committed nothing; the user
+		// waived them and the second close, under the same key, committed.
+		ev(5*time.Minute, "wave_closed", waveOne, sliceOne, attemptOne),
+		ev(8*time.Minute, "wave_closed", waveOne, sliceOne, attemptOne),
+		ev(8*time.Minute, "wave_committed", waveOne, sliceOne, attemptOne),
+		// A wave reworked once: two attempts, two keys, two spans.
+		ev(9*time.Minute, "wave_dispatched", waveTwo, sliceOne, attemptOne),
+		ev(12*time.Minute, "wave_closed", waveTwo, sliceOne, attemptOne),
+		ev(13*time.Minute, "wave_dispatched", waveTwo, sliceOne, attemptTwo),
+		ev(16*time.Minute, "wave_closed", waveTwo, sliceOne, attemptTwo),
+		// Wave 1's second slice, closed last of all and reported first.
+		ev(17*time.Minute, "wave_dispatched", waveOne, sliceTwo, attemptOne),
+		ev(20*time.Minute, "wave_closed", waveOne, sliceTwo, attemptOne),
+	}
+	in := finish.BuildRetroInputs(&bundle.State{}, plan.Index{}, events, nil, nil, nil, nil, nil)
+	want := []finish.WaveTiming{
+		{Wave: waveOne, Slice: sliceOne, Attempt: attemptOne, DispatchedAt: t0,
+			ClosedAt: t0.Add(8 * time.Minute), Committed: true, CommittedAt: t0.Add(8 * time.Minute)},
+		{Wave: waveOne, Slice: sliceTwo, Attempt: attemptOne,
+			DispatchedAt: t0.Add(17 * time.Minute), ClosedAt: t0.Add(20 * time.Minute)},
+		{Wave: waveTwo, Slice: sliceOne, Attempt: attemptOne,
+			DispatchedAt: t0.Add(9 * time.Minute), ClosedAt: t0.Add(12 * time.Minute)},
+		{Wave: waveTwo, Slice: sliceOne, Attempt: attemptTwo,
+			DispatchedAt: t0.Add(13 * time.Minute), ClosedAt: t0.Add(16 * time.Minute)},
+	}
+	if len(in.WaveTimings) != len(want) {
+		t.Fatalf("one span per dispatch, want %d: %+v", len(want), in.WaveTimings)
+	}
+	for i, w := range want {
+		assertTiming(t, i, in.WaveTimings[i], w)
+	}
+}
+
+// assertTiming compares one span field by field, the times through
+// [time.Time.Equal] rather than ==.
+func assertTiming(t *testing.T, i int, got, want finish.WaveTiming) {
+	t.Helper()
+	if got.Wave != want.Wave || got.Slice != want.Slice || got.Attempt != want.Attempt {
+		t.Fatalf("span %d = %+v, want wave %d slice %d attempt %d", i, got, want.Wave, want.Slice, want.Attempt)
+	}
+	if !got.DispatchedAt.Equal(want.DispatchedAt) || !got.ClosedAt.Equal(want.ClosedAt) {
+		t.Fatalf("span %d spans %s → %s, want %s → %s",
+			i, got.DispatchedAt, got.ClosedAt, want.DispatchedAt, want.ClosedAt)
+	}
+	if got.Committed != want.Committed || !got.CommittedAt.Equal(want.CommittedAt) {
+		t.Fatalf("span %d committed %t at %s, want %t at %s",
+			i, got.Committed, got.CommittedAt, want.Committed, want.CommittedAt)
+	}
+}
+
 // TestRetroInputsInstrumentTheInternalReview covers the retro's internal
 // review block (two-layers design §9): candidates vs confirmed, by-lens
 // tallies, the scoped-pass verdict-change count, and the overlap between a

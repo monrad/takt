@@ -63,6 +63,42 @@ func TestCopilotSkillHandshakeMatchesTheManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mustContain(t, md, "takt version --expect "+manifestVersion(t),
+		"the skill's handshake must pin the manifest version")
+}
+
+// TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt is the agents' parity
+// test one directory up. The skill stopped being a hand-kept second copy of
+// commands/takt.md with #66: it is a render of that file through the ordered
+// profile in internal/hosts, so the committed bytes must be exactly what the
+// profile produces today. A shared sentence edited in the prompt and left
+// stale here now fails as staleness rather than going unnoticed for want of
+// an anchor — 42 of the two files' 53 lines are the same prose, and nothing
+// but care used to keep them so.
+func TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt(t *testing.T) {
+	t.Parallel()
+	in, err := os.ReadFile(promptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := hosts.RenderCopilotSkill(promptPath, in, manifestVersion(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("%s: %v — run `task hosts:gen`", skillPath, err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("%s is stale — run `task hosts:gen`", skillPath)
+	}
+}
+
+// manifestVersion is the version .claude-plugin/plugin.json declares: what
+// the Copilot handshake pins, because that host has no plugin root to read
+// the manifest from, and what hostgen injects when it renders the skill.
+func manifestVersion(t *testing.T) string {
+	t.Helper()
 	manifest, err := os.ReadFile("../../.claude-plugin/plugin.json")
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +109,7 @@ func TestCopilotSkillHandshakeMatchesTheManifest(t *testing.T) {
 	if err = json.Unmarshal(manifest, &m); err != nil {
 		t.Fatal(err)
 	}
-	mustContain(t, md, "takt version --expect "+m.Version, "the skill's handshake must pin the manifest version")
+	return m.Version
 }
 
 // TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents checks the two

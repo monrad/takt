@@ -3,6 +3,7 @@ package finish
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/monrad/takt/internal/bundle"
@@ -28,6 +29,27 @@ const prTitleMaxRunes = 72
 // missing line is indistinguishable from a goal nobody wrote down.
 const notAssessed = "not assessed"
 
+// issuesSentence introduces the `## Issues` section when the run's goals are
+// on. The two sections answer different questions — which issues the run was
+// started to fix, and which of them it proved — and the sentence says so, so
+// that a reader does not take the closing line for a claim of success.
+const issuesSentence = "These are the issues this run set out to fix; " +
+	"`## Goals` above says which of them it proved."
+
+// issuesSentenceNoGoals is the same sentence for a --no-goals run: the clause
+// that points at `## Goals` is dropped, because the body renders no such
+// section for it to point at.
+const issuesSentenceNoGoals = "These are the issues this run set out to fix."
+
+// issueRef matches the three token forms a topic names an issue with, as one
+// alternation in the order they are tried. Cross-repository comes first so
+// that `monrad/takt#71` is taken whole and its tail is never read as a bare
+// `#71`; the issue URL's `https?://` prefix keeps a bare `/issues/12`
+// fragment, which is not a link, out of the closing line; the bare number is
+// last, and its boundaries are checked by hand in bareRefIsBounded because
+// RE2 has no lookbehind.
+var issueRef = regexp.MustCompile(`[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+|https?://\S+?/issues/\d+|#\d+`)
+
 // BuildPR derives the pull request from the run's artifacts. spec is
 // spec.md's text, topic the run's topic, gs the goals in goals.md order —
 // nil when the run's goals are off, and then the whole `## Goals` section is
@@ -49,6 +71,9 @@ func BuildPR(spec, topic string, gs []goals.Goal, rec *GoalsRecord, bundleRel st
 	}
 	if gs != nil {
 		sections = append(sections, goalsSection(gs, rec))
+	}
+	if issues := issuesSection(topic, gs != nil); issues != "" {
+		sections = append(sections, issues)
 	}
 	sections = append(sections,
 		"## Run\n\nBundle: "+bundleRel+"/ — spec.md, plan.md, reviews/, retro.md")
@@ -127,4 +152,76 @@ func goalOutcome(id string, rec *GoalsRecord) string {
 		}
 	}
 	return notAssessed
+}
+
+// issuesSection is the `## Issues` section: the sentence, a blank line and a
+// closing line naming every issue reference the topic carries. The keyword is
+// repeated per reference — `Closes #66, closes #71` — because GitHub links
+// only the first issue of a bare comma list, so one keyword for four issues
+// closes one. goalsOn selects the sentence. Empty when the topic names no
+// issue: a heading over nothing reads as an omission.
+func issuesSection(topic string, goalsOn bool) string {
+	refs := issueRefs(topic)
+	if len(refs) == 0 {
+		return ""
+	}
+	sentence := issuesSentenceNoGoals
+	if goalsOn {
+		sentence = issuesSentence
+	}
+	closing := make([]string, len(refs))
+	for i, ref := range refs {
+		keyword := "closes "
+		if i == 0 {
+			keyword = "Closes "
+		}
+		closing[i] = keyword + ref
+	}
+	return "## Issues\n\n" + sentence + "\n\n" + strings.Join(closing, ", ")
+}
+
+// issueRefs is every issue reference the topic names, verbatim and in the
+// topic's own order, de-duplicated by rendered token. Two different forms
+// naming one issue both survive: BuildPR is pure and knows neither the
+// repository nor the host, so it cannot prove `#71` and an issue URL are the
+// same issue — GitHub resolves them and closes it once.
+func issueRefs(topic string) []string {
+	var out []string
+	seen := make(map[string]bool)
+	for _, m := range issueRef.FindAllStringIndex(topic, -1) {
+		ref := topic[m[0]:m[1]]
+		if strings.HasPrefix(ref, "#") && !bareRefIsBounded(topic, m[0], m[1]) {
+			continue
+		}
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		out = append(out, ref)
+	}
+	return out
+}
+
+// bareRefIsBounded is the lookaround RE2 will not do for the bare `#N` form:
+// the match must not be preceded by `/` or by a word character — which is
+// what rejects `/#71`, `owner/#71` and `takt#71`, the last being the tail of
+// a cross-repository token the alternation declined — and must not be
+// followed by one, which rejects `#71b`.
+func bareRefIsBounded(topic string, start, end int) bool {
+	if start > 0 {
+		if b := topic[start-1]; b == '/' || isWordByte(b) {
+			return false
+		}
+	}
+	return end >= len(topic) || !isWordByte(topic[end])
+}
+
+// isWordByte reports whether b is one of the ASCII bytes that make a word:
+// the boundary class the bare form is checked against. A byte of a multi-byte
+// rune is not one, so a topic written in another script still names its issue.
+func isWordByte(b byte) bool {
+	return b == '_' ||
+		('0' <= b && b <= '9') ||
+		('a' <= b && b <= 'z') ||
+		('A' <= b && b <= 'Z')
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/spec"
+	"github.com/monrad/takt/internal/wave"
 )
 
 // The wave and task numbers the fixtures carry, named as internal/gate's
@@ -23,7 +24,10 @@ const (
 	waveOne    = 1
 	waveTwo    = 2
 	taskOne    = 1
+	taskTwo    = 2
+	taskThree  = 3
 	taskFour   = 4
+	taskFive   = 5
 	sliceOne   = 1
 	sliceTwo   = 2
 	attemptOne = 1
@@ -54,6 +58,34 @@ func committed(w, sl, a int, sha string, ids ...int) bundle.Event {
 			"sha": sha, "tasks": raw,
 		},
 	}
+}
+
+// dispatchedEvent is a wave_dispatched event as bundle.ReadEvents hands it
+// over: the slice as it went out, its ids float64 like every other number
+// the log carries.
+func dispatchedEvent(w, sl, a int, ids ...int) bundle.Event {
+	raw := make([]any, 0, len(ids))
+	for _, id := range ids {
+		raw = append(raw, float64(id))
+	}
+	return bundle.Event{
+		TS: t0, Type: "wave_dispatched",
+		Data: map[string]any{
+			"wave": float64(w), "slice": float64(sl), "attempt": float64(a), "tasks": raw,
+		},
+	}
+}
+
+// closeRecord is one slice's close record, carrying the ids given at one
+// status. The status is a parameter and never asserted on: every id in a
+// record names a task the commit carried, whatever verdict its last review
+// left behind (#71).
+func closeRecord(w, sl, a int, status string, ids ...int) wave.CloseResult {
+	trs := make([]wave.TaskResult, 0, len(ids))
+	for _, id := range ids {
+		trs = append(trs, wave.TaskResult{Task: id, Status: status})
+	}
+	return wave.CloseResult{Wave: w, Slice: sl, Attempt: a, Committed: true, Tasks: trs}
 }
 
 // fullRunEvents is the log of a run that used every shape the table has to
@@ -141,8 +173,10 @@ func fullRun() (finish.RetroInputs, finish.SkeletonExtras) {
 		{Question: "Does the rewrite take the lock?", Decision: "Yes",
 			Rationale: "per-file atomicity gives no two-file snapshot", Source: "assumed"},
 	}
+	// No close records: every commit in this log names its own tasks, so
+	// the derivation the waived wave needs is never reached.
 	ex := finish.SkeletonExtras{
-		Shipped:   finish.BuildShipped(fullRunEvents(), fullRunIndex()),
+		Shipped:   finish.BuildShipped(fullRunEvents(), nil, fullRunIndex()),
 		Decisions: finish.BuildDecisions(fullRunEvents(), st, assumptions),
 	}
 	return in, ex
@@ -169,6 +203,7 @@ func TestRenderSkeletonGolden(t *testing.T) {
 		{name: "no wave_timings", in: noTimingsIn(), want: noTimingsDoc()},
 		{name: "skipped verification", in: skippedVerifyIn(), ex: skippedVerifyEx(), want: skippedVerifyDoc()},
 		{name: "unruly free text", in: unrulyIn(), ex: unrulyEx(), want: unrulyDoc()},
+		{name: "waived wave", in: waivedWaveIn(), ex: waivedWaveEx(), want: waivedWaveDoc()},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -199,7 +234,7 @@ func TestRenderSkeletonIsPure(t *testing.T) {
 // a row — with its id alone rather than not at all.
 func TestBuildShippedResolvesTitlesAndKeepsUnknownIdsBare(t *testing.T) {
 	t.Parallel()
-	rows := finish.BuildShipped(fullRunEvents(), fullRunIndex())
+	rows := finish.BuildShipped(fullRunEvents(), nil, fullRunIndex())
 	if len(rows) != 5 {
 		t.Fatalf("one row per wave_committed event, got %d: %+v", len(rows), rows)
 	}
@@ -236,7 +271,7 @@ func TestBuildShippedFloorsASliceLessCommitToOne(t *testing.T) {
 		"wave": float64(1), "attempt": float64(2), "sha": "old2222", "tasks": []any{float64(2)},
 	}}
 	zero := committed(waveOne, 0, attemptOne, "old1111", 1)
-	rows := finish.BuildShipped([]bundle.Event{sliceless, zero}, fullRunIndex())
+	rows := finish.BuildShipped([]bundle.Event{sliceless, zero}, nil, fullRunIndex())
 	if len(rows) != 2 {
 		t.Fatalf("both commits ship: %+v", rows)
 	}
@@ -252,6 +287,153 @@ func TestBuildShippedFloorsASliceLessCommitToOne(t *testing.T) {
 	got := finish.RenderSkeleton(finish.RetroInputs{Slug: "legacy"}, finish.SkeletonExtras{Shipped: rows})
 	if !strings.Contains(got, "| wave | attempt | tasks | commit |") {
 		t.Fatalf("a floored slice is not a second slice:\n%s", got)
+	}
+}
+
+// assertOneShippedRow renders the rows and fails unless the table holds the
+// single row given, tasks cell and all. The cell is read from the rendered
+// document on purpose: the derivation exists to put ids in it, and the dash
+// it renders instead is the defect #71 reported.
+func assertOneShippedRow(t *testing.T, rows []finish.ShippedRow, tasks string) {
+	t.Helper()
+	if len(rows) != 1 {
+		t.Fatalf("one commit, one row: %+v", rows)
+	}
+	got := finish.RenderSkeleton(finish.RetroInputs{Slug: "derived"}, finish.SkeletonExtras{Shipped: rows})
+	want := "| 1 | 1 | " + tasks + " | fff6666 |"
+	if !strings.Contains(got, want+"\n") {
+		t.Fatalf("want the row %q:\n%s", want, got)
+	}
+}
+
+// TestBuildShippedDerivesTasksForAnEmptyCommitList covers G1: a close that
+// commits after a waive grades nothing, so its wave_committed lists no
+// tasks, and the row derives them — from the close record of that dispatch,
+// then from its wave_dispatched event, then not at all.
+func TestBuildShippedDerivesTasksForAnEmptyCommitList(t *testing.T) {
+	t.Parallel()
+	const both = "4 — Rename the field; 5 — Backfill the old rows"
+	for _, tc := range []struct {
+		name   string
+		events []bundle.Event
+		closes []wave.CloseResult
+		tasks  string
+	}{
+		{
+			name:   "the event's own list wins over a record that disagrees",
+			events: []bundle.Event{committed(waveOne, sliceOne, attemptOne, "fff6666", taskFour)},
+			closes: []wave.CloseResult{closeRecord(waveOne, sliceOne, attemptOne, "done", taskOne, taskTwo)},
+			tasks:  "4 — Rename the field",
+		},
+		{
+			name:   "an empty list takes the ids of the close record",
+			events: []bundle.Event{committed(waveOne, sliceOne, attemptOne, "fff6666")},
+			closes: []wave.CloseResult{closeRecord(waveOne, sliceOne, attemptOne, "rework", taskFour, taskFive)},
+			tasks:  both,
+		},
+		{
+			// The statuses a record carries are the last verdicts its
+			// reviews gave, not what the tasks ended as: a done/waived
+			// filter here empties precisely the row #71 is about.
+			name:   "a record whose every result is non-done still names its tasks",
+			events: []bundle.Event{committed(waveOne, sliceOne, attemptOne, "fff6666")},
+			closes: []wave.CloseResult{{
+				Wave: waveOne, Slice: sliceOne, Attempt: attemptOne, Committed: true,
+				Tasks: []wave.TaskResult{
+					{Task: taskFour, Status: "rework"},
+					{Task: taskFive, Status: "blocked"},
+				},
+			}},
+			tasks: both,
+		},
+		{
+			name: "no record leaves the dispatch as the fallback",
+			events: []bundle.Event{
+				dispatchedEvent(waveOne, sliceOne, attemptOne, taskFour, taskFive),
+				committed(waveOne, sliceOne, attemptOne, "fff6666"),
+			},
+			tasks: both,
+		},
+		{
+			name:   "neither source renders the dash",
+			events: []bundle.Event{committed(waveOne, sliceOne, attemptOne, "fff6666")},
+			tasks:  "—",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertOneShippedRow(t, finish.BuildShipped(tc.events, tc.closes, fullRunIndex()), tc.tasks)
+		})
+	}
+}
+
+// TestBuildShippedFallbackMatchesTheWholeDispatchKey pins what "the same
+// dispatch" means. Every case feeds distractors alongside the source that
+// may answer — a record of another slice, a record and a dispatch of another
+// attempt — so an implementation matching on the wave alone names the wrong
+// tasks. It also covers the legacy shape timingKeyOf floors, and the rule
+// that the chain takes the first source yielding an id rather than the first
+// that exists.
+func TestBuildShippedFallbackMatchesTheWholeDispatchKey(t *testing.T) {
+	t.Parallel()
+	landed := committed(waveOne, sliceOne, attemptOne, "fff6666")
+	// The same commit as a build that did not record slices wrote it: no
+	// slice key at all, so it decodes to 0 and is floored to 1.
+	legacyLanded := bundle.Event{TS: t0, Type: "wave_committed", Data: map[string]any{
+		"wave": float64(waveOne), "attempt": float64(attemptOne), "sha": "fff6666", "tasks": []any{},
+	}}
+	legacyRecord := wave.CloseResult{Wave: waveOne, Attempt: attemptOne, Committed: true,
+		Tasks: []wave.TaskResult{{Task: taskFour, Status: "rework"}}}
+	right := closeRecord(waveOne, sliceOne, attemptOne, "rework", taskFour)
+	otherSlice := closeRecord(waveOne, sliceTwo, attemptOne, "done", taskOne)
+	otherAttempt := closeRecord(waveOne, sliceOne, attemptTwo, "done", taskTwo)
+	otherWave := closeRecord(waveTwo, sliceOne, attemptOne, "done", taskThree)
+	otherDispatch := dispatchedEvent(waveOne, sliceOne, attemptTwo, taskOne)
+	otherSliceDispatch := dispatchedEvent(waveOne, sliceTwo, attemptOne, taskTwo)
+	otherWaveDispatch := dispatchedEvent(waveTwo, sliceOne, attemptOne, taskThree)
+	for _, tc := range []struct {
+		name   string
+		events []bundle.Event
+		closes []wave.CloseResult
+		tasks  string
+	}{
+		{
+			name:   "another wave's, slice's or attempt's record answers nothing",
+			events: []bundle.Event{otherDispatch, landed},
+			closes: []wave.CloseResult{otherWave, otherSlice, otherAttempt, right},
+			tasks:  "4 — Rename the field",
+		},
+		{
+			name:   "a slice-less commit pairs with the slice-1 record",
+			events: []bundle.Event{otherDispatch, legacyLanded},
+			closes: []wave.CloseResult{otherSlice, right},
+			tasks:  "4 — Rename the field",
+		},
+		{
+			name:   "a slice-less record pairs with the slice-1 commit",
+			events: []bundle.Event{otherDispatch, landed},
+			closes: []wave.CloseResult{otherSlice, legacyRecord},
+			tasks:  "4 — Rename the field",
+		},
+		{
+			// The record of this very dispatch exists and holds no id, so
+			// the chain goes on to the dispatch event rather than stopping
+			// at the source it found.
+			name: "a matching record with no tasks falls through to the dispatch",
+			events: []bundle.Event{
+				otherWaveDispatch, otherSliceDispatch, otherDispatch,
+				dispatchedEvent(waveOne, sliceOne, attemptOne, taskFive), landed,
+			},
+			closes: []wave.CloseResult{
+				{Wave: waveOne, Slice: sliceOne, Attempt: attemptOne, Committed: true}, otherSlice,
+			},
+			tasks: "5 — Backfill the old rows",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertOneShippedRow(t, finish.BuildShipped(tc.events, tc.closes, fullRunIndex()), tc.tasks)
+		})
 	}
 }
 
@@ -420,6 +602,83 @@ func unrulyEx() finish.SkeletonExtras {
 		}},
 	}
 }
+
+// waivedWaveIndex knows the two tasks the waived wave carried.
+func waivedWaveIndex() plan.Index {
+	return plan.Index{Tasks: []plan.Task{
+		{ID: taskFour, Title: "Rename the field"},
+		{ID: taskFive, Title: "Backfill the old rows"},
+	}}
+}
+
+// waivedWaveEvents is the log #71 was filed from: a wave went out, closed
+// with a failure and no commit, had its failing task waived, and closed
+// again under the same key — a waive does not bump the attempt. That second
+// close commits but grades nothing, so its wave_committed carries an empty
+// task list and the row has to derive the ids from elsewhere.
+func waivedWaveEvents() []bundle.Event {
+	closed := func(after time.Duration, didCommit bool) bundle.Event {
+		return bundle.Event{TS: t0.Add(after), Type: "wave_closed", Data: map[string]any{
+			"wave": float64(waveOne), "slice": float64(sliceOne), "attempt": float64(attemptOne),
+			"committed": didCommit,
+		}}
+	}
+	landed := committed(waveOne, sliceOne, attemptOne, "fff6666")
+	landed.TS = t0.Add(8 * time.Minute)
+	return []bundle.Event{
+		dispatchedEvent(waveOne, sliceOne, attemptOne, taskFour, taskFive),
+		closed(5*time.Minute, false),
+		{TS: t0.Add(6 * time.Minute), Type: "task_waived", Data: map[string]any{
+			"task": float64(taskFour), "reason": "the rename needs a schema change this run is not making",
+		}},
+		closed(8*time.Minute, true),
+		landed,
+	}
+}
+
+// waivedWaveCloses is the record that close left on disk. The waived task
+// sits at the `rework` verdict its last review gave it — `takt waive` writes
+// state.Tasks[i].Status and nothing else — beside the one that passed. A
+// done/waived filter over the record would therefore drop task 4 and still
+// find task 5, so it renders a row the golden does not have rather than
+// falling through to the dispatch and rendering the right one by accident.
+func waivedWaveCloses() []wave.CloseResult {
+	return []wave.CloseResult{{
+		Wave: waveOne, Slice: sliceOne, Attempt: attemptOne, Committed: true, CommitSHA: "fff6666",
+		ClosedAt: t0.Add(8 * time.Minute),
+		Tasks: []wave.TaskResult{
+			{Task: taskFour, Status: "rework", Reason: "no caller exercises the new name"},
+			{Task: taskFive, Status: "done"},
+		},
+	}}
+}
+
+// waivedWaveState is that run's state: one task done, the other waived —
+// which is what made the slice done, so the second close committed while
+// grading nothing.
+func waivedWaveState() *bundle.State {
+	return &bundle.State{Slug: "waived", Topic: "Rename the field", Tasks: []bundle.Task{
+		{ID: taskFour, Wave: waveOne, Status: "waived", Attempt: attemptOne},
+		{ID: taskFive, Wave: waveOne, Status: "done", Attempt: attemptOne},
+	}}
+}
+
+// waivedWave derives the golden's inputs the way `takt retro` does — through
+// BuildRetroInputs and BuildShipped, from the event log and the close record
+// — so the document proves the two functions #71 changed rather than the
+// renderer alone.
+func waivedWave() (finish.RetroInputs, finish.SkeletonExtras) {
+	events, closes, idx := waivedWaveEvents(), waivedWaveCloses(), waivedWaveIndex()
+	in := finish.BuildRetroInputs(waivedWaveState(), idx, events, closes, nil, nil, nil, nil)
+	ex := finish.SkeletonExtras{
+		Shipped:   finish.BuildShipped(events, closes, idx),
+		Decisions: finish.BuildDecisions(events, waivedWaveState(), nil),
+	}
+	return in, ex
+}
+
+func waivedWaveIn() finish.RetroInputs    { in, _ := waivedWave(); return in }
+func waivedWaveEx() finish.SkeletonExtras { _, ex := waivedWave(); return ex }
 
 // fenced wraps a JSON block in the markdown fence the Numbers section
 // renders. It is a function because a Go raw string cannot hold a backtick,
@@ -791,6 +1050,67 @@ func unrulyDoc() string {
 		"",
 		"none",
 	)
+}
+
+// waivedWaveDoc is the document of a wave that was dispatched, failed, was
+// waived and closed again. Both halves of #71 are in it: the What shipped
+// row names both tasks of a commit whose event listed none — derived from
+// the close record, where the waived one still sits at `rework` — and
+// Numbers carries one span for the wave rather than one per close, timed to
+// the second close.
+func waivedWaveDoc() string {
+	return doc(
+		"# Retro — waived",
+		"",
+		"## What shipped",
+		"",
+		"<!-- prose: what shipped — two or three sentences -->",
+		"",
+		"| wave | attempt | tasks | commit |",
+		"| --- | --- | --- | --- |",
+		"| 1 | 1 | 4 — Rename the field; 5 — Backfill the old rows | fff6666 |",
+		"",
+		"## Decisions",
+		"",
+		"- task_waiver: task 4 (the rename needs a schema change this run is not making)",
+		"",
+		"disposition: not yet chosen",
+		"",
+		"## What went well / what was hard",
+		"",
+		"<!-- prose: what went well / what was hard — the session's own account of driving this run -->",
+		"",
+		"## Not proven",
+		"",
+		"- task 4 — waived: no caller exercises the new name",
+		"",
+		"<!-- prose: not proven — what else must a reader not assume is true -->",
+		"",
+		"## Lessons",
+		"",
+		"<!-- prose: lessons — for the next run in this repository -->",
+		"",
+		"## Follow-ups",
+		"",
+		"none",
+		"",
+		"## Numbers",
+		"",
+	) + fenced(`{
+  "internal_review": null,
+  "wave_timings": [
+    {
+      "wave": 1,
+      "slice": 1,
+      "attempt": 1,
+      "dispatched_at": "2026-08-25T10:00:00Z",
+      "closed_at": "2026-08-25T10:08:00Z",
+      "committed": true,
+      "committed_at": "2026-08-25T10:08:00Z"
+    }
+  ]
+}
+`)
 }
 
 // headings is the order the document renders them in, and the strings

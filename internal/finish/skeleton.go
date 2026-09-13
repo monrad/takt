@@ -14,6 +14,7 @@ import (
 	"github.com/monrad/takt/internal/gate"
 	"github.com/monrad/takt/internal/plan"
 	"github.com/monrad/takt/internal/spec"
+	"github.com/monrad/takt/internal/wave"
 )
 
 // ShippedTask is one task of a commit row, already resolved. Title is empty
@@ -86,18 +87,23 @@ const (
 // decision the user locked, as opposed to one the planning session assumed.
 const sourceUserConfirmed = "user-confirmed"
 
-// BuildShipped is pure: the event log plus the plan index → one row per
-// wave_committed event, ordered by wave, then slice, then attempt.
+// BuildShipped is pure: the event log, the close records and the plan index
+// → one row per wave_committed event, ordered by wave, then slice, then
+// attempt.
 //
 // Every commit gets a row — the backfilled events a healed finish writes as
 // well as the second commit of a wave that committed, was reworked and
 // committed again. Each is a real commit on the branch, and hiding one would
 // make the table claim a history that did not happen (spec §4).
 //
+// The records arrive as an argument so this stays pure: they are read only
+// to name the tasks of a commit whose event lists none — see
+// [committedTasks] for why such an event exists at all.
+//
 // This is the one place [plan.Index] is read: each id is resolved to its
 // title here, so [RenderSkeleton] performs no lookup and stays pure. An id
 // the index does not know keeps an empty title.
-func BuildShipped(events []bundle.Event, idx plan.Index) []ShippedRow {
+func BuildShipped(events []bundle.Event, closes []wave.CloseResult, idx plan.Index) []ShippedRow {
 	out := []ShippedRow{}
 	for _, e := range events {
 		if e.Type != evCommitted {
@@ -110,7 +116,7 @@ func BuildShipped(events []bundle.Event, idx plan.Index) []ShippedRow {
 		sha, _ := e.Data[keySHA].(string)
 		out = append(out, ShippedRow{
 			Wave: k.wave, Slice: k.slice, Attempt: k.attempt,
-			SHA: sha, Tasks: shippedTasks(e.Data[keyTasks], idx),
+			SHA: sha, Tasks: committedTasks(e, k, events, closes, idx),
 		})
 	}
 	slices.SortStableFunc(out, func(a, b ShippedRow) int {
@@ -118,6 +124,70 @@ func BuildShipped(events []bundle.Event, idx plan.Index) []ShippedRow {
 			cmp.Compare(a.Wave, b.Wave), cmp.Compare(a.Slice, b.Slice), cmp.Compare(a.Attempt, b.Attempt))
 	})
 	return out
+}
+
+// committedTasks is what one commit row names, from the first of three
+// sources that yields an id — not the first that exists, so a close record
+// whose task list is empty falls through to the dispatch just as a
+// task-less event does (spec §2.1).
+//
+//  1. The event's own list. A commit that recorded what it carried says so,
+//     and that list wins even where a record disagrees.
+//  2. The close record of the same dispatch, taking every id it holds
+//     whatever status each result carries. A close that commits after a
+//     waive grades nothing, so its event's list is empty; the record, after
+//     carryForward, still holds the whole slice. The statuses in it must not
+//     be filtered on: `takt waive` writes state.Tasks[i].Status alone, so a
+//     waived task keeps whatever verdict its last review gave it — a
+//     done/waived filter would drop exactly the tasks this row exists to
+//     name (#71).
+//  3. The wave_dispatched event of the same dispatch, whose list is the
+//     slice as it went out — the fallback for a record a later attempt
+//     retired.
+//
+// Failing all three the row keeps no tasks and [tasksCell] renders the dash,
+// which is the status quo.
+func committedTasks(
+	e bundle.Event, k timingKey, events []bundle.Event, closes []wave.CloseResult, idx plan.Index,
+) []ShippedTask {
+	if ts := shippedTasks(e.Data[keyTasks], idx); len(ts) > 0 {
+		return ts
+	}
+	if ts := closedTasks(k, closes, idx); len(ts) > 0 {
+		return ts
+	}
+	return dispatchedTasks(k, events, idx)
+}
+
+// closedTasks is every id the close record of dispatch k holds, resolved.
+// The whole key is matched — a record of another slice or another attempt
+// describes another dispatch and cannot name this commit's tasks.
+func closedTasks(k timingKey, closes []wave.CloseResult, idx plan.Index) []ShippedTask {
+	for _, c := range closes {
+		if closeKeyOf(c) != k || len(c.Tasks) == 0 {
+			continue
+		}
+		out := make([]ShippedTask, 0, len(c.Tasks))
+		for _, tr := range c.Tasks {
+			out = append(out, shippedTask(tr.Task, idx))
+		}
+		return out
+	}
+	return nil
+}
+
+// dispatchedTasks is the slice of dispatch k as it went out, resolved, from
+// the wave_dispatched event carrying that whole key.
+func dispatchedTasks(k timingKey, events []bundle.Event, idx plan.Index) []ShippedTask {
+	for _, e := range events {
+		if e.Type != evDispatched || timingKeyOf(e) != k {
+			continue
+		}
+		if ts := shippedTasks(e.Data[keyTasks], idx); len(ts) > 0 {
+			return ts
+		}
+	}
+	return nil
 }
 
 // shippedTasks resolves one event's task ids against the index. The ids
@@ -134,13 +204,19 @@ func shippedTasks(v any, idx plan.Index) []ShippedTask {
 		if !isNum {
 			continue
 		}
-		st := ShippedTask{ID: int(n)}
-		if t := idx.Task(st.ID); t != nil {
-			st.Title = t.Title
-		}
-		out = append(out, st)
+		out = append(out, shippedTask(int(n), idx))
 	}
 	return out
+}
+
+// shippedTask resolves one id against the index. An id the index does not
+// know keeps an empty title and renders bare.
+func shippedTask(id int, idx plan.Index) ShippedTask {
+	st := ShippedTask{ID: id}
+	if t := idx.Task(id); t != nil {
+		st.Title = t.Title
+	}
+	return st
 }
 
 // BuildDecisions is pure: the event log, the state and the spec's

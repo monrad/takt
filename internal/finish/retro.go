@@ -309,6 +309,14 @@ func timingKeyOf(e bundle.Event) timingKey {
 	return timingKey{wave: int(w), slice: max(int(sl), 1), attempt: int(a)}
 }
 
+// closeKeyOf reads one close record's dispatch key. The slice is floored the
+// way [timingKeyOf] floors an event's, so a record written before slices
+// were recorded pairs with the events of the slice takt heals it to rather
+// than with a slice 0 that never ran.
+func closeKeyOf(c wave.CloseResult) timingKey {
+	return timingKey{wave: c.Wave, slice: max(c.Slice, 1), attempt: c.Attempt}
+}
+
 // waveTimings reports one span per dispatched attempt that closed: each
 // wave_closed is paired with the wave_dispatched of the same wave, slice and
 // attempt, and carries the commit time of the wave_committed with that key
@@ -318,9 +326,16 @@ func timingKeyOf(e bundle.Event) timingKey {
 // attempt 1, so wave and attempt alone would collapse them into one. A
 // dispatch with no wave_closed — an attempt still running — is omitted, and
 // the spans come out ordered by wave, then slice, then attempt (#25).
+//
+// One dispatch can close twice: a close that finds failures raises
+// wave_failures without committing, the user waives them, and the next close
+// commits under the same key, because a waive does not bump the attempt.
+// That is one dispatch and gets one span, the last close in log order
+// winning — it is the close that describes how the dispatch actually ended
+// (#71).
 func waveTimings(events []bundle.Event) []WaveTiming {
 	dispatched, committed := collectDispatches(events)
-	out := []WaveTiming{}
+	spans := map[timingKey]WaveTiming{}
 	for _, e := range events {
 		if e.Type != evClosed {
 			continue
@@ -334,9 +349,15 @@ func waveTimings(events []bundle.Event) []WaveTiming {
 		if at, done := committed[k]; done {
 			wt.Committed, wt.CommittedAt = true, at
 		}
+		spans[k] = wt
+	}
+	out := make([]WaveTiming, 0, len(spans))
+	for _, wt := range spans {
 		out = append(out, wt)
 	}
-	slices.SortStableFunc(out, func(a, b WaveTiming) int {
+	// The keys are unique, so ordering on them is total and the map's own
+	// random iteration order cannot reach the output.
+	slices.SortFunc(out, func(a, b WaveTiming) int {
 		return cmp.Or(
 			cmp.Compare(a.Wave, b.Wave), cmp.Compare(a.Slice, b.Slice), cmp.Compare(a.Attempt, b.Attempt))
 	})

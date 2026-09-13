@@ -1,0 +1,9 @@
+{
+  "task": 2,
+  "attempt": 1,
+  "status": "done",
+  "summary": "BuildPR` now renders an `## Issues` section between `## Goals` and `## Run`, parsing bare `#N`, `https?://…/issues/N` and `owner/repo#N` from the topic with hand-checked boundaries, de-duplicated in topic order with the closing keyword repeated per reference, covered by a 15-row table including all six boundary negatives.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T21:00:25.070230998Z"
+}

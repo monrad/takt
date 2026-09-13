@@ -1,0 +1,18 @@
+{
+  "lens": "intent",
+  "wave": 1,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T22:19:15.791154316Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 604,
+      "title": "Design-doc changes go well beyond the task's four named regions",
+      "detail": "Task-4 enumerates exactly four regions to edit in this file (§4.7 Commits bullet ~342, §7.5 step 5 ~905, the two follow-on sentences ~926/928, §5.1's `takt retro --rewrite` row ~371), all about retiring 'the run's last commit' prose. The diff additionally rewrites §3.3's repository-layout rows for hosts/copilot/skills/takt/SKILL.md and internal/hosts/ (lines ~111, ~128, ~130), the whole §6.1 'GitHub Copilot CLI host' paragraph (lines ~604-621, describing hostgen's new substitution-profile rendering of the Copilot skill from commands/takt.md), and the §14 `prompt` test-table row (~line 1249, adding TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt). This content documents wave 0's task-3 (the hostgen/SKILL.md-generation feature), whose own task file restricted edits to commands/takt.md, hosts/copilot/skills/takt/SKILL.md, internal/hosts/*, internal/tools/hostgen/*, prompt test files and Taskfile.yml — never the design doc — and wave 0's diff (logs/wave-0.s1.a1.diff) never touched docs/superpowers/specs/2026-08-24-takt-design.md. None of this belongs to task-4's stated problem (retiring archived-path prose); it is unauthorized scope creep inside a declared file, exactly the kind of thing this repo's own precedent (the earlier CONTRIBUTING.md episode) says needs explicit authorization before landing.",
+      "task": 4
+    }
+  ]
+}

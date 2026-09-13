@@ -131,19 +131,21 @@ func recommitArchive(ctx context.Context, env Env, tgt *runTarget) int {
 }
 
 // applyAndStop does the disposition's git work and prints the run's stop op.
-// It writes nothing tracked: the archive commit is the run's last one, so the tree is
-// clean for every choice by the time this runs — which is what makes the
-// discard hand-off (`git checkout <base> && git branch -D <branch>`) a
-// command the session can actually run. Row 25 and every later `takt next` on
-// the archived run share it, so an effect that could not be applied the first
-// time is simply applied the next.
+// The archive commit leaves the tree clean for every choice, which is what
+// makes the discard hand-off (`git checkout <base> && git branch -D
+// <branch>`) a command the session can actually run. Row 25 and every later
+// `takt next` on the archived run share it, so an effect that could not be
+// applied the first time is simply applied the next.
 //
 // The stop op goes out through the caller's printer rather than through
 // printOp directly: row 25 reaches here from a `takt next` that has already
 // taken the lock and may have lost an optional write on the way, and a
 // warning that vanished on a run which ended well would be the one place
-// the contract leaked (the warnings contract). The later call on an
-// archived run takes no lock, so it passes plainOp.
+// the contract leaked (the warnings contract). Every caller — archive() at
+// row 25, and every later `takt next` on the archived run, through cmdNext's
+// archived path — reaches here holding the lock and prints through the
+// caller's emit, precisely so a `takt retro --rewrite` and a concurrent
+// `next` cannot interleave over the retro pair.
 func applyAndStop(ctx context.Context, env Env, tgt *runTarget, emit opPrinter) int {
 	// An archived run holds nothing: the lock is released here rather than
 	// in archive() so that every later `takt next` on the archived run —

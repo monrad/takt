@@ -1,7 +1,9 @@
-// Command hostgen writes hosts/copilot/agents/*.agent.md from agents/*.md.
-// With --check it writes nothing and exits 1 listing the files that are
-// stale, which is what `task hosts:check` and the prompt parity test
-// enforce.
+// Command hostgen writes the Copilot CLI host's files from the Claude Code
+// ones: hosts/copilot/agents/*.agent.md from agents/*.md, and
+// hosts/copilot/skills/takt/SKILL.md from commands/takt.md and the version
+// in .claude-plugin/plugin.json. With --check it writes nothing and exits 1
+// listing the files that are stale, which is what `task hosts:check` and the
+// prompt parity tests enforce.
 //
 // "Stale" covers both directions. A generated file whose content no longer
 // matches its source is stale, and so is one whose source is gone: renaming
@@ -12,6 +14,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -35,7 +38,8 @@ func main() {
 }
 
 // run renders every agents/*.md under root, sweeps the generated files no
-// source claims any more, and returns the process exit code.
+// source claims any more, renders the skill from commands/takt.md, and
+// returns the process exit code.
 //
 // The two streams are parameters rather than [os.Stdout] and [os.Stderr]
 // because what a failure prints is part of hostgen's contract: a render
@@ -78,10 +82,72 @@ func run(root string, check bool, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "hostgen:", err)
 		return exitFailure
 	}
-	if stale+orphaned > 0 {
+	skillStale, err := generateSkill(root, check, stdout, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "hostgen:", err)
+		return exitFailure
+	}
+	if stale+orphaned+skillStale > 0 {
 		return 1
 	}
 	return 0
+}
+
+// generateSkill renders hosts/copilot/skills/takt/SKILL.md from
+// commands/takt.md under root and returns how many files --check found stale
+// (0 or 1). Its inputs are two files a repository either has or is not one:
+// a missing prompt or manifest is an error naming the path, never a silent
+// skip, because a skip is indistinguishable from "the skill is up to date"
+// and would let the file this generator owns drift after all.
+func generateSkill(root string, check bool, stdout, stderr io.Writer) (int, error) {
+	src := filepath.Join(root, "commands", "takt.md")
+	in, err := os.ReadFile(src)
+	if err != nil {
+		return 0, err
+	}
+	version, err := manifestVersion(filepath.Join(root, ".claude-plugin", "plugin.json"))
+	if err != nil {
+		return 0, err
+	}
+	out, err := hosts.RenderCopilotSkill(src, in, version)
+	if err != nil {
+		return 0, err
+	}
+	dst := filepath.Join(root, "hosts", "copilot", "skills", "takt", "SKILL.md")
+	if cur, _ := os.ReadFile(dst); bytes.Equal(cur, out) {
+		return 0, nil
+	}
+	if check {
+		fmt.Fprintln(stderr, "stale:", dst)
+		return 1, nil
+	}
+	if werr := write(dst, out); werr != nil {
+		return 0, werr
+	}
+	fmt.Fprintln(stdout, "wrote", dst)
+	return 0, nil
+}
+
+// manifestVersion reads the "version" field of the plugin manifest at path —
+// the one the Copilot handshake pins, since that host has no plugin root to
+// read the manifest from at run time. Every failure names path: this is the
+// second file a --root must have, and "which root did you point me at" is
+// the only question its absence raises.
+func manifestVersion(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	if err = json.Unmarshal(b, &m); err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	if m.Version == "" {
+		return "", fmt.Errorf("%s: no \"version\" field", path)
+	}
+	return m.Version, nil
 }
 
 // sweepOrphans reports (--check) or deletes every *.agent.md in dstDir that
@@ -128,5 +194,7 @@ func write(dst string, out []byte) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 		return err
 	}
+	//nolint:gosec // G703: dst is --root joined with names this program builds — an agent's own file name, or
+	// the skill's fixed relative path; no caller-supplied value ever reaches this write.
 	return os.WriteFile(dst, out, 0o600)
 }

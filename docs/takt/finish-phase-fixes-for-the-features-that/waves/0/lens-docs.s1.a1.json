@@ -1,0 +1,26 @@
+{
+  "lens": "docs",
+  "wave": 0,
+  "slice": 1,
+  "attempt": 1,
+  "model": "sonnet",
+  "recorded_at": "2026-08-30T21:13:45.471028203Z",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "CONTRIBUTING.md",
+      "line": 69,
+      "title": "Copilot host files section still describes the skill as hand-kept except for its version line",
+      "detail": "CONTRIBUTING.md:67-71 (\"### Copilot host files\") says only \"`hosts/copilot/agents/*.agent.md` are generated from `agents/*.md` by `task hosts:gen`... The skill's `takt version --expect \u003cversion\u003e` line is stamped by `task version:set`\" — implying the rest of hosts/copilot/skills/takt/SKILL.md is hand-maintained. This diff (internal/hosts/skill.go, internal/tools/hostgen/main.go's generateSkill) makes the WHOLE skill file a render of commands/takt.md via a substitution profile, written and staleness-checked by the same `task hosts:gen` / `task hosts:check` that already covers the agent files (per the new TestRunRegeneratesAHandEditedSkill and TestRunRefusesARootMissingASkillSource). A contributor following this section would still believe hand-editing the skill body is normal practice and that only the version line is generator-owned, which is no longer true and will now be silently overwritten by `task hosts:gen` or fail `task hosts:check`/CI.",
+      "task": 0
+    },
+    {
+      "severity": "major",
+      "file": "docs/superpowers/specs/2026-08-24-takt-design.md",
+      "line": 1239,
+      "title": "Design doc's §14 testing table and §3.3/§6.1 architecture text omit the new skill-generation parity test and its \"generated, never hand-edited\" status",
+      "detail": "Line 1239 (§14 Testing table, `prompt` row) names the Copilot parity tests by name — `TestCopilotSkillNamesEverythingTheBinaryCanEmit`, `TestCopilotSkillHandshakeMatchesTheManifest`, `TestCopilotAgentsAreGeneratedFromTheClaudeCodeAgents`, `TestCopilotHostFrontmatterIsParseable` — but not the new `TestCopilotSkillIsGeneratedFromTheClaudeCodePrompt` (internal/prompt/copilot_test.go) that proves the skill is a byte-exact render of commands/takt.md, the direct skill-level analogue of the agents' own parity test already listed. Two related spots are stale the same way: §3.3's repository-layout table (lines 111-112) marks `hosts/copilot/agents/*.agent.md` \"generated from agents/*.md — never hand-edited\" but leaves the SKILL.md row (line 111) and the internal/hosts and internal/tools/hostgen rows (lines 128-130, \"renders agents/*.md for other hosts\" / \"writes and checks the generated Copilot agent files\") not mentioning the skill at all; and §6.1's paragraph (lines 611-616) ends \"...fail when a generated agent file is stale\" without now also covering the generated skill file. None of these were touched by this diff even though the diff is exactly the change (#66/§2.3) that makes them incomplete.",
+      "task": 0
+    }
+  ]
+}

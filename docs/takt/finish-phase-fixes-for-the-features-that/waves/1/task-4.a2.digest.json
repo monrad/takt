@@ -1,0 +1,9 @@
+{
+  "task": 4,
+  "attempt": 2,
+  "status": "done",
+  "summary": "Re-scoped design §7.5 step 5's \"never recorded in state\" claim to the git side of the disposition (keeping the `disposition_applied`-event half) and removed the false exclusivity about post-archive writes in both places it appeared, naming the `retro done` commit and the re-taken `archive` commit; all attempt-1 work otherwise preserved and every verify command passes.",
+  "blockers": "none",
+  "model": "opus",
+  "recorded_at": "2026-08-30T22:32:01.116703257Z"
+}

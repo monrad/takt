@@ -172,3 +172,119 @@ func TestWritePRWritesTheBodyWhereTheOpPointsIt(t *testing.T) {
 		t.Fatalf("%v %q", err, b)
 	}
 }
+
+// issueURL71 and issueURL66 are the canonical "started from an issue" topic:
+// `deriveSlug` accepts an issue URL, so a run begun that way has no `#N` in
+// its topic at all and the closing line has to be built from the link.
+const (
+	issueURL71 = "https://github.com/monrad/takt/issues/71"
+	issueURL66 = "https://github.com/monrad/takt/issues/66"
+)
+
+// TestBuildPRIssuesSection covers the three token forms the topic can name an
+// issue with, their de-duplication and their order, and the tokens that are
+// not references at all. The count assertion is the load-bearing one: the
+// keyword has to be repeated per reference, because GitHub links only the
+// first issue of a bare comma list and one `Closes` for four issues closes
+// one. The negatives cover both boundaries of the bare form — a word or a
+// slash before the `#`, a letter after the number — since the valid
+// `owner/repo#N` row cannot prove that a bare tail is rejected on its own.
+func TestBuildPRIssuesSection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		topic string
+		want  []string
+	}{
+		{"no issue at all", "some other topic", nil},
+		{"one bare number", "#74", []string{"#74"}},
+		{"several bare numbers", "#66, #71, #72 and #74", []string{"#66", "#71", "#72", "#74"}},
+		{"part of an issue", "#49 item 1", []string{"#49"}},
+		{"an issue url", "fix " + issueURL71, []string{issueURL71}},
+		{"a cross-repository token", "monrad/takt#71", []string{"monrad/takt#71"}},
+		{
+			"a mix of forms",
+			"monrad/takt#71, then " + issueURL66 + ", then #72",
+			[]string{"monrad/takt#71", issueURL66, "#72"},
+		},
+		{"a repeat of one form", "#71 and again #71", []string{"#71"}},
+		{
+			"two forms naming one issue",
+			"#71 and " + issueURL71,
+			[]string{"#71", issueURL71},
+		},
+		{"a letter stuck to the number", "#71b", nil},
+		{"a bare issues fragment", "see /issues/12", nil},
+		{"a word before the hash", "abc#71", nil},
+		{"a repository-like word before the hash", "takt#71", nil},
+		{"a slash before the hash", "/#71", nil},
+		{"a malformed cross-repository token", "owner/#71", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertIssuesSection(t, finish.BuildPR(prSpec, tc.topic, demoGoals, nil, "docs/takt/demo").Body, tc.want)
+		})
+	}
+}
+
+// assertIssuesSection is TestBuildPRIssuesSection's per-row check: one
+// closing keyword per reference — the assertion that fails if the keyword is
+// ever emitted once for a comma list — every reference rendered verbatim, in
+// the topic's order, and the whole section present only when there is one.
+func assertIssuesSection(t *testing.T, body string, want []string) {
+	t.Helper()
+	lower := strings.ToLower(body)
+	if got := strings.Count(lower, "closes "); got != len(want) {
+		t.Fatalf("%d closing keywords for %d references:\n%s", got, len(want), body)
+	}
+	if got := strings.Contains(body, "## Issues"); got != (len(want) > 0) {
+		t.Fatalf("`## Issues` present = %v:\n%s", got, body)
+	}
+	prev := -1
+	for _, ref := range want {
+		if !strings.Contains(body, ref) {
+			t.Fatalf("body does not name %q verbatim:\n%s", ref, body)
+		}
+		at := strings.Index(lower, "closes "+strings.ToLower(ref))
+		if at < 0 {
+			t.Fatalf("%q carries no closing keyword:\n%s", ref, body)
+		}
+		if at <= prev {
+			t.Fatalf("%q is out of the topic's order:\n%s", ref, body)
+		}
+		prev = at
+	}
+}
+
+// TestBuildPRIssuesSectionSitsBetweenGoalsAndRun pins the position the user
+// chose: the issues the run set out to fix are read after the verdicts on its
+// goals and before the pointer at the bundle.
+func TestBuildPRIssuesSectionSitsBetweenGoalsAndRun(t *testing.T) {
+	t.Parallel()
+	body := finish.BuildPR(prSpec, "fix #71 and #74", demoGoals, nil, "docs/takt/demo").Body
+	goalsAt, issuesAt, runAt := strings.Index(body, "## Goals"),
+		strings.Index(body, "## Issues"), strings.Index(body, "## Run")
+	if goalsAt < 0 || issuesAt >= runAt || goalsAt >= issuesAt {
+		t.Fatalf("goals at %d, issues at %d, run at %d:\n%s", goalsAt, issuesAt, runAt, body)
+	}
+	const want = "## Issues\n\nThese are the issues this run set out to fix; " +
+		"`## Goals` above says which of them it proved.\n\nCloses #71, closes #74"
+	if !strings.Contains(body, want) {
+		t.Fatalf("body has no %q:\n%s", want, body)
+	}
+}
+
+// TestBuildPRIssuesSectionWithoutGoalsDropsTheClause covers a --no-goals run:
+// the sentence must not point at a `## Goals` section the body does not
+// render, so it stops at the issues themselves.
+func TestBuildPRIssuesSectionWithoutGoalsDropsTheClause(t *testing.T) {
+	t.Parallel()
+	body := finish.BuildPR(prSpec, "fix #74", nil, nil, "docs/takt/demo").Body
+	const want = "## Issues\n\nThese are the issues this run set out to fix.\n\nCloses #74"
+	if !strings.Contains(body, want) {
+		t.Fatalf("body has no %q:\n%s", want, body)
+	}
+	if strings.Contains(body, "## Goals") {
+		t.Fatalf("body:\n%s", body)
+	}
+}

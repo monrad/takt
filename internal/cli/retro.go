@@ -102,7 +102,7 @@ func writeRetroArtifacts(bdir string, st *bundle.State) error {
 	}
 	in := finish.BuildRetroInputs(st, idx, events, closes, v, g, fu.Items, internals)
 	ex := finish.SkeletonExtras{
-		Shipped:   finish.BuildShipped(events, idx),
+		Shipped:   finish.BuildShipped(events, closes, idx),
 		Decisions: finish.BuildDecisions(events, st, spec.ParseAssumptions(b)),
 	}
 	if err = finish.WriteRetroInputs(bdir, in); err != nil {

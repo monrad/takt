@@ -32,12 +32,12 @@ tasks:
       - task: hosts:check
 
   hosts:gen:
-    desc: Regenerate hosts/copilot/agents/*.agent.md from agents/*.md.
+    desc: Regenerate the Copilot host from the Claude Code one — agents/*.md into hosts/copilot/agents/*.agent.md, commands/takt.md into hosts/copilot/skills/takt/SKILL.md.
     cmds:
       - go run ./internal/tools/hostgen
 
   hosts:check:
-    desc: Fail when a generated host file is stale.
+    desc: Fail when a generated host file — an agent or the skill — is stale.
     cmds:
       - go run ./internal/tools/hostgen --check
 
