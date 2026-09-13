@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -59,6 +60,12 @@ type driver struct {
 	// other lens, and every driver that leaves this nil, keeps reporting
 	// none, so this is opt-in per test.
 	lensFinding *lensFindingScript
+	// plan, when set, is the plan.index.json template playPlanner records in
+	// place of validIndex, %s stamped with the spec hash as validIndex's is.
+	// A test sets it to walk a run whose declared files are not the
+	// fixture's, so that nothing the driver scripts can lean on the
+	// fixture's file names (TestScriptedAssessorCitesTheRunsOwnFiles).
+	plan string
 }
 
 // lensFindingScript is one finding playReviewer's scripted lens reply
@@ -385,7 +392,7 @@ func (d *driver) playPlanner() {
 	testutil.WriteFile(d.t, d.root, "docs/takt/demo/plan.md", "# plan\n")
 	specH := specHash(d.t, d.bdir)
 	testutil.WriteFile(d.t, d.root, "docs/takt/demo/plan.index.json",
-		strings.Replace(validIndex, "%s", specH, 1))
+		strings.Replace(cmp.Or(d.plan, validIndex), "%s", specH, 1))
 	code, out, errb := d.cmd("record", "--agent", "planner", "--from", d.message("wrote the plan\n"), "--slug", "demo")
 	if code != 0 || out["valid"] != true {
 		d.t.Fatalf("record planner: %d %v %s", code, out, errb)
@@ -468,10 +475,16 @@ func (d *driver) playAssessor(ag map[string]any) {
 	if len(ids) == 0 {
 		d.t.Fatalf("the assessor brief names no goal: %s", brief)
 	}
+	// The citation names a line in a real file, because takt resolves every
+	// one against the tree (finish.CheckCitations): the first file the run's
+	// own plan declared, which wave 0's implementer wrote — a.go under the
+	// fixture, greet.go under the live end-to-end run. A name assumed from
+	// the fixture is what failed the live run (issue #21).
+	file := d.declaredFile()
 	verdicts := make([]string, 0, len(ids))
 	for _, id := range ids {
 		verdicts = append(verdicts, fmt.Sprintf(
-			`{"id":%q,"verdict":"achieved","evidence":"a.go and b.go exist","citations":["a.go:1"]}`, id))
+			`{"id":%q,"verdict":"achieved","evidence":%q,"citations":[%q]}`, id, file+" exists", file+":1"))
 	}
 	msg := d.message("```json\n[" + strings.Join(verdicts, ",") + "]\n```\n")
 	code, out, errb := d.cmd("record", "--agent", "goal-assessor", "--from", msg, "--slug", "demo")
@@ -488,6 +501,24 @@ func (d *driver) playAssessor(ag map[string]any) {
 	if out["all_achieved"] != true {
 		d.t.Fatalf("record goal-assessor: %v", out)
 	}
+}
+
+// declaredFile is the first file the run's plan declares, read from
+// state.json. By the time the assessor is dispatched every wave has closed,
+// so it is a file that exists at HEAD whatever the plan called it.
+func (d *driver) declaredFile() string {
+	d.t.Helper()
+	st, err := bundle.LoadState(d.bdir)
+	if err != nil {
+		d.t.Fatal(err)
+	}
+	for _, tk := range st.Tasks {
+		if len(tk.Files) > 0 {
+			return tk.Files[0]
+		}
+	}
+	d.t.Fatalf("the plan declares no file to cite: %+v", st.Tasks)
+	return ""
 }
 
 // playReviewer answers one dispatch of the internal review layer — a lens,
